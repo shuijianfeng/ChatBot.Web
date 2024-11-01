@@ -151,6 +151,12 @@ namespace ChatBot.Models
         /// </summary>
         [JsonPropertyName("stop")]
         public List<string>? Stop { get; set; }
+
+        /// <summary>
+        /// 用户输入的消息
+        /// </summary>
+        [JsonPropertyName("session_id")]
+        public string SessionId { get; set; }= string.Empty;
     }
 
     /// <summary>
@@ -214,4 +220,40 @@ namespace ChatBot.Models
         [JsonPropertyName("data")]
         public ChatResponse? Data { get; set; }
     }
+
+    // 响应类型
+    public class OpenAIChunkResponse
+    {
+        public choice[] choices { get; set; }
+        
+        public class choice
+        {
+            public delta delta { get; set; }
+            public int index { get; set; }
+
+        }
+       
+        public class delta
+        {
+            public string content { get; set; }
+            public string role { get; set; }
+        }
+    }
+
+    public class DashScopeChunkResponse
+    {
+        [JsonPropertyName("output")]
+        public Output output { get;set;}
+        public class Output
+        {
+            [JsonPropertyName("text")]
+            public string Text { get; set; }
+            [JsonPropertyName("session_id")]
+            public string SessionId { get; set; }
+            [JsonPropertyName("finish_reason")]
+            public string FinishReason { get; set; }
+        }
+
+    }
+    
 }

@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using ChatBot.Models;
-
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using ChatBot.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -49,11 +50,52 @@ namespace ChatBot.Controllers
             return View();
         }
 
+
+        [HttpPost]
+        [Route("/api/chat/stream")]
+        public async Task StreamChat([FromBody] ChatRequest request)
+        {
+            Response.Headers.Add("Content-Type", "text/event-stream");
+            Response.Headers.Add("Cache-Control", "no-cache");
+            Response.Headers.Add("Connection", "keep-alive");
+
+            try
+            {
+                IAsyncEnumerable<string> stream;
+                if (request.Model== "软件及业务问答")
+                {
+                    stream = _chatService.GenerateStreamViaDashScopeAsync(request, "cb3fb45aeaf347b8bf51373d4ded12b2");
+                }
+                else
+                {
+                    stream = _chatService.GenerateStreamViaOpenAIAsync( request);
+                }
+
+                await foreach (var chunk in stream)
+                {
+                    var data = new { content = chunk };
+                    await Response.WriteAsync($"data: {JsonSerializer.Serialize(data)}\n\n");
+                    await Response.Body.FlushAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing stream chat request");
+                var errorData = new { error = "An error occurred while processing your request." };
+                await Response.WriteAsync($"data: {JsonSerializer.Serialize(errorData)}\n\n");
+            }
+            finally
+            {
+                await Response.WriteAsync("data: [DONE]\n\n");
+                await Response.Body.FlushAsync();
+            }
+        }
+
         /// <summary>
         /// 聊天API端点
         /// </summary>
         [HttpPost]
-        [Route("/api/chat")]
+        [Route("/api/chat/stream1")]
         public async Task ChatAsync([FromBody] ChatRequest request)
         {
             // 验证请求

@@ -6,13 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="AI助手" />
     <meta name="csrf-token" content="@GetAntiForgeryToken()" />
+    <meta name="user-login" content="@User.Identity.Name">
     <title>@ViewData["Title"] - AI助手</title>
 
     @* 基础样式 *@
     <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.css" />
     <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.css" />
-    <link rel="stylesheet" href="~/lib/highlight.js/styles/github.min.css/>
+
+    <link rel="stylesheet" href="~/lib/highlight.js/styles/github.css />
+    <link rel="stylesheet" href="~/lib/highlight.js/styles/github-dark.css media=" (prefers-color-scheme: dark) />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/primer/octicons/build/build.css">
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+
 
     @* 网站图标 *@
     <link rel="icon" type="image/png" href="~/favicon.png" />
@@ -26,7 +31,7 @@
                     @* Logo和品牌名 *@
                     <a class="navbar-brand d-flex align-items-center" href="~/">
                         <i class="bi bi-github me-2"></i>
-                        <span>GitHub Copilot Chat</span>
+                        <span>Ai助手</span>
                     </a>
 
                     @* 移动端菜单按钮 *@
@@ -39,12 +44,12 @@
                         <ul class="navbar-nav flex-grow-1">
                             <li class="nav-item">
                                 <a class="nav-link" asp-controller="Home" asp-action="Index">
-                                    <i class="bi bi-chat-dots me-1"></i>聊天
+                                    @* <i class="bi bi-chat-dots me-1"></i>聊天 *@
                                 </a>
                             </li>
                             <li class="nav-item">
                                 <a class="nav-link" asp-controller="Home" asp-action="About">
-                                    <i class="bi bi-info-circle me-1"></i>关于
+                                    @* <i class="bi bi-info-circle me-1"></i>关于 *@
                                 </a>
                             </li>
                         </ul>
@@ -60,23 +65,28 @@
                                     </label>
                                 </div>
                             </div>
+                            <div class="px-3 py-2">
+                                <label class="form-label mb-1">模型选择</label>
 
+                            </div>
+                            <div class="modeldropdown">
+                                <select class="form-select form-select-sm" id="global-model-selector">
+                                    <option value="软件及业务问答">软件及业务问答</option>
+                                    <option value="qwen-plus">通义千问</option>
+                                    <option value="llama3.1-405b-instruct">Llama</option>
+                                </select>
+                            </div>
+                            <div class ="px-3 py-2">
+                                <label></label>
+
+                            </div>
                             @* 设置下拉菜单 *@
                             <div class="dropdown">
                                 <button class="btn btn-link nav-link dropdown-toggle" type="button" id="settingsDropdown" data-bs-toggle="dropdown">
                                     <i class="bi bi-gear"></i>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="settingsDropdown">
-                                    <li>
-                                        <div class="px-3 py-2">
-                                            <label class="form-label mb-1">模型选择</label>
-                                            <select class="form-select form-select-sm" id="global-model-selector">
-                                                <option value="qwen-turbo">通义千问-Turbo</option>
-                                                <option value="qwen-plus">通义千问-Plus</option>
-                                                <option value="qwen-max">通义千问-Max</option>
-                                            </select>
-                                        </div>
-                                    </li>
+
                                     <li><hr class="dropdown-divider"></li>
                                     <li>
                                         <a class="dropdown-item" href="javascript:void(0)" id="clear-history">
@@ -113,8 +123,15 @@
     @* 基础脚本 *@
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/js/bootstrap.bundle.js"></script>
-    <script src="~/lib/markdown-it/markdown-it.min.js"></script>
+    <script src="~/lib/marked/marked.min.js"></script>
     <script src="~/lib/highlight.js/highlight.min.js"></script>
+    <script src="~/lib/highlight.js/languages/csharp.min.js"></script>
+    <script src="~/lib/highlight.js/languages/java.min.js"></script>
+    <script src="~/lib/highlight.js/languages/python.min.js"></script>
+    <script src="~/lib/highlight.js/languages/javascript.min.js"></script>
+    <script src="~/lib/highlight.js/languages/xml.min.js"></script>
+    <script src="~/lib/highlight.js/languages/json.min.js"></script>
+    <script src="~/lib/highlight.js/languages/css.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
 
     @* 页面特定脚本 *@

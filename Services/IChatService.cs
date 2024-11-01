@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ChatBot.Models;
 using System.Net.Http.Headers;
+using System.Net.Http;
 namespace ChatBot.Web.Services
 {
     /// <summary>
@@ -16,6 +17,8 @@ namespace ChatBot.Web.Services
         /// <param name="request">聊天请求</param>
         /// <returns>响应事件流</returns>
         Task<IAsyncEnumerable<StreamEvent>> GetChatResponseAsync(ChatRequest request);
+        IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatRequest request);
+        IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatRequest request, string appId);
     }
 
     /// <summary>
@@ -46,7 +49,125 @@ namespace ChatBot.Web.Services
                 //Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             };
         }
+        // 流式输出 - OpenAI 兼容方式
+        public async IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatRequest request)
+        {
+            // 验证配置
+            var apiKey = "sk-f9c4450d10604891a9d912bb398a397b";
+            var apiEndpoint = @"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            {
+                throw new InvalidOperationException("通义千问API配置缺失");
+            }
+
+            // 创建HTTP客户端
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+            // 准备请求内容
+            var requestContent = new
+            {
+
+                model = request.Model,
+                messages = ConvertToApiMessages(request),
+                stream = true,
+                temperature = request.Temperature,
+                max_tokens = request.MaxTokens,
+                enable_search = true,
+                stream_options = new
+                {
+                    include_usage = true
+                }
+            };
+            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+            }, HttpCompletionOption.ResponseHeadersRead);
+
+            //var response = await client.PostAsJsonAsync(apiEndpoint, requestContent);
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync();
+            using var reader = new StreamReader(stream);
+
+            while (!reader.EndOfStream)
+            {
+                var line = await reader.ReadLineAsync();
+                if (string.IsNullOrEmpty(line)) continue;
+                if (line.StartsWith("data: "))
+                {
+                    line = line.Substring(6);
+                    if (line == "[DONE]") break;
+
+                    var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
+                    if (!string.IsNullOrEmpty(chunk?.choices?[0]?.delta?.content))
+                    {
+                        yield return chunk.choices[0].delta.content;
+                    }
+                }
+            }
+        }
+
+        // 流式输出 - DashScope 百练应用调用方式
+        public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatRequest request,string appId)
+        {
+            // 验证配置
+            string baseUrl = "https://dashscope.aliyuncs.com/api/v1/apps";
+            string endpoint = "completion";
+            var apiEndpoint = $"{baseUrl}/{appId}/{endpoint}";
+
+            var apiKey = "sk-f9c4450d10604891a9d912bb398a397b";
+
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            {
+                throw new InvalidOperationException("通义千问API配置缺失");
+            }
+
+            // 创建HTTP客户端
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("X-DashScope-SSE", "enable");
+            string s_id = request.SessionId;
+            
+            
+            // 准备请求内容
+            var requestContent = new
+            {
+                input = new { prompt = ConvertToApiMessage(request), session_id= s_id },
+                parameters = new { enable_search = true, incremental_output = true }
+
+            };
+            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+            }, HttpCompletionOption.ResponseHeadersRead);
+
+            //var response = await client.PostAsJsonAsync(apiEndpoint, requestContent);
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync();
+            using var reader = new StreamReader(stream);
+
+            while (!reader.EndOfStream)
+            {
+                var line = await reader.ReadLineAsync();
+                if (string.IsNullOrEmpty(line)) continue;
+                if (line.StartsWith("data:"))
+                {
+                    line = line.Substring(5);
+                    if (line == "[DONE]") break;
+
+                    var chunk = JsonSerializer.Deserialize<DashScopeChunkResponse>(line);
+                    if (!string.IsNullOrEmpty(chunk?.output.Text))
+                    {
+                        //request.SessionId = chunk.SessionId;
+                        yield return chunk.output.Text;
+                    }
+                }
+            }
+        }
         /// <summary>
         /// 获取聊天响应流
         /// </summary>
@@ -71,6 +192,7 @@ namespace ChatBot.Web.Services
                 // 准备请求内容
                 var requestContent = new
                 {
+                    
                     model = request.Model,
                     messages = ConvertToApiMessages(request),
                     stream = true,
@@ -133,12 +255,18 @@ namespace ChatBot.Web.Services
                 });
             }
 
-            // 添加当前用户消息
-            messages.Add(new
+            return messages;
+        }
+        private static string ConvertToApiMessage(ChatRequest request)
+        {
+            var messages = string.Empty;
+
+            if (request.History.Count > 0&& request.History[request.History.Count - 1].Role=="user")
             {
-                role = "user",
-                content = request.Message
-            });
+                messages = request.History[request.History.Count - 1].Content;
+            }
+
+            
 
             return messages;
         }
