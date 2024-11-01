@@ -1,0 +1,190 @@
+﻿@* _Layout.cshtml *@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="AI助手" />
+    <meta name="csrf-token" content="@GetAntiForgeryToken()" />
+    <title>@ViewData["Title"] - AI助手</title>
+
+    @* 基础样式 *@
+    <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.css" />
+    <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.css" />
+    <link rel="stylesheet" href="~/lib/highlight.js/styles/github.min.css/>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+
+    @* 网站图标 *@
+    <link rel="icon" type="image/png" href="~/favicon.png" />
+</head>
+<body class="bg-light">
+    <div class="app-container">
+        @* 顶部导航栏 *@
+        <header>
+            <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom fixed-top">
+                <div class="container-fluid px-4">
+                    @* Logo和品牌名 *@
+                    <a class="navbar-brand d-flex align-items-center" href="~/">
+                        <i class="bi bi-github me-2"></i>
+                        <span>GitHub Copilot Chat</span>
+                    </a>
+
+                    @* 移动端菜单按钮 *@
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+
+                    @* 导航菜单 *@
+                    <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                        <ul class="navbar-nav flex-grow-1">
+                            <li class="nav-item">
+                                <a class="nav-link" asp-controller="Home" asp-action="Index">
+                                    <i class="bi bi-chat-dots me-1"></i>聊天
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" asp-controller="Home" asp-action="About">
+                                    <i class="bi bi-info-circle me-1"></i>关于
+                                </a>
+                            </li>
+                        </ul>
+
+                        @* 右侧工具栏 *@
+                        <div class="d-flex align-items-center">
+                            @* 主题切换 *@
+                            <div class="theme-switch me-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="theme-toggle">
+                                    <label class="form-check-label" for="theme-toggle">
+                                        <i class="bi bi-sun-fill"></i>
+                                    </label>
+                                </div>
+                            </div>
+
+                            @* 设置下拉菜单 *@
+                            <div class="dropdown">
+                                <button class="btn btn-link nav-link dropdown-toggle" type="button" id="settingsDropdown" data-bs-toggle="dropdown">
+                                    <i class="bi bi-gear"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="settingsDropdown">
+                                    <li>
+                                        <div class="px-3 py-2">
+                                            <label class="form-label mb-1">模型选择</label>
+                                            <select class="form-select form-select-sm" id="global-model-selector">
+                                                <option value="qwen-turbo">通义千问-Turbo</option>
+                                                <option value="qwen-plus">通义千问-Plus</option>
+                                                <option value="qwen-max">通义千问-Max</option>
+                                            </select>
+                                        </div>
+                                    </li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <a class="dropdown-item" href="javascript:void(0)" id="clear-history">
+                                            <i class="bi bi-trash me-2"></i>清除历史记录
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" href="javascript:void(0)" id="export-history">
+                                            <i class="bi bi-download me-2"></i>导出聊天记录
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+        </header>
+
+        @* 主要内容区域 *@
+        <main role="main" class="main-content">
+            @RenderBody()
+        </main>
+
+        @* 页脚 *@
+        <footer class="footer border-top">
+            <div class="container-fluid text-center py-3">
+                <span class="text-muted">© @DateTime.Now.Year - GitHub Copilot Chat Clone - </span>
+                <a asp-controller="Home" asp-action="Privacy">隐私政策</a>
+            </div>
+        </footer>
+    </div>
+
+    @* 基础脚本 *@
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/js/bootstrap.bundle.js"></script>
+    <script src="~/lib/markdown-it/markdown-it.min.js"></script>
+    <script src="~/lib/highlight.js/highlight.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    @* 页面特定脚本 *@
+    @await RenderSectionAsync("Scripts", required: false)
+
+    @* 主题和设置管理脚本 *@
+    <script>
+        // 主题切换功能
+        document.addEventListener('DOMContentLoaded', () => {
+            const themeToggle = document.getElementById('theme-toggle');
+            const body = document.body;
+
+            // 加载保存的主题
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            body.setAttribute('data-theme', savedTheme);
+            themeToggle.checked = savedTheme === 'dark';
+
+            // 主题切换事件
+            themeToggle.addEventListener('change', (e) => {
+                const newTheme = e.target.checked ? 'dark' : 'light';
+                body.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+            });
+
+            // 加载保存的模型设置
+            const modelSelector = document.getElementById('global-model-selector');
+            const savedModel = localStorage.getItem('selectedModel');
+            if (savedModel) {
+                modelSelector.value = savedModel;
+            }
+
+            // 保存模型选择
+            modelSelector.addEventListener('change', (e) => {
+                localStorage.setItem('selectedModel', e.target.value);
+            });
+
+            // 清除历史记录
+            document.getElementById('clear-history').addEventListener('click', () => {
+                if (confirm('确定要清除所有聊天历史记录吗？')) {
+                    localStorage.removeItem('chatHistory');
+                    window.location.reload();
+                }
+            });
+
+            // 导出聊天记录
+            document.getElementById('export-history').addEventListener('click', () => {
+                const history = localStorage.getItem('chatHistory');
+                if (history) {
+                    const blob = new Blob([history], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `chat-history-${new Date().toISOString().slice(0, 10)}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
+@functions {
+    string GetAntiForgeryToken()
+    {
+        var tokens = antiforgery.GetAndStoreTokens(Context);
+        return tokens.RequestToken;
+    }
+}
+
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery

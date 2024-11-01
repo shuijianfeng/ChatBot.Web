@@ -1,0 +1,39 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ai助手</title>
+    <link rel="stylesheet" href="~/css/site.css" />
+</head>
+<body>
+    <div class="chat-main">
+        <!-- 用户信息栏 -->
+        <div class="user-info-bar">
+            <span class="time-info">Current Date and Time (UTC): 2024-11-01 01:58:23</span>
+            <span class="user-info">Current User's Login: shuijianfeng</span>
+        </div>
+
+        <!-- 消息容器 -->
+        <div class="messages-container" id="messages-container">
+            <!-- 消息内容将通过 JavaScript 动态添加 -->
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="chat-input-area">
+            <div class="input-container">
+                <textarea id="message-input"
+                          placeholder="Message GitHub Copilot..."
+                          rows="1"></textarea>
+                <button class="send-button" id="send-button" title="Send message" disabled>
+                    <svg class="send-icon" viewBox="0 0 16 16" width="16" height="16">
+                        <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="~/js/chat.js"></script>
+</body>
+</html>

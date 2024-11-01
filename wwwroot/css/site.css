@@ -1,0 +1,240 @@
+/* 重置和基础样式 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* 主布局 */
+.chat-main {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100%;
+    background-color: var(--color-canvas-default);
+}
+
+/* 用户信息栏 */
+.user-info-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    font-size: 12px;
+    color: var(--color-fg-subtle);
+    border-bottom: 1px solid var(--color-border-default);
+    background-color: var(--color-canvas-subtle);
+    height: 36px;
+}
+
+.time-info {
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace;
+}
+
+.user-info {
+    font-weight: 600;
+}
+
+/* 消息容器 */
+.messages-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    scroll-behavior: smooth;
+}
+
+/* 消息样式 */
+.message {
+    margin-bottom: 16px;
+    max-width: 85%;
+}
+
+.user-message {
+    margin-left: auto;
+}
+
+.system-message {
+    margin: 0 auto;
+    max-width: 100%;
+    text-align: center;
+    color: var(--color-fg-subtle);
+}
+
+.message-content {
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--color-canvas-subtle);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.user-message .message-content {
+    background: var(--color-accent-fg);
+    color: #ffffff;
+}
+
+/* 输入区域 */
+.chat-input-area {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--color-canvas-default);
+    border-top: 1px solid var(--color-border-default);
+    padding: 16px;
+    z-index: 100;
+}
+
+/* 输入容器 */
+.input-container {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    transition: border-color 0.15s ease-in-out;
+    background-color: var(--color-canvas-default);
+    margin: 0 auto;
+    max-width: 1280px;
+}
+
+    .input-container:focus-within {
+        border-color: var(--color-accent-fg);
+        box-shadow: 0 0 0 2px var(--color-accent-fg-muted);
+    }
+
+/* 文本输入框 */
+#message-input {
+    flex: 1;
+    min-height: 20px;
+    max-height: 200px;
+    padding: 8px 32px 8px 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    border: none;
+    background: transparent;
+    resize: none;
+    color: var(--color-fg-default);
+}
+
+    #message-input:focus {
+        outline: none;
+        box-shadow: none;
+    }
+
+    #message-input::placeholder {
+        color: var(--color-fg-subtle);
+    }
+
+/* 发送按钮 */
+.send-button {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 24px;
+    height: 24px;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--color-fg-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+    .send-button:hover:not(:disabled) {
+        color: var(--color-accent-fg);
+        background-color: var(--color-neutral-muted);
+    }
+
+    .send-button:disabled {
+        color: var(--color-primer-fg-disabled);
+        cursor: not-allowed;
+    }
+
+.send-icon {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+/* 加载动画 */
+.loading-spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.send-button.loading .send-icon {
+    display: none;
+}
+
+.send-button.loading .loading-spinner {
+    display: block;
+}
+
+/* 主题变量 */
+:root {
+    --color-canvas-default: #ffffff;
+    --color-border-default: #d0d7de;
+    --color-fg-default: #24292f;
+    --color-fg-muted: #57606a;
+    --color-fg-subtle: #6e7781;
+    --color-accent-fg: #0969da;
+    --color-accent-fg-muted: rgba(9, 105, 218, 0.3);
+    --color-neutral-muted: rgba(175, 184, 193, 0.2);
+    --color-primer-fg-disabled: #8c959f;
+    --color-canvas-subtle: #f6f8fa;
+}
+
+[data-theme="dark"] {
+    --color-canvas-default: #0d1117;
+    --color-border-default: #30363d;
+    --color-fg-default: #c9d1d9;
+    --color-fg-muted: #8b949e;
+    --color-fg-subtle: #6e7781;
+    --color-accent-fg: #58a6ff;
+    --color-accent-fg-muted: rgba(88, 166, 255, 0.3);
+    --color-neutral-muted: rgba(110, 118, 129, 0.4);
+    --color-primer-fg-disabled: #484f58;
+    --color-canvas-subtle: #161b22;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .user-info-bar {
+        padding: 8px;
+    }
+
+    .messages-container {
+        padding: 16px;
+    }
+
+    .chat-input-area {
+        padding: 8px;
+    }
+
+    .input-container {
+        margin: 0;
+    }
+}
