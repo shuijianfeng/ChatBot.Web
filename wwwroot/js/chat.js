@@ -2,6 +2,7 @@
     constructor() {
         this.messages = []; // 存储聊天记录
         this.session_id = '';
+        this.messageBuffer = '';
         // 初始化DOM元素引用
         this.messagesContainer = document.getElementById('messages-container');
         this.messageInput = document.getElementById('message-input');
@@ -71,13 +72,13 @@
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}-message`;
 
-        // 创建头像和图标容器
-        const avatarDiv = document.createElement('div');
-        avatarDiv.className = 'message-avatar';
+        //// 创建头像和图标容器
+        //const avatarDiv = document.createElement('div');
+        //avatarDiv.className = 'message-avatar';
 
-        // 根据角色选择不同的图标
-        const iconSvg = this.getIconByRole(role);
-        avatarDiv.innerHTML = iconSvg;
+        //// 根据角色选择不同的图标
+        //const iconSvg = this.getIconByRole(role);
+        //avatarDiv.innerHTML = iconSvg;
 
         const containerDiv = document.createElement('div');
         containerDiv.className = 'message-container';
@@ -85,7 +86,7 @@
         const headerDiv = document.createElement('div');
         headerDiv.className = 'message-header';
 
-       
+
 
         const roleSpan = document.createElement('span');
         roleSpan.className = 'message-role';
@@ -127,13 +128,13 @@
             console.error('Markdown 渲染错误:', e);
             contentDiv.textContent = content;
         }
-        messageDiv.appendChild(avatarDiv);
+        //messageDiv.appendChild(avatarDiv);
         headerDiv.appendChild(roleSpan);
         headerDiv.appendChild(actionsDiv);
         containerDiv.appendChild(headerDiv);
         containerDiv.appendChild(contentDiv);
         messageDiv.appendChild(containerDiv);
-        
+
         return { messageDiv, contentDiv };
     }
     // 获取复制图标
@@ -294,6 +295,63 @@
         this.scrollToBottom();
     }
 
+    appendStreamContent(content) {
+        if (this.currentMessageElement) {
+            const fullMessageDiv = this.currentMessageElement.querySelector('.full-message');
+            const contentDiv = this.currentMessageElement.querySelector('.message-content');
+
+            if (fullMessageDiv && contentDiv) {
+                this.messageBuffer += content;
+                fullMessageDiv.textContent = this.messageBuffer;
+
+                try {
+                    // 配置 marked 选项
+                    marked.setOptions({
+                        gfm: true,
+                        tables: true,
+                        breaks: true,
+                        pedantic: false,
+                        sanitize: false,
+                        smartLists: true,
+                        smartypants: false,
+                        highlight: function (code, language) {
+                            if (language && hljs.getLanguage(language)) {
+                                try {
+                                    return hljs.highlight(code, {
+                                        language: language,
+                                        ignoreIllegals: true
+                                    }).value;
+                                } catch (e) {
+                                    console.error('代码高亮错误:', e);
+                                }
+                            }
+                            return code;
+                        }
+                    });
+
+                    // 渲染 markdown 内容
+                    contentDiv.innerHTML = marked.parse(this.messageBuffer);
+
+                    // 处理所有代码块
+                    contentDiv.querySelectorAll('pre code').forEach((block) => {
+                        // 添加语言类标识
+                        const language = block.getAttribute('class') || '';
+                        if (language) {
+                            block.parentElement.classList.add('language-' + language.replace('language-', ''));
+                        }
+
+                        // 应用高亮
+                        hljs.highlightElement(block);
+                    });
+                } catch (e) {
+                    console.error('Markdown 渲染错误:', e);
+                    contentDiv.textContent = this.messageBuffer;
+                }
+
+                this.scrollToBottom();
+            }
+        }
+    }
     // 转换聊天记录为API格式
     convertToApiMessages() {
         // 添加系统消息

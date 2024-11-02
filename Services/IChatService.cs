@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using ChatBot.Models;
 using System.Net.Http.Headers;
 using System.Net.Http;
+using System;
 namespace ChatBot.Web.Services
 {
     /// <summary>
@@ -26,6 +27,7 @@ namespace ChatBot.Web.Services
     /// </summary>
     public class QianWenChatService : IChatService
     {
+        static string SessionId = string.Empty;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _configuration;
         private readonly ILogger<QianWenChatService> _logger;
@@ -128,7 +130,7 @@ namespace ChatBot.Web.Services
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             client.DefaultRequestHeaders.TryAddWithoutValidation("X-DashScope-SSE", "enable");
-            string s_id = request.SessionId;
+            string s_id = SessionId;
             
             
             // 准备请求内容
@@ -162,7 +164,7 @@ namespace ChatBot.Web.Services
                     var chunk = JsonSerializer.Deserialize<DashScopeChunkResponse>(line);
                     if (!string.IsNullOrEmpty(chunk?.output.Text))
                     {
-                        //request.SessionId = chunk.SessionId;
+                        SessionId = chunk.output.SessionId;
                         yield return chunk.output.Text;
                     }
                 }
