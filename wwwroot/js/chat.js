@@ -71,70 +71,159 @@
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}-message`;
 
-        // 添加头像
+        // 创建头像和图标容器
         const avatarDiv = document.createElement('div');
         avatarDiv.className = 'message-avatar';
-        const avatarIcon = document.createElement('span');
-        avatarIcon.className = role === 'user' ? 'octicon octicon-person' : 'octicon octicon-copilot';
-        avatarDiv.appendChild(avatarIcon);
 
-        // 消息容器
+        // 根据角色选择不同的图标
+        const iconSvg = this.getIconByRole(role);
+        avatarDiv.innerHTML = iconSvg;
+
         const containerDiv = document.createElement('div');
         containerDiv.className = 'message-container';
 
-        // 消息头部
         const headerDiv = document.createElement('div');
         headerDiv.className = 'message-header';
 
-        // 角色名称
-        const roleDiv = document.createElement('div');
-        roleDiv.className = 'message-role';
-        roleDiv.textContent = role === 'user' ? this.currentUser : 'Ai助手';
+       
 
-        // 操作按钮
+        const roleSpan = document.createElement('span');
+        roleSpan.className = 'message-role';
+        roleSpan.textContent = role === 'assistant' ? 'Ai助手' : '您';
+
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
 
-        // 复制按钮
-        const copyButton = document.createElement('button');
-        copyButton.className = 'copy-button';
-        copyButton.setAttribute('aria-label', 'Copy message');
-        copyButton.innerHTML = '<span class="octicon octicon-copy"></span>';
-        copyButton.dataset.copyContent = content;
-
-        copyButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.copyMessage(e.currentTarget);
-        });
-
-        actionsDiv.appendChild(copyButton);
-        headerDiv.appendChild(roleDiv);
-        headerDiv.appendChild(actionsDiv);
-
-        // 消息内容
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content markdown-body';
+        contentDiv.dataset.rawContent = content;
 
         try {
             contentDiv.innerHTML = marked.parse(content);
-            // 确保对所有代码块应用高亮
             contentDiv.querySelectorAll('pre code').forEach((block) => {
                 hljs.highlightElement(block);
             });
+
+            // 添加复制按钮到每个代码块
+            contentDiv.querySelectorAll('pre').forEach((pre) => {
+                const codeBlock = pre.querySelector('code');
+                if (codeBlock) {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'code-block-wrapper';
+
+                    const copyButton = this.createCopyButton(codeBlock.textContent);
+                    copyButton.className = 'code-copy-button';
+
+                    pre.parentNode.insertBefore(wrapper, pre);
+                    wrapper.appendChild(pre);
+                    wrapper.appendChild(copyButton);
+                }
+            });
+
+            // 添加消息复制按钮
+            const copyButton = this.createCopyButton(content);
+            actionsDiv.appendChild(copyButton);
         } catch (e) {
             console.error('Markdown 渲染错误:', e);
             contentDiv.textContent = content;
         }
-
-
+        messageDiv.appendChild(avatarDiv);
+        headerDiv.appendChild(roleSpan);
+        headerDiv.appendChild(actionsDiv);
         containerDiv.appendChild(headerDiv);
         containerDiv.appendChild(contentDiv);
-        messageDiv.appendChild(avatarDiv);
         messageDiv.appendChild(containerDiv);
-
+        
         return { messageDiv, contentDiv };
     }
+    // 获取复制图标
+    getCopyIcon() {
+        return `<svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/>
+        <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
+    </svg>`;
+    }
 
+
+    createCopyButton(textToCopy) {
+        const copyButton = document.createElement('button');
+        copyButton.className = 'copy-button';
+        copyButton.setAttribute('aria-label', 'Copy');
+        copyButton.innerHTML = `
+            <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/>
+                <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
+            </svg>
+        `;
+
+        copyButton.addEventListener('click', async () => {
+            try {
+                const contentToCopy = copyButton.dataset.copyContent || textToCopy;
+                // 确保复制完整内容
+                await navigator.clipboard.writeText(contentToCopy);
+                //// 确保复制完整内容
+                //await navigator.clipboard.writeText(copyButton.dataset.copyContent);
+
+                // 更新按钮状态
+                const originalHTML = copyButton.innerHTML;
+                copyButton.innerHTML = `
+                    <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                        <path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
+                    </svg>
+                `;
+                copyButton.classList.add('copy-success');
+
+                // 2秒后恢复原始状态
+                setTimeout(() => {
+                    copyButton.innerHTML = originalHTML;
+                    copyButton.classList.remove('copy-success');
+                }, 2000);
+            } catch (err) {
+                console.error('复制失败:', err);
+            }
+        });
+
+        return copyButton;
+    }
+
+    
+
+    // 根据角色获取对应的图标
+    getIconByRole(role) {
+        const icons = {
+            assistant: `<svg class="icon ai-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8zm3.707-11.707a1 1 0 0 0-1.414 0L11 11.586l-1.293-1.293a1 1 0 1 0-1.414 1.414l2 2a1 1 0 0 0 1.414 0l4-4a1 1 0 0 0 0-1.414z"/>
+        </svg>`,
+            user: `<svg class="icon user-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zM8 21.25v-.625c0-1.725 3.392-3.125 4-3.125s4 1.4 4 3.125v.625c-1.237.526-2.598.75-4 .75s-2.763-.224-4-.75zM12 16c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z"/>
+        </svg>`,
+            system: `<svg class="icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+        </svg>`
+        };
+        return icons[role] || icons.system;
+    }
+
+   
+
+    async copyToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            // 可以添加复制成功的提示
+            const copyButton = event.currentTarget;
+            const originalHTML = copyButton.innerHTML;
+            copyButton.innerHTML = `
+            <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
+            </svg>
+        `;
+            setTimeout(() => {
+                copyButton.innerHTML = originalHTML;
+            }, 2000);
+        } catch (err) {
+            console.error('复制失败:', err);
+        }
+    }
     async copyMessage(button) {
         if (this.copyInProgress) return;
         this.copyInProgress = true;
@@ -186,6 +275,7 @@
             // 更新内存中最后一条消息的内容
             if (this.messages.length > 0) {
                 this.messages[this.messages.length - 1].content = contentDiv.dataset.rawContent;
+                
             }
 
             copyButton.dataset.copyContent = contentDiv.dataset.rawContent;
