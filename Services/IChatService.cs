@@ -56,7 +56,7 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken )
         {
             // 验证配置
-            var apiKey = "sk-f9c4450d10604891a9d912bb398a397b";
+            var apiKey = Environment.GetEnvironmentVariable("AiApiKey");
             var apiEndpoint = @"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
@@ -120,7 +120,7 @@ namespace ChatBot.Web.Services
             string endpoint = "completion";
             var apiEndpoint = $"{baseUrl}/{appId}/{endpoint}";
 
-            var apiKey = "sk-f9c4450d10604891a9d912bb398a397b";
+            var apiKey = Environment.GetEnvironmentVariable("AiApiKey");
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
@@ -162,7 +162,7 @@ namespace ChatBot.Web.Services
                     if (line == "[DONE]") break;
 
                     var chunk = JsonSerializer.Deserialize<DashScopeChunkResponse>(line);
-                    if (!string.IsNullOrEmpty(chunk?.output.Text))
+                    if (chunk?.output?.Text is string text && !string.IsNullOrEmpty(text))
                     {
                         SessionId = chunk.output.SessionId;
                         yield return chunk.output.Text;
