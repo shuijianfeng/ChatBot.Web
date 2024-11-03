@@ -5,6 +5,7 @@ using ChatBot.Models;
 using System.Net.Http.Headers;
 using System.Net.Http;
 using System;
+using System.Runtime.CompilerServices;
 namespace ChatBot.Web.Services
 {
     /// <summary>
@@ -17,9 +18,9 @@ namespace ChatBot.Web.Services
         /// </summary>
         /// <param name="request">聊天请求</param>
         /// <returns>响应事件流</returns>
-        Task<IAsyncEnumerable<StreamEvent>> GetChatResponseAsync(ChatRequest request);
-        IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatRequest request);
-        IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatRequest request, string appId);
+        
+        IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatRequest request, CancellationToken cancellationToken );
+        IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatRequest request, string appId, CancellationToken cancellationToken );
     }
 
     /// <summary>
@@ -52,7 +53,7 @@ namespace ChatBot.Web.Services
             };
         }
         // 流式输出 - OpenAI 兼容方式
-        public async IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatRequest request)
+        public async IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken )
         {
             // 验证配置
             var apiKey = "sk-f9c4450d10604891a9d912bb398a397b";
@@ -72,7 +73,7 @@ namespace ChatBot.Web.Services
             {
 
                 model = request.Model,
-                messages = ConvertToApiMessages(request),
+                messages = ToMessages(request),
                 stream = true,
                 temperature = request.Temperature,
                 max_tokens = request.MaxTokens,
@@ -85,17 +86,16 @@ namespace ChatBot.Web.Services
             var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead);
+            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
-            //var response = await client.PostAsJsonAsync(apiEndpoint, requestContent);
             response.EnsureSuccessStatusCode();
 
-            using var stream = await response.Content.ReadAsStreamAsync();
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
 
-            while (!reader.EndOfStream)
+            while (!reader.EndOfStream&& !cancellationToken.IsCancellationRequested)
             {
-                var line = await reader.ReadLineAsync();
+                var line = await reader.ReadLineAsync(cancellationToken);
                 if (string.IsNullOrEmpty(line)) continue;
                 if (line.StartsWith("data: "))
                 {
@@ -103,16 +103,17 @@ namespace ChatBot.Web.Services
                     if (line == "[DONE]") break;
 
                     var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-                    if (!string.IsNullOrEmpty(chunk?.choices?[0]?.delta?.content))
+                    var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
+                    if (!string.IsNullOrEmpty(content))
                     {
-                        yield return chunk.choices[0].delta.content;
+                        yield return content;
                     }
                 }
             }
         }
 
         // 流式输出 - DashScope 百练应用调用方式
-        public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatRequest request,string appId)
+        public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatRequest request,string appId, [EnumeratorCancellation] CancellationToken cancellationToken )
         {
             // 验证配置
             string baseUrl = "https://dashscope.aliyuncs.com/api/v1/apps";
@@ -136,25 +137,24 @@ namespace ChatBot.Web.Services
             // 准备请求内容
             var requestContent = new
             {
-                input = new { prompt = ConvertToApiMessage(request), session_id= s_id },
+                input = new { prompt = ToMessage(request), session_id= s_id },
                 parameters = new { enable_search = true, incremental_output = true }
 
             };
-            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+            
             var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead);
-
-            //var response = await client.PostAsJsonAsync(apiEndpoint, requestContent);
+            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+;
             response.EnsureSuccessStatusCode();
 
-            using var stream = await response.Content.ReadAsStreamAsync();
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
 
-            while (!reader.EndOfStream)
+            while (!reader.EndOfStream&& !cancellationToken.IsCancellationRequested)
             {
-                var line = await reader.ReadLineAsync();
+                var line = await reader.ReadLineAsync(cancellationToken);
                 if (string.IsNullOrEmpty(line)) continue;
                 if (line.StartsWith("data:"))
                 {
@@ -170,73 +170,12 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        /// <summary>
-        /// 获取聊天响应流
-        /// </summary>
-        public async Task<IAsyncEnumerable<StreamEvent>> GetChatResponseAsync(ChatRequest request)
-        {
-            // 验证配置
-            var apiKey = "sk-f9c4450d10604891a9d912bb398a397b";
-            var apiEndpoint = @"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("通义千问API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-            //client.DefaultRequestHeaders.TryAddWithoutValidation("X-DashScope-SSE", "enable");
-            //client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-            try
-            {
-                // 准备请求内容
-                var requestContent = new
-                {
-                    
-                    model = request.Model,
-                    messages = ConvertToApiMessages(request),
-                    stream = true,
-                    temperature = request.Temperature,
-                    max_tokens = request.MaxTokens
-                };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-                // 发送请求
-                var response = await client.PostAsync(
-                       apiEndpoint,
-                       new StringContent(
-                           JsonSerializer.Serialize(requestContent, _jsonOptions),
-                           System.Text.Encoding.UTF8,
-                           "application/json"
-                       )
-                   );
-                //var response = await client.PostAsync(
-                //    apiEndpoint,
-                //    JsonContent.Create(requestContent)
-                //);
-                // 检查响应状态
-                if (!response.IsSuccessStatusCode)
-                {
-                    var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("API请求失败: {StatusCode} {Error}", response.StatusCode, error);
-                    return GetErrorStream("API请求失败");
-                }
-
-                // 返回响应流
-                return ProcessResponseStream(response);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "处理聊天请求时发生错误");
-                return GetErrorStreamFromException(ex);
-            }
-        }
+       
 
         /// <summary>
         /// 转换聊天历史为API消息格式
         /// </summary>
-        private static List<object> ConvertToApiMessages(ChatRequest request)
+        private static List<object> ToMessages(ChatRequest request)
         {
             var messages = new List<object>();
 
@@ -259,7 +198,7 @@ namespace ChatBot.Web.Services
 
             return messages;
         }
-        private static string ConvertToApiMessage(ChatRequest request)
+        private static string ToMessage(ChatRequest request)
         {
             var messages = string.Empty;
 
@@ -273,64 +212,7 @@ namespace ChatBot.Web.Services
             return messages;
         }
 
-        /// <summary>
-        /// 处理API响应流
-        /// </summary>
-        private async IAsyncEnumerable<StreamEvent> ProcessResponseStream(HttpResponseMessage response)
-        {
-            using var stream = await response.Content.ReadAsStreamAsync();
-            using var reader = new StreamReader(stream);
-
-            var buffer = new StringBuilder();
-            var currentResponse = new ChatResponse();
-
-            while (!reader.EndOfStream)
-            {
-                var line = await reader.ReadLineAsync();
-                if (string.IsNullOrEmpty(line)) continue;
-
-                if (line.StartsWith("data: "))
-                {
-                    var data = line.Substring(6);
-
-                    // 处理结束标记
-                    if (data == "[DONE]")
-                    {
-                        currentResponse.IsEnd = true;
-                        yield return new StreamEvent
-                        {
-                            Event = StreamEventType.End,
-                            Data = currentResponse
-                        };
-                        yield break;
-                    }
-
-                   
-                        var chunk = JsonSerializer.Deserialize<ChatResponse>(data, _jsonOptions);
-                        if (chunk != null)
-                        {
-                            // 更新当前响应
-                            currentResponse.Content += chunk.Content;
-                            currentResponse.Id = chunk.Id;
-                            currentResponse.Created = chunk.Created;
-                            currentResponse.Model = chunk.Model;
-
-                            // 发送数据块
-                            yield return new StreamEvent
-                            {
-                                Event = StreamEventType.Add,
-                                Data = new ChatResponse
-                                {
-                                    Content = chunk.Content,
-                                    Role = "assistant"
-                                }
-                            };
-                        }
-                    
-                    
-                }
-            }
-        }
+       
 
         /// <summary>
         /// 生成错误流

@@ -29,11 +29,10 @@ body {
     align-items: center;
     padding: 8px 16px;
     font-size: 12px;
-    color: var(--color-fg-subtle);
-    border-bottom: 1px solid var(--color-border-default);
-    background-color: var(--color-canvas-subtle);
-    height: 36px;
-    
+    color: var(--header-border);
+    border-bottom: 1px solid var(--header-border);
+    background-color: var(--header-bg);
+    height: 24px;
 }
 /* 分割线样式 */
 .header-divider {
@@ -50,8 +49,8 @@ body {
 /* 消息容器 */
 .messages-container {
     flex: 1;
-    overflow-y: auto;
-    padding: 6px;
+    overflow-y:  auto;
+    padding: 16px 6px 6px 6px ;
     scroll-behavior: smooth;
 }
 
@@ -59,7 +58,7 @@ body {
 .message {
     display: flex;
     gap: 16px;
-    padding: 4px 0;
+    padding: 4px  0;
     margin-bottom: 20px;
     position: relative;
     max-width: 95%;
@@ -68,6 +67,7 @@ body {
 
 /* 用户消息靠右显示 */
 .user-message {
+    max-width: 80%;
     margin-left: auto;
     flex-direction: row-reverse;
 }
@@ -301,7 +301,76 @@ body {
     padding: 16px;
     z-index: 100;
 }
+/* 停止按钮样式 */
+.stop-button {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--color-danger-fg); /* 使用 GitHub 的危险色 */
+    transition: all 0.2s;
+}
 
+/* 停止图标样式 */
+.stop-icon {
+    width: 14px;
+    height: 14px;
+    fill: #cf222e; /* GitHub 的红色 */
+}
+
+/* 悬停效果 */
+.stop-button:hover {
+    background-color: var(--color-danger-subtle);
+    fill: #a40e26; /* 更深的红色 */
+}
+
+/* 点击效果 */
+.stop-button:active {
+    background-color: var(--color-danger-muted);
+}
+/* 移除消息头部的停止按钮 */
+/*.message-actions .stop-button {
+    display: none;
+}*/
+
+/* 输入容器样式 */
+/*.input-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background-color: var(--color-canvas-subtle);
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    padding: 8px;
+    flex: 1;
+}*/
+/*#message-input {
+    width: 100%;
+    min-height: 20px;
+    padding: 0;
+    background-color: transparent;
+    border: none;
+    color: var(--color-fg-default);
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+    resize: none;
+    outline: none;
+}*/
+/* 输入框提示文本颜色 */
+/*#message-input::placeholder {
+    color: var(--color-fg-subtle);
+}*/
 /* 输入容器 */
 .input-container {
     position: relative;
@@ -320,7 +389,7 @@ body {
         box-shadow: 0 0 0 2px var(--color-accent-fg-muted);
     }
 
-/* 文本输入框 */
+ /*文本输入框 */
 #message-input {
     flex: 1;
     min-height: 20px;
@@ -445,53 +514,67 @@ body {
         color: var(--color-fg-default);
     }
 
-    /* 内联代码样式 */
-    .markdown-body code:not(pre code) {
-        padding: 0.2em 0.4em;
-        margin: 0;
-        font-size: 85%;
-        background-color: var(--color-markdown-code-bg);
-        border-radius: 6px;
+    /* 行内代码样式 */
+    .markdown-body code {
+        padding: 2px 6px;
+        margin: 0 2px;
+        font-size: 13px;
+        background-color: var(--color-neutral-muted);
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
     }
 
-    /* 代码块样式 */
-    /* 代码块样式 */
+    /* 代码块基础样式 */
     .markdown-body pre {
-        padding: 16px;
-        margin: 16px 0;
-        overflow: auto;
-        font-size: 85%;
-        line-height: 1.45;
+        margin: 8px 0;
+        padding: 12px;
         background-color: var(--color-canvas-subtle);
         border-radius: 6px;
         border: 1px solid var(--color-border-default);
+        overflow: auto;
     }
+/* 确保用户消息和AI消息的代码块样式一致 */
+.user-message .markdown-body pre,
+.assistant-message .markdown-body pre {
+    background-color: var(--color-canvas-subtle);
+    border: 1px solid var(--color-border-default);
+}
 
-        .markdown-body pre code {
-            display: block;
-            padding: 0;
-            margin: 0;
-            overflow: auto;
-            font-size: inherit;
-            word-break: normal;
-            white-space: pre;
-            background: transparent;
-            border: 0;
-        }
-        /* 代码块滚动条样式 */
-        .markdown-body pre::-webkit-scrollbar {
-            height: 8px;
-            background-color: transparent;
-        }
+/* 代码块中的代码 */
+.markdown-body pre code {
+    padding: 0;
+    margin: 0;
+    font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+    line-height: 1.4;
+    white-space: pre;
+    word-break: normal;
+    overflow-wrap: normal;
+    tab-size: 4;
+    background-color: transparent;
+}
+/* 确保代码块内的滚动条样式 */
+.markdown-body pre::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+}
+/* 消息容器内的代码块调整 */
+.message-content pre {
+    margin: 8px 0 !important;
+}
+/* 用户消息和AI消息的统一样式 */
+.user-message .message-content,
+.assistant-message .message-content {
+    line-height: 1.5;
+}
+.markdown-body pre::-webkit-scrollbar-thumb {
+    background-color: var(--color-neutral-muted);
+    border-radius: 3px;
+}
 
-        .markdown-body pre::-webkit-scrollbar-thumb {
-            background-color: #30363d;
-            border-radius: 4px;
-        }
-
-        .markdown-body pre::-webkit-scrollbar-track {
-            background-color: transparent;
-        }
+.markdown-body pre::-webkit-scrollbar-track {
+    background-color: transparent;
+}
 
     .markdown-body a {
         color: #58a6ff; /* 更鲜明的链接颜色 */
@@ -560,6 +643,19 @@ body {
     background-repeat: no-repeat;
     background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
     background-attachment: local, local, scroll, scroll;
+}
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+    .user-message .markdown-body pre,
+    .assistant-message .markdown-body pre {
+        background-color: var(--color-neutral-muted);
+        border-color: var(--color-border-muted);
+    }
+
+    .markdown-body code {
+        background-color: var(--color-neutral-muted);
+        color: var(--color-fg-default);
+    }
 }
 /* 确保表格边框在深色模式下更加醒目 */
 @media (prefers-color-scheme: dark) {
@@ -731,10 +827,11 @@ border-top: 1px solid var(--header-border);
     --hljs-function: #d2a8ff;
 }
 
-/* 高亮.js主题覆盖 */
+/* 代码高亮主题覆盖 */
 .hljs {
-    background: var(--hljs-background) !important;
-    color: var(--hljs-foreground) !important;
+    background: transparent !important;
+    color: var(--color-fg-default);
+    padding: 0;
 }
 
 .hljs-comment {
@@ -764,15 +861,15 @@ border-top: 1px solid var(--header-border);
 /* 响应式设计 */
 @media (max-width: 768px) {
     .user-info-bar {
-        padding: 8px;
+        padding: 2px;
     }
 
     .messages-container {
-        padding: 8px;
+        padding: 16px 6px 6px 6px;
     }
 
     .chat-input-area {
-        padding: 8px;
+        padding: 32px;
     }
 
     .input-container {

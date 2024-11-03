@@ -1,8 +1,12 @@
-﻿class ChatUI {
+﻿/*const { cache } = require("twig");*/
+
+class ChatUI {
     constructor() {
         this.messages = []; // 存储聊天记录
         this.session_id = '';
         this.messageBuffer = '';
+        this.controller = null; // 用于中断请求的 AbortController
+        this.setupEventListeners();
         // 初始化DOM元素引用
         this.messagesContainer = document.getElementById('messages-container');
         this.messageInput = document.getElementById('message-input');
@@ -50,6 +54,60 @@
         });
     }
 
+    setupEventListeners() {
+        const stopButton = document.querySelector('.stop-button');
+        const inputBox = document.querySelector('#message-input');
+
+        // 停止按钮点击事件
+        stopButton.addEventListener('click', () => {
+            this.stopGeneration();
+        });
+
+        // 输入框事件处理
+        inputBox.addEventListener('input', () => {
+            this.adjustInputHeight(inputBox);
+        });
+    }
+    // 显示/隐藏停止按钮
+    toggleStopButton(show) {
+        const stopButton = document.querySelector('.stop-button');
+        stopButton.style.display = show ? 'flex' : 'none';
+        this.isGenerating = show;
+    }
+
+    //// 停止生成
+    //stopGeneration() {
+    //    if (this.controller) {
+    //        this.controller.abort();
+    //        this.controller = null;
+    //        this.toggleStopButton(false);
+    //    }
+    //}
+    stopGeneration() {
+        if (this.controller) {
+            try {
+
+                this.controller.abort();
+            } catch (error) {
+                console.error('停止生成时发生错误:', error);
+            } finally {
+                this.controller = null;
+                this.toggleStopButton(false);
+            }
+        }
+    }
+    //// 中断生成
+    //stopGeneration() {
+    //    if (this.controller) {
+    //        this.controller.abort();
+    //        this.controller = null;
+    //    }
+    //}
+    // 调整输入框高度
+    adjustInputHeight(element) {
+        element.style.height = 'auto';
+        element.style.height = Math.min(element.scrollHeight, 200) + 'px';
+    }
     autoResizeTextarea() {
         this.messageInput.style.height = 'auto';
         this.messageInput.style.height = Math.min(this.messageInput.scrollHeight, 200) + 'px';
@@ -187,7 +245,7 @@
         return copyButton;
     }
 
-    
+
 
     // 根据角色获取对应的图标
     getIconByRole(role) {
@@ -205,7 +263,7 @@
         return icons[role] || icons.system;
     }
 
-   
+
 
     async copyToClipboard(text) {
         try {
@@ -276,14 +334,45 @@
             // 更新内存中最后一条消息的内容
             if (this.messages.length > 0) {
                 this.messages[this.messages.length - 1].content = contentDiv.dataset.rawContent;
-                
+
             }
 
             copyButton.dataset.copyContent = contentDiv.dataset.rawContent;
 
             try {
+                // 配置 marked 选项
+                marked.setOptions({
+                    gfm: true,
+                    tables: true,
+                    breaks: true,
+                    pedantic: false,
+                    sanitize: false,
+                    smartLists: true,
+                    smartypants: false,
+                    highlight: function (code, language) {
+                        if (language && hljs.getLanguage(language)) {
+                            try {
+                                return hljs.highlight(code, {
+                                    language: language,
+                                    ignoreIllegals: true
+                                }).value;
+                            } catch (e) {
+                                console.error('代码高亮错误:', e);
+                            }
+                        }
+                        return code;
+                    }
+                });
                 contentDiv.innerHTML = marked.parse(contentDiv.dataset.rawContent);
+                // 处理所有代码块
                 contentDiv.querySelectorAll('pre code').forEach((block) => {
+                    // 添加语言类标识
+                    const language = block.getAttribute('class') || '';
+                    if (language) {
+                        block.parentElement.classList.add('language-' + language.replace('language-', ''));
+                    }
+
+                    // 应用高亮
                     hljs.highlightElement(block);
                 });
             } catch (e) {
@@ -386,6 +475,8 @@
 
     // 发送消息
     async sendMessage() {
+        this.toggleStopButton(true); // 显示停止按钮
+        this.controller = new AbortController();
         const message = this.messageInput.value.trim();
         if (!message || this.isProcessing) return;
 
@@ -407,7 +498,9 @@
                     history: history,
                     model: this.modelSelect.value,
                     timestamp: new Date().toISOString()
-                })
+                }),
+                signal: this.controller.signal
+
             });
 
             if (!response.ok) {
@@ -419,42 +512,58 @@
             let buffer = '';
 
             this.currentMessageElement = null;
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
 
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
 
-                buffer = lines.pop() || '';
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(5);
+                            if (data === '[DONE]') continue;
 
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(5);
-                        if (data === '[DONE]') continue;
-
-                        try {
-                            const parsed = JSON.parse(data);
-                            if (parsed.error) {
-                                throw new Error(parsed.error);
+                            try {
+                                const parsed = JSON.parse(data);
+                                if (parsed.error) {
+                                    throw new Error(parsed.error);
+                                }
+                                if (parsed.content) {
+                                    this.appendMessage('assistant', parsed.content, true);
+                                }
+                            } catch (e) {
+                                console.error('SSE数据解析错误:', e);
                             }
-                            if (parsed.content) {
-                                this.appendMessage('assistant', parsed.content, true);
-                            }
-                        } catch (e) {
-                            console.error('SSE数据解析错误:', e);
                         }
                     }
                 }
             }
-
+            catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('请求被用户取消');
+                } else {
+                    throw error;
+                }
+            } finally {
+                reader.cancel();
+            }
         } catch (error) {
             console.error('错误:', error);
-            this.appendMessage('system', `发送消息失败: ${error.message}`);
+            if (error.name === 'AbortError') {
+                this.appendStreamContent('\n\n[已停止生成]');
+            } else {
+                this.appendStreamContent('\n\n[发生错误]');
+            }
+
         } finally {
             this.setLoadingState(false);
             this.currentMessageElement = null;
+            this.toggleStopButton(false); // 隐藏停止按钮
+            this.controller = null;
         }
     }
 }

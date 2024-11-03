@@ -55,20 +55,22 @@ namespace ChatBot.Controllers
         [Route("/api/chat/stream")]
         public async Task StreamChat([FromBody] ChatRequest request)
         {
-            Response.Headers.Add("Content-Type", "text/event-stream");
-            Response.Headers.Add("Cache-Control", "no-cache");
-            Response.Headers.Add("Connection", "keep-alive");
-
+            
+            Response.Headers.Append("Content-Type", "text/event-stream");
+            Response.Headers.Append("Cache-Control", "no-cache");
+            Response.Headers.Append("Connection", "keep-alive");
+            Response.Headers.Append("X-Accel-Buffering", "no");
+            var cancellationToken = HttpContext.RequestAborted;
             try
             {
                 IAsyncEnumerable<string> stream;
                 if (request.Model== "软件及业务问答")
                 {
-                    stream = _chatService.GenerateStreamViaDashScopeAsync(request, "cb3fb45aeaf347b8bf51373d4ded12b2");
+                    stream = _chatService.GenerateStreamViaDashScopeAsync(request, "cb3fb45aeaf347b8bf51373d4ded12b2", cancellationToken);
                 }
                 else
                 {
-                    stream = _chatService.GenerateStreamViaOpenAIAsync( request);
+                    stream = _chatService.GenerateStreamViaOpenAIAsync( request, cancellationToken);
                 }
 
                 await foreach (var chunk in stream)
@@ -80,8 +82,8 @@ namespace ChatBot.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing stream chat request");
-                var errorData = new { error = "An error occurred while processing your request." };
+               
+                var errorData = new { error = "在处理您的请求时发生了错误。" };
                 await Response.WriteAsync($"data: {JsonSerializer.Serialize(errorData)}\n\n");
             }
             finally
@@ -91,74 +93,7 @@ namespace ChatBot.Controllers
             }
         }
 
-        /// <summary>
-        /// 聊天API端点
-        /// </summary>
-        [HttpPost]
-        [Route("/api/chat/stream1")]
-        public async Task ChatAsync([FromBody] ChatRequest request)
-        {
-            // 验证请求
-            if (string.IsNullOrEmpty(request.Message))
-            {
-                Response.StatusCode = 400;
-                await Response.WriteAsJsonAsync(new ErrorResponse
-                {
-                    Code = "InvalidRequest",
-                    Message = "消息不能为空"
-                });
-                return;
-            }
-
-            try
-            {
-                // 设置响应头
-                Response.Headers.Add("Content-Type", "text/event-stream");
-                Response.Headers.Add("Cache-Control", "no-cache");
-                Response.Headers.Add("Connection", "keep-alive");
-
-                // 获取响应流
-                var response = await _chatService.GetChatResponseAsync(request);
-                var streamWriter = new StreamWriter(Response.Body);
-
-                // 处理流式响应
-                await foreach (var chunk in response)
-                {
-                    if (chunk.Event == StreamEventType.Error)
-                    {
-                        _logger.LogError("Chat API error: {Message}", chunk.Data?.Content);
-                        await WriteEventAsync(streamWriter, StreamEventType.Error, new ErrorResponse
-                        {
-                            Code = "ApiError",
-                            Message = "API调用出错"
-                        });
-                        break;
-                    }
-
-                    // 发送数据块
-                    await WriteEventAsync(streamWriter, chunk.Event, chunk.Data);
-
-                    // 如果是结束信号，结束流式输出
-                    if (chunk.Event == StreamEventType.End)
-                    {
-                        break;
-                    }
-                }
-
-                await streamWriter.FlushAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "处理聊天请求时发生错误");
-                Response.StatusCode = 500;
-                await Response.WriteAsJsonAsync(new ErrorResponse
-                {
-                    Code = "InternalError",
-                    Message = "服务器内部错误"
-                });
-            }
-        }
-
+        
         /// <summary>
         /// 写入SSE事件
         /// </summary>
