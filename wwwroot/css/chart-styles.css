@@ -1,0 +1,98 @@
+﻿.chart-container {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.chart-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100px;
+    color: #666;
+    font-style: italic;
+}
+
+.chart-error {
+    padding: 1rem;
+    color: #cb2431;
+    background-color: #ffeef0;
+    border: 1px solid #ffdce0;
+    border-radius: 6px;
+}
+
+/* 图表主题定制 */
+.chart-container svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+    .chart-container {
+        background: #0d1117;
+        border-color: #30363d;
+    }
+
+    .chart-loading {
+        color: #8b949e;
+    }
+
+    .chart-error {
+        color: #ff7b72;
+        background-color: #2d1f1f;
+        border-color: #f85149;
+    }
+}
+.chart-container {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.chart-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100px;
+    color: #666;
+    font-style: italic;
+}
+
+.chart-error {
+    padding: 1rem;
+    color: #cb2431;
+    background-color: #ffeef0;
+    border: 1px solid #ffdce0;
+    border-radius: 6px;
+}
+
+/* 图表主题定制 */
+.chart-container svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+    .chart-container {
+        background: #0d1117;
+        border-color: #30363d;
+    }
+
+    .chart-loading {
+        color: #8b949e;
+    }
+
+    .chart-error {
+        color: #ff7b72;
+        background-color: #2d1f1f;
+        border-color: #f85149;
+    }
+}

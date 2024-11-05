@@ -255,5 +255,29 @@ namespace ChatBot.Models
         }
 
     }
-    
+
+    public class ChatSessionRequest
+    {
+        public string UserId { get; set; } = string.Empty;
+        public List<ChatMessage> Messages { get; set; } = new();
+        public string? Title { get; set; }
+    }
+
+    public class ChatSession
+    {
+        public string Id { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public List<ChatMessage> Messages { get; set; } = new();
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    public class ChatMessage
+    {
+        public string Role { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+    }
+
 }

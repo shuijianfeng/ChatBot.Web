@@ -35,8 +35,8 @@
                     </a>
 
                     @* 移动端菜单按钮 *@
-                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse">
-                        <span class="navbar-toggler-icon"></span>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" id="navbar-toggler">
+                        <span class="navbar-toggler-icon" id="navbar-toggler-icon"></span>
                     </button>
 
                     @* 导航菜单 *@
@@ -86,7 +86,7 @@
                                 <button class="btn btn-link nav-link dropdown-toggle" type="button" id="settingsDropdown" data-bs-toggle="dropdown">
                                     <i class="bi bi-gear"></i>
                                 </button>
-                                <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="settingsDropdown">
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="settingsDropdown" id="dropdown-menu">
 
                                     <li><hr class="dropdown-divider"></li>
                                     <li>
@@ -125,6 +125,7 @@
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/js/bootstrap.bundle.js"></script>
     <script src="~/lib/marked/marked.min.js"></script>
+    <script src="~/lib/mermaid/mermaid.js"></script>
     <script src="~/lib/highlight.js/highlight.min.js"></script>
     <script src="~/lib/highlight.js/languages/csharp.min.js"></script>
     <script src="~/lib/highlight.js/languages/java.min.js"></script>
@@ -134,6 +135,7 @@
     <script src="~/lib/highlight.js/languages/json.min.js"></script>
     <script src="~/lib/highlight.js/languages/css.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/chartRenderer.js" asp-append-version="true"></script>
 
     @* 页面特定脚本 *@
     @await RenderSectionAsync("Scripts", required: false)

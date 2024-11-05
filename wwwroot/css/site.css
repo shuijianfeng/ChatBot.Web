@@ -27,34 +27,61 @@ body {
 }
 .container-fluid {
     color: var(--text-primary);
-    /*//border-bottom: 1px solid var(--header-border);*/
+    
     background-color: var(--header-bg);
     
    
 }
 .navbar-brand {
     color: var(--text-primary);
-    /*//border-bottom: 1px solid var(--header-border);*/
-    background-color: var(--header-bg);
-}
-.navbar-collapse {
-    color: var(--text-primary);
-    /*//border-bottom: 1px solid var(--header-border);*/
+   
     background-color: var(--header-bg);
 }
 
-/* 分割线样式 */
-/*.header-divider {
-    border-color: var(--color-border-default);
-}*/
 
+/* 深色模式下的导航栏折叠按钮样式 */
+[data-theme="dark"] .navbar-toggler,
+.dark-mode .navbar-toggler {
+    /* 按钮边框颜色 */
+    border-color: rgba(255, 255, 255, 0.3);
+    /* 按钮文本和图标颜色 */
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* 深色模式下的折叠按钮图标 */
+[data-theme="dark"] .navbar-toggler-icon,
+.dark-mode .navbar-toggler-icon {
+    /* 使用深色模式的汉堡菜单图标 */
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255, 255, 255, 0.8)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+/* 深色模式下折叠按钮的悬停和焦点状态 */
+[data-theme="dark"] .navbar-toggler:hover,
+[data-theme="dark"] .navbar-toggler:focus,
+.dark-mode .navbar-toggler:hover,
+.dark-mode .navbar-toggler:focus {
+    border-color: rgba(255, 255, 255, 0.5);
+    box-shadow: 0 0 0 0.25rem rgba(255, 255, 255, 0.2);
+}
+
+/* 使用 !important 确保样式优先级 */
+@media (prefers-color-scheme: dark) {
+    .navbar-toggler {
+        border-color: rgba(255, 255, 255, 0.3) !important;
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
+
+    .navbar-toggler-icon {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255, 255, 255, 0.8)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
+    }
+}
 
 /* 消息容器 */
 .messages-container {
     flex: 1;
     
     overflow-y:  auto;
-    padding: 16px 6px 6px 6px ;
+    padding: 42px 6px 6px 6px ;
     scroll-behavior: smooth;
 }
 
@@ -128,8 +155,7 @@ body {
     min-width: 0;
     margin-left: 12px;
     overflow-x: auto;
-    //padding-left: 0;
-    //white-space: pre-wrap;
+   
 }
 /* 消息容器样式 */
 .message-container {
@@ -303,7 +329,7 @@ body {
     right: 0;
     background: var(--color-canvas-default);
     border-top: 1px solid var(--color-border-default);
-    padding: 16px;
+    padding: 32px;
     z-index: 100;
 }
 /* 停止按钮样式 */
@@ -322,24 +348,24 @@ body {
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    color: var(--color-danger-fg); /* 使用 GitHub 的危险色 */
+    color: var(--color-danger-fg);  /*使用 GitHub 的危险色*/ 
     transition: all 0.2s;
 }
 
-/* 停止图标样式 */
+ /*停止图标样式 */
 .stop-icon {
     width: 14px;
     height: 14px;
-    fill: #cf222e; /* GitHub 的红色 */
+    fill: #cf222e;  /*GitHub 的红色 */
 }
 
-/* 悬停效果 */
+ /*悬停效果 */
 .stop-button:hover {
     background-color: var(--color-danger-subtle);
-    fill: #a40e26; /* 更深的红色 */
+    fill: #a40e26;  /*更深的红色*/ 
 }
 
-/* 点击效果 */
+ /*点击效果*/ 
 .stop-button:active {
     background-color: var(--color-danger-muted);
 }
@@ -617,6 +643,29 @@ body {
     background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
     background-attachment: local, local, scroll, scroll;
 }
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+    .mermaid-chart {
+        background: #0d1117;
+        border-color: #30363d;
+    }
+
+        .mermaid-chart .label {
+            fill: #c9d1d9;
+        }
+
+    .chart-error {
+        color: #ff7b72;
+        background-color: #2d1f1f;
+        border-color: #f85149;
+    }
+}
+/* 消息内容中的图表样式调整 */
+.message-content .mermaid-chart {
+    max-width: 800px;
+    margin: 1rem auto;
+}
 /* 深色模式适配 */
 @media (prefers-color-scheme: dark) {
     .user-message .markdown-body pre,
@@ -635,10 +684,10 @@ body {
   /*  .header {
         background-color: var(--color-canvas-default);
     }*/
-    markdown-body.header {
+    .markdown-body.header {
         background-color: var(--color-canvas-default);
     }
-    markdown-body.header-title {
+    .markdown-body.header-title {
         color: var(--color-fg-default);
     }
 
@@ -733,6 +782,8 @@ body {
     --color-success-fg: #1a7f37;
     --color-attention-fg: #9a6700;
     --color-danger-fg: #cf222e;
+    --color-danger-subtle: rgba(215, 58, 73, 0.1); /* GitHub 的危险色浅色背景 */
+    --color-danger-muted: rgba(215, 58, 73, 0.2); /* GitHub 的危险色更深背景 */
     --color-primer-shadow-focus: 0 0 0 3px rgba(9, 105, 218, 0.3);
     --color-primer-border-active: #FD8C73;
     --color-accent-fg-muted: rgba(9, 105, 218, 0.1);
@@ -766,6 +817,8 @@ body {
     --color-success-fg: #3fb950;
     --color-attention-fg: #d29922;
     --color-danger-fg: #f85149;
+    --color-danger-subtle: rgba(215, 58, 73, 0.1); /* GitHub 的危险色浅色背景 */
+    --color-danger-muted: rgba(215, 58, 73, 0.2); /* GitHub 的危险色更深背景 */
     --color-primer-shadow-focus: 0 0 0 3px #0c2d6b;
     --color-primer-border-active: #F78166;
     --color-accent-fg-muted: rgba(88, 166, 255, 0.3);
@@ -818,14 +871,43 @@ body {
     color: var(--hljs-function) !important;
 }
 
+/* 图表样式 */
+.mermaid-chart {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    overflow: auto;
+}
+
+    .mermaid-chart svg {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        margin: 0 auto;
+    }
+/* 图表加载和错误状态 */
+.chart-loading {
+    text-align: center;
+    padding: 1rem;
+    color: #666;
+}
+
+.chart-error {
+    padding: 1rem;
+    color: #cb2431;
+    background-color: #ffeef0;
+    border: 1px solid #ffdce0;
+    border-radius: 6px;
+    margin: 1rem 0;
+}
 /* 响应式设计 */
 @media (max-width: 768px) {
-    .user-info-bar {
-        padding: 2px;
-    }
+    
 
     .messages-container {
-        padding: 16px 6px 6px 6px;
+        padding: 42px 6px 6px 6px;
     }
 
     .chat-input-area {

@@ -12,18 +12,18 @@ namespace ChatBot.Controllers
     /// </summary>
     public class HomeController : Controller
     {
-        private readonly ILogger<HomeController> _logger;
+       
         private readonly IChatService _chatService;
-        private readonly IConfiguration _configuration;
+        
 
         public HomeController(
             ILogger<HomeController> logger,
             IChatService chatService,
             IConfiguration configuration)
         {
-            _logger = logger;
+            
             _chatService = chatService;
-            _configuration = configuration;
+           
         }
 
         /// <summary>
@@ -58,7 +58,7 @@ namespace ChatBot.Controllers
             
             Response.Headers.Append("Content-Type", "text/event-stream");
             Response.Headers.Append("Cache-Control", "no-cache");
-            Response.Headers.Append("Connection", "keep-alive");
+            //Response.Headers.Append("Connection", "keep-alive");
             Response.Headers.Append("X-Accel-Buffering", "no");
             var cancellationToken = HttpContext.RequestAborted;
             try

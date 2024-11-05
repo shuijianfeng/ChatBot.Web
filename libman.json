@@ -34,6 +34,10 @@
     {
       "library": "octicons@8.5.0",
       "destination": "wwwroot/lib/octicons/"
+    },
+    {
+      "library": "mermaid@11.4.0",
+      "destination": "wwwroot/lib/mermaid/"
     }
   ]
 }

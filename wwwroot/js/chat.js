@@ -18,27 +18,55 @@ class ChatUI {
         this.currentMessageElement = null;
         this.copyInProgress = false;
         this.currentUser = '我';
+        // 在 Chat 类构造函数中添加主题配置
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+            themeVariables: {
+                // 明亮主题
+                primaryColor: '#326de6',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#2251c9',
+                lineColor: '#666',
+                secondaryColor: '#f4f4f4',
+                tertiaryColor: '#fff',
 
-        // 配置 marked.js
-        marked.setOptions({
-            highlight: function (code, lang) {
-                if (lang && hljs.getLanguage(lang)) {
-                    try {
-                        return hljs.highlight(code, { language: lang }).value;
-                    } catch (err) {
-                        console.error('代码高亮错误:', err);
-                    }
-                }
-                try {
-                    return hljs.highlightAuto(code).value;
-                } catch (err) {
-                    console.error('代码高亮错误:', err);
-                }
-                return code; // 如果高亮失败，返回原始代码
-            },
-            breaks: true,
-            gfm: true
+                // 暗色主题支持
+                darkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
+                background: '#0d1117',
+                mainBkg: '#161b22',
+                secondaryBkg: '#21262d',
+                mainContrastColor: '#c9d1d9',
+                darkTextColor: '#8b949e',
+                lineColor: '#30363d',
+                border1: '#30363d',
+                border2: '#30363d',
+                arrowheadColor: '#8b949e'
+            }
         });
+
+        this.setupMarked();
+        // 配置 marked.js
+        //marked.setOptions({
+        //    highlight: function (code, lang) {
+        //        if (lang && hljs.getLanguage(lang)) {
+        //            try {
+        //                return hljs.highlight(code, { language: lang }).value;
+        //            } catch (err) {
+        //                console.error('代码高亮错误:', err);
+        //            }
+        //        }
+        //        try {
+        //            return hljs.highlightAuto(code).value;
+        //        } catch (err) {
+        //            console.error('代码高亮错误:', err);
+        //        }
+        //        return code; // 如果高亮失败，返回原始代码
+        //    },
+        //    breaks: true,
+        //    gfm: true
+        //});
 
         this.init();
     }
@@ -75,14 +103,7 @@ class ChatUI {
         this.isGenerating = show;
     }
 
-    //// 停止生成
-    //stopGeneration() {
-    //    if (this.controller) {
-    //        this.controller.abort();
-    //        this.controller = null;
-    //        this.toggleStopButton(false);
-    //    }
-    //}
+    
     stopGeneration() {
         if (this.controller) {
             try {
@@ -96,13 +117,7 @@ class ChatUI {
             }
         }
     }
-    //// 中断生成
-    //stopGeneration() {
-    //    if (this.controller) {
-    //        this.controller.abort();
-    //        this.controller = null;
-    //    }
-    //}
+    
     // 调整输入框高度
     adjustInputHeight(element) {
         element.style.height = 'auto';
@@ -245,7 +260,96 @@ class ChatUI {
         return copyButton;
     }
 
+    setupMarked() {
+        const renderer = new marked.Renderer();
+        const originalCode = renderer.code.bind(renderer);
 
+        // 重写代码块渲染
+        renderer.code = (code, language) => {
+            if (language === 'mermaid') {
+                const chartId = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
+                return `<div class="mermaid-chart" id="${chartId}">${code}</div>`;
+            }
+            return originalCode(code, language);
+        };
+
+        // 配置 marked
+        marked.setOptions({
+            renderer: renderer,
+            highlight: function (code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    try {
+                        return hljs.highlight(code, { language: lang }).value;
+                    } catch (err) {
+                        console.error('代码高亮错误:', err);
+                    }
+                }
+                try {
+                    return hljs.highlightAuto(code).value;
+                } catch (err) {
+                    console.error('代码高亮错误:', err);
+                }
+                return code; // 如果高亮失败，返回原始代码
+            },
+            breaks: true,
+            gfm: true
+        });
+    }
+    async renderMessage(message) {
+        // 渲染消息内容
+        const rendered = marked(message.content);
+        const messageElement = document.createElement('div');
+        messageElement.className = `message ${message.role}`;
+        messageElement.innerHTML = `
+            <div class="message-content">${rendered}</div>
+            <div class="message-meta">
+                <span class="time">${new Date(message.timestamp).toLocaleTimeString()}</span>
+            </div>
+        `;
+
+        // 查找并渲染所有 mermaid 图表
+        const mermaidCharts = messageElement.querySelectorAll('.mermaid-chart');
+        if (mermaidCharts.length > 0) {
+            for (const chart of mermaidCharts) {
+                try {
+                    const code = chart.textContent;
+                    const id = chart.id;
+                    await this.renderMermaidChart(code, id);
+                } catch (error) {
+                    console.error('Error rendering chart:', error);
+                    chart.innerHTML = `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
+                }
+            }
+        }
+
+        return messageElement.outerHTML;
+    }
+
+    async renderMermaidChart(code, id) {
+        return new Promise((resolve, reject) => {
+            try {
+                mermaid.render(id, code, (svgCode) => {
+                    const container = document.getElementById(id);
+                    if (container) {
+                        container.innerHTML = svgCode;
+                    }
+                    resolve();
+                });
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    // 接收消息处理
+    async handleReceivedMessage(message) {
+        try {
+            await this.appendMessage(message);
+        } catch (error) {
+            console.error('Error handling received message:', error);
+            this.showNotification('消息渲染失败', 'error');
+        }
+    }
 
     // 根据角色获取对应的图标
     getIconByRole(role) {
@@ -304,6 +408,16 @@ class ChatUI {
         }
     }
 
+    async appendMessage(message) {
+        const messagesContainer = this.container.querySelector('.chat-messages');
+        const rendered = await this.renderMessage(message);
+
+        // 添加消息到容器
+        messagesContainer.insertAdjacentHTML('beforeend', rendered);
+
+        // 滚动到底部
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
     // 添加消息到内存和UI
     appendMessage(role, content, isStreaming = false) {
         // 如果是流式响应的第一部分，添加新消息
@@ -479,7 +593,7 @@ class ChatUI {
         this.controller = new AbortController();
         const message = this.messageInput.value.trim();
         if (!message || this.isProcessing) return;
-
+        
         this.setLoadingState(true);
         this.appendMessage('user', message);
         this.messageInput.value = '';
@@ -487,6 +601,7 @@ class ChatUI {
 
         try {
             const message = this.messageInput.value.trim();
+            
             const history = this.convertToApiMessages();
             const response = await fetch('/api/chat/stream', {
                 method: 'POST',
