@@ -918,3 +918,121 @@ body {
         margin: 0;
     }
 }
+
+
+/* 代码块基础样式 */
+pre {
+    position: relative;
+    margin: 1em 0;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+}
+
+/* 代码块标题栏 */
+.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 12px; /* 减小内边距 */
+    background-color: #e0e3e5;
+    border: 1px solid #e9ecef;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    border-bottom: none;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.875rem;
+    min-height: 32px; /* 设置最小高度 */
+}
+
+/* 语言标识样式 */
+.code-language {
+    color: #6c757d;
+    font-weight: 500;
+}
+
+/* 复制按钮样式 */
+.copy-button {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #6c757d;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+    .copy-button:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+        color: #212529;
+    }
+
+/* 代码块容器 */
+.code-block-wrapper {
+    margin: 0.5rem 0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* 深色模式支持 */
+[data-bs-theme="dark"] .code-header {
+    background-color: #2d2d2d;
+    border-color: #444;
+    color: #fff;
+}
+
+[data-bs-theme="dark"] .code-language {
+    color: #adb5bd;
+}
+
+[data-bs-theme="dark"] .copy-button {
+    color: #adb5bd;
+}
+
+    [data-bs-theme="dark"] .copy-button:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: #fff;
+    }
+
+[data-bs-theme="dark"] pre {
+    background-color: #1e1e1e;
+    border-color: #444;
+}
+
+/* 确保代码块内容正确显示 */
+.code-block-wrapper pre {
+    margin: 0 !important; /* 移除默认边距 */
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+    .code-block-wrapper pre code {
+        display: block;
+        padding: 12px; /* 调整内边距 */
+        overflow-x: auto;
+    }
+
+/* AI 消息中的代码块样式 */
+.ai-message pre {
+    margin: 0.5rem 0 !important; /* 减小外边距 */
+    padding: 0 !important;
+}
+
+/* 复制提示 */
+    .copy-tooltip {
+    position: absolute;
+    top: -30px;
+    right: 10px;
+    background: #28a745;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+    .copy-tooltip.show {
+        opacity: 1;
+    }

@@ -136,6 +136,14 @@
     <script src="~/lib/highlight.js/languages/css.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     <script src="~/js/chartRenderer.js" asp-append-version="true"></script>
+    <script src="~/js/chat.js"></script>
+    
+    @* <script src="~/js/codeBlock.js" asp-append-version="true"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            new CodeBlockHandler();
+        });
+    </script> *@
 
     @* 页面特定脚本 *@
     @await RenderSectionAsync("Scripts", required: false)
