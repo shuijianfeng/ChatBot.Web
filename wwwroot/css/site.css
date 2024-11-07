@@ -376,7 +376,7 @@ body {
     display: flex;
     align-items: flex-end;
     border: 1px solid var(--color-border-default);
-    border-radius: 6px;
+    border-radius: 12px;
     transition: border-color 0.15s ease-in-out;
     background-color: var(--color-canvas-default);
     margin: 0 auto;

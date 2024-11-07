@@ -366,29 +366,6 @@ class ChatUI {
                 const chartId = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
                 return `<div class="mermaid-chart" id="${chartId}">${code}</div>`;
             }
-            else
-            {
-    //            // 检查语言是否被 highlight.js 支持
-    //            const validLang = !!(language && hljs.getLanguage(language));
-    //            const highlighted = validLang ? hljs.highlight(code, { language: language, ignoreIllegals: true }).value : marked.escape(code);
-    //            const langClass = validLang ? language : 'plaintext';
-
-    //            // 构建包含标题栏和复制按钮的 HTML
-    //            return `
-    //<div class="code-block">
-    //    <div class="code-header">
-    //        <span class="code-language">${language || 'plaintext'}</span>
-    //        <button class="copy-button" onclick="copyCode(this)">
-    //            <!-- 复制图标 SVG -->
-    //            <svg xmlns="http://www.w3.org/2000/svg" class="copy-icon" viewBox="0 0 24 24" width="18" height="18">
-    //                <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 18H8V7h11v16z"/>
-    //            </svg>
-    //        </button>
-    //    </div>
-    //    <pre><code class="${langClass}">${highlighted}</code></pre>
-    //</div>
-    //`;
-            }
             return originalCode(code, language);
         };
 
@@ -604,7 +581,7 @@ class ChatUI {
                     if (language) {
                         block.parentElement.classList.add('language-' + language.replace('language-', ''));
                     }
-                    // 添加复制按钮到每个代码块
+                    // 添加程序框标题和程序框复制按钮
                     contentDiv.querySelectorAll('pre').forEach((pre) => {
                         if (!pre.closest('.code-block-wrapper')) {
                             this.enhanceCodeBlock(pre);

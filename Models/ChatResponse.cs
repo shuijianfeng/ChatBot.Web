@@ -138,7 +138,7 @@ namespace ChatBot.Models
         /// 返回结果的最大tokens
         /// </summary>
         [JsonPropertyName("max_tokens")]
-        public int MaxTokens { get; set; } = 1500;
+        public int MaxTokens { get; set; } = 0;
 
         /// <summary>
         /// 返回的结果数量
