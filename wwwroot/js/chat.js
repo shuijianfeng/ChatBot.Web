@@ -1,6 +1,7 @@
 ﻿
 class ChatUI {
     constructor() {
+        this.MathJax = window.MathJax;
         this.messages = []; // 存储聊天记录
         this.session_id = '';
         this.messageBuffer = '';
@@ -11,56 +12,213 @@ class ChatUI {
         this.messageInput = document.getElementById('message-input');
         this.sendButton = document.getElementById('send-button');
         this.modelSelect = document.getElementById('global-model-selector');
-        
+
         // 状态标志
         this.isProcessing = false;
         this.currentMessageElement = null;
         this.copyInProgress = false;
         this.currentUser = '我';
         // 在 Chat 类构造函数中添加主题配置
-        mermaid.initialize({
-            startOnLoad: false,
-            theme: 'default',
-            securityLevel: 'loose',
-            themeVariables: {
-                // 明亮主题
-                primaryColor: '#326de6',
-                primaryTextColor: '#fff',
-                primaryBorderColor: '#2251c9',
-                lineColor: '#666',
-                secondaryColor: '#f4f4f4',
-                tertiaryColor: '#fff',
+        //mermaid.initialize({
+        //    startOnLoad: false,
+        //    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+        //    flowchart: {
+        //        useMaxWidth: true,
+        //        htmlLabels: true,
+        //        curve: 'cardinal',
+        //    },
+        //    securityLevel: 'loose',
+        //    //darkMode: true,
+        //    themeVariables: {
+        //        // 明亮主题
+        //        //primaryColor: '#326de6',
+        //        //primaryTextColor: '#fff',
+        //        //primaryBorderColor: '#2251c9',
+        //        //lineColor: '#666',
+        //        //secondaryColor: '#f4f4f4',
+        //        //tertiaryColor: '#fff',
+              
+        //        //// 暗色主题支持
+        //        darkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
+        //        //background: '#0d1117',
+        //        //mainBkg: '#161b22',
+        //        //secondaryBkg: '#21262d',
+        //        //mainContrastColor: '#c9d1d9',
+        //        //darkTextColor: '#8b949e',
+        //        //lineColor: '#30363d',
+        //        //border1: '#30363d',
+        //        //border2: '#30363d',
+        //        //arrowheadColor: '#8b949e'
+        //        // 深色模式下的颜色配置
+        //        //darkMode: true,
+        //        //background: '#0d1117',
+        //        //primaryColor: '#58a6ff',
+        //        //primaryTextColor: '#ffffff',
+        //        //primaryBorderColor: '#58a6ff',
+        //        //lineColor: '#58a6ff',
+        //        //secondaryColor: '#30363d',
+        //        //tertiaryColor: '#ffffff',
+        //        //// 字体颜色配置
+        //        //textColor: '#e6edf3',       // 主要文本
+        //        //nodeBorder: '#58a6ff',      // 节点边框
+        //        //mainBkg: '#21262d',         // 主要背景
+        //        //labelTextColor: '#ffffff',   // 标签文本
+        //        //edgeLabelBackground: '#21262d', // 边缘标签背景
+        //        //clusterBkg: '#21262d',      // 集群背景
+        //        //titleColor: '#ffffff',       // 标题颜色
+        //        //// 流程图特定颜色
+        //        //nodeBkgColor: '#21262d',    // 节点背景
+        //        //nodeTextColor: '#ffffff'     // 节点文本
 
-                // 暗色主题支持
-                darkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
-                background: '#0d1117',
-                mainBkg: '#161b22',
-                secondaryBkg: '#21262d',
-                mainContrastColor: '#c9d1d9',
-                darkTextColor: '#8b949e',
-                lineColor: '#30363d',
-                border1: '#30363d',
-                border2: '#30363d',
-                arrowheadColor: '#8b949e'
-            }
-        });
+        //        // 深色模式下的主题变量
+        //        primaryColor: '#58a6ff',           // 主要颜色
+        //        primaryBorderColor: '#58a6ff',     // 主要边框颜色
+        //        primaryTextColor: '#ffffff',        // 主要文本颜色
 
+        //        //pieTitleTextColor: '#ffffff',         // 标签文本颜色
+        //        //pieLegendTextColor: '#ffffff',         // 标签文本颜色
+
+        //        // 标签和文本颜色增强
+        //        labelTextColor: '#ffffff',         // 标签文本颜色
+        //        textColor: '#e6edf3',             // 普通文本颜色
+                
+        //        // 节点样式增强
+        //        nodeTextColor: '#ffffff',          // 节点文本颜色
+        //        nodeBkgColor: '#21262d',          // 节点背景色
+        //        nodeBorder: '#58a6ff',            // 节点边框颜色
+
+        //        // 连线和箭头样式
+        //        lineColor: '#58a6ff',             // 连线颜色
+        //        edgeLabelBackground: '#2f353d',   // 边缘标签背景
+
+        //        // 字体大小和粗细
+        //        fontSize: '16px',                 // 字体大小增大
+        //        fontFamily: 'Arial, sans-serif',  // 字体族
+        //        fontWeight: 'normal',             // 字体粗细
+
+        //        // 背景和边框
+        //        mainBkg: '#21262d',              // 主背景色
+        //        background: '#0d1117',            // 整体背景色
+
+        //        // 提高对比度
+        //        contrast: 200,                    // 增加对比度
+
+
+               
+            
+        //    }
+        //});
+        
+
+            // 检测当前主题模式
+            const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+            // Mermaid 初始化配置
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: isDarkMode ? 'base' : 'default',
+                
+                // 通用配置
+                htmlLabels: true,
+                useMaxWidth: true,         // 允许图表使用最大宽度
+                // 使用默认主题变量
+                themeVariables: isDarkMode ? {
+                    //// 深色模式下的颜色配置
+                    //darkMode: true,
+                    //// 深色模式下的主题变量
+                    //primaryColor: '#58a6ff',           // 主要颜色
+                    //primaryBorderColor: '#58a6ff',     // 主要边框颜色
+                    //primaryTextColor: '#ffffff',        // 主要文本颜色
+
+                    //pieTitleTextColor: '#ffffff',         // 标签文本颜色
+                    //pieLegendTextColor: '#ffffff',         // 标签文本颜色
+
+                    //// 标签和文本颜色增强
+                    //labelTextColor: '#ffffff',         // 标签文本颜色
+                    //textColor: '#e6edf3',             // 普通文本颜色
+
+                    //// 节点样式增强
+                    //nodeTextColor: '#ffffff',          // 节点文本颜色
+                    //nodeBkgColor: '#21262d',          // 节点背景色
+                    //nodeBorder: '#58a6ff',            // 节点边框颜色
+
+                    //// 连线和箭头样式
+                    //lineColor: '#58a6ff',             // 连线颜色
+                    //edgeLabelBackground: '#2f353d',   // 边缘标签背景
+
+                    //// 字体大小和粗细
+                    //fontSize: '16px',                 // 字体大小增大
+                    //fontFamily: 'Arial, sans-serif',  // 字体族
+                    //fontWeight: 'normal',             // 字体粗细
+
+                    //// 背景和边框
+                    //mainBkg: '#21262d',              // 主背景色
+                    //background: '#0d1117',            // 整体背景色
+
+                    //        // 提高对比度
+                    //contrast: 200,                    // 增加对比度
+                    // 深色主题配置
+                    //darkMode: true,
+                    background: '#0d1117',
+                    mainBkg: '#161b22',
+                    secondaryBkg: '#21262d',
+                    mainContrastColor: '#c9d1d9',
+                    primaryColor: '#58a6ff',
+                    primaryTextColor: '#ffffff',
+                    primaryBorderColor: '#58a6ff',
+                    lineColor: '#30363d',
+                    textColor: '#c9d1d9',
+                    border1: '#30363d',
+                    border2: '#30363d',
+                    arrowheadColor: '#c9d1d9'
+                } : {
+                    // 浅色模式下保持默认设置
+                    darkMode: false
+                },
+                flowchart: {
+                    useMaxWidth: true,
+                    htmlLabels: true
+                    
+                },
+                sequence: {
+                    useMaxWidth: true,
+                    showSequenceNumbers: true
+                }
+            });
+
+            // 监听主题变化
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+                mermaid.initialize({
+                    theme: e.matches ? 'dark' : 'default'
+                });
+            });
+        
         this.setupMarked();
 
         this.init();
     }
 
     init() {
-        
+
         this.sendButton.addEventListener('click', () => this.sendMessage());
         this.messageInput.addEventListener('input', () => this.autoResizeTextarea());
         this.messageInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                this.sendMessage();
+            if (e.key === 'Enter') {
+                if (e.shiftKey) {
+                    // Shift + Enter: 允许换行，不阻止默认行为
+                    return;
+                } else if (e.ctrlKey) {
+
+                    // Ctrl + Enter:  允许换行，不阻止默认行为
+                   return;
+                } else {
+                    // 普通 Enter: 发送消息
+                    e.preventDefault();
+                    this.sendMessage();
+                }
             }
         });
-        
+
     }
 
 
@@ -85,7 +243,7 @@ class ChatUI {
         this.isGenerating = show;
     }
 
-    
+
     stopGeneration() {
         if (this.controller) {
             try {
@@ -99,7 +257,7 @@ class ChatUI {
             }
         }
     }
-    
+
     // 调整输入框高度
     adjustInputHeight(element) {
         element.style.height = 'auto';
@@ -130,7 +288,7 @@ class ChatUI {
             }
         });
     }
-
+   
     enhanceCodeBlock(pre) {
         // 创建包装器
         const wrapper = document.createElement('div');
@@ -144,17 +302,28 @@ class ChatUI {
             pre.textContent = '';
             pre.appendChild(code);
         }
-
+        // 保存原始代码
+        const originalCode = code.textContent;
         // 获取语言
         const language = this.detectLanguage(code);
 
         // 创建标题栏
-        const header = this.createCodeHeader(language);
+        const header = this.createCodeHeader(language, originalCode);
 
         // 重新组织结构
         pre.parentNode.insertBefore(wrapper, pre);
         wrapper.appendChild(header);
-        wrapper.appendChild(pre);
+        //包装包装用mermaid-chartmermaid
+        if (language === 'mermaid') {
+            const chartId = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
+            const chart = document.createElement('div');
+            chart.className = 'mermaid-chart';
+            chart.id = chartId
+            chart.appendChild(pre);
+            wrapper.appendChild(chart);
+        }
+        else 
+            wrapper.appendChild(pre);
     }
 
     detectLanguage(codeElement) {
@@ -163,7 +332,7 @@ class ChatUI {
         return langClass ? langClass.replace('language-', '') : 'plaintext';
     }
 
-    createCodeHeader(language) {
+    createCodeHeader(language, code) {
         const header = document.createElement('div');
         header.className = 'code-header';
 
@@ -178,7 +347,7 @@ class ChatUI {
         copyButton.className = 'copy-button';
         copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
         copyButton.setAttribute('aria-label', '复制代码');
-
+        copyButton.dataset.copyContent = code;
         // 添加复制功能
         this.addCopyButtonListener(copyButton);
 
@@ -190,8 +359,8 @@ class ChatUI {
     addCopyButtonListener(button) {
         button.addEventListener('click', async () => {
             const pre = button.closest('.code-block-wrapper').querySelector('pre');
-            const code = pre.textContent;
-
+            /*const code = pre.textContent;*/
+            const code =button.dataset.copyContent
             try {
                 await navigator.clipboard.writeText(code);
                 this.showCopyFeedback(button, true);
@@ -281,7 +450,7 @@ class ChatUI {
                 if (codeBlock) {
                     const wrapper = document.createElement('div');
                     wrapper.className = 'code-block-wrapper';
-           
+
                     const copyButton = this.createCopyButton(codeBlock.textContent);
                     copyButton.className = 'code-copy-button';
 
@@ -355,16 +524,30 @@ class ChatUI {
 
         return copyButton;
     }
-
+   
     setupMarked() {
+        
         const renderer = new marked.Renderer();
         const originalCode = renderer.code.bind(renderer);
-
-        // 重写代码块渲染
         renderer.code = (code, language) => {
             if (language === 'mermaid') {
                 const chartId = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
                 return `<div class="mermaid-chart" id="${chartId}">${code}</div>`;
+            }
+            else
+            {
+                if (language && hljs.getLanguage(language)) {
+                    try {
+                        return hljs.highlight(code, {
+                            language: language,
+                            ignoreIllegals: true
+                        }).value;
+                    } catch (e) {
+                        console.error('代码高亮错误:', e);
+                    }
+                }
+                
+                /*return code;*/
             }
             return originalCode(code, language);
         };
@@ -372,24 +555,27 @@ class ChatUI {
         // 配置 marked
         marked.setOptions({
             renderer: renderer,
-            highlight: function (code, lang) {
-                if (lang && hljs.getLanguage(lang)) {
-                    try {
-                        return hljs.highlight(code, { language: lang }).value;
-                    } catch (err) {
-                        console.error('代码高亮错误:', err);
-                    }
-                }
-                try {
-                    return hljs.highlightAuto(code).value;
-                } catch (err) {
-                    console.error('代码高亮错误:', err);
-                }
-                return code; // 如果高亮失败，返回原始代码
-            },
+            gfm: true,
+            tables: true,
             breaks: true,
-            gfm: true
+            pedantic: false,
+            smartLists: true,
+            smartypants: false,
+            sanitize: false
         });
+
+        // 6. 在内容更新后触发渲染
+        const renderMath = (element) => {
+            if (MathJax && MathJax.typesetPromise) {
+                MathJax.typesetPromise()
+                    .catch(err => console.error('MathJax 渲染错误:', err));
+
+            }
+           
+        };
+        
+        // 导出renderMath方法供外部使用
+        this.renderMath = renderMath;
     }
     async renderMessage(message) {
         // 渲染消息内容
@@ -421,22 +607,41 @@ class ChatUI {
         return messageElement.outerHTML;
     }
 
-    async renderMermaidChart(code, id) {
-        return new Promise((resolve, reject) => {
-            try {
-                mermaid.render(id, code, (svgCode) => {
-                    const container = document.getElementById(id);
-                    if (container) {
-                        container.innerHTML = svgCode;
-                    }
-                    resolve();
-                });
-            } catch (error) {
-                reject(error);
+    
+    async renderMermaidChart(code, containerId) {
+        try {
+            // 等待 Mermaid 加载完成
+            if (!window.mermaid) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
-        });
-    }
 
+            const container = document.getElementById(containerId);
+            if (!container) {
+                throw new Error(`找不到容器: ${containerId}`);
+            }
+
+            // 清理容器内容
+            container.innerHTML = code;
+            container.classList.add('mermaid');
+
+            // 渲染图表
+            await mermaid.run({
+                querySelector: `#${containerId}`
+            });
+
+        } catch (error) {
+            console.error('Mermaid 渲染错误:', error);
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.innerHTML = `
+                    <div class="mermaid-error">
+                        <p>图表渲染失败</p>
+                        <pre>${error.message}</pre>
+                    </div>
+                `;
+            }
+        }
+    }
     // 接收消息处理
     async handleReceivedMessage(message) {
         try {
@@ -503,7 +708,7 @@ class ChatUI {
             this.copyInProgress = false;
         }
     }
-
+    
     async appendMessage(message) {
         const messagesContainer = this.container.querySelector('.chat-messages');
         const rendered = await this.renderMessage(message);
@@ -549,31 +754,10 @@ class ChatUI {
 
             copyButton.dataset.copyContent = contentDiv.dataset.rawContent;
 
-                        try {
-                // 配置 marked 选项
-                marked.setOptions({
-                    gfm: true,
-                    tables: true,
-                    breaks: true,
-                    pedantic: false,
-                    sanitize: false,
-                    smartLists: true,
-                    smartypants: false,
-                    highlight: function (code, language) {
-                        if (language && hljs.getLanguage(language)) {
-                            try {
-                                return hljs.highlight(code, {
-                                    language: language,
-                                    ignoreIllegals: true
-                                }).value;
-                            } catch (e) {
-                                console.error('代码高亮错误:', e);
-                            }
-                        }
-                        return code;
-                    }
-                });
+            try {
+                
                 contentDiv.innerHTML = marked.parse(contentDiv.dataset.rawContent);
+                
                 // 处理所有代码块
                 contentDiv.querySelectorAll('pre code').forEach((block) => {
                     // 添加语言类标识
@@ -582,15 +766,20 @@ class ChatUI {
                         block.parentElement.classList.add('language-' + language.replace('language-', ''));
                     }
                     // 添加程序框标题和程序框复制按钮
-                    contentDiv.querySelectorAll('pre').forEach((pre) => {
-                        if (!pre.closest('.code-block-wrapper')) {
-                            this.enhanceCodeBlock(pre);
-                        }
-                    });
+                    
+                    const pre = block.parentElement;
+                    if (!pre.closest('.code-block-wrapper')) {
+                        this.enhanceCodeBlock(pre);
+                    }
 
                     // 应用高亮
                     hljs.highlightElement(block);
                 });
+                
+                /// 在内容更新后触发 MathJax 渲染
+                //if (contentDiv) {
+                //    renderMath(contentDiv);
+                //}
             } catch (e) {
                 console.error('Markdown 渲染错误:', e);
                 contentDiv.textContent = contentDiv.dataset.rawContent;
@@ -610,29 +799,6 @@ class ChatUI {
                 fullMessageDiv.textContent = this.messageBuffer;
 
                 try {
-                    // 配置 marked 选项
-                    marked.setOptions({
-                        gfm: true,
-                        tables: true,
-                        breaks: true,
-                        pedantic: false,
-                        sanitize: false,
-                        smartLists: true,
-                        smartypants: false,
-                        highlight: function (code, language) {
-                            if (language && hljs.getLanguage(language)) {
-                                try {
-                                    return hljs.highlight(code, {
-                                        language: language,
-                                        ignoreIllegals: true
-                                    }).value;
-                                } catch (e) {
-                                    console.error('代码高亮错误:', e);
-                                }
-                            }
-                            return code;
-                        }
-                    });
 
                     // 渲染 markdown 内容
                     contentDiv.innerHTML = marked.parse(this.messageBuffer);
@@ -695,7 +861,7 @@ class ChatUI {
         this.controller = new AbortController();
         const message = this.messageInput.value.trim();
         if (!message || this.isProcessing) return;
-        
+
         this.setLoadingState(true);
         this.appendMessage('user', message);
         this.messageInput.value = '';
@@ -703,7 +869,7 @@ class ChatUI {
 
         try {
             const message = this.messageInput.value.trim();
-            
+
             const history = this.convertToApiMessages();
             const response = await fetch('/api/chat/stream', {
                 method: 'POST',
@@ -778,6 +944,26 @@ class ChatUI {
 
         } finally {
             this.setLoadingState(false);
+            
+            
+            if (this.currentMessageElement) {
+                //渲染数学公式
+                this.renderMath(this.currentMessageElement);
+                // 查找并渲染所有 mermaid 图表
+                const mermaidCharts = this.currentMessageElement.querySelectorAll('.mermaid-chart');
+                if (mermaidCharts.length > 0) {
+                    for (const chart of mermaidCharts) {
+                        try {
+                            const code = chart.textContent;
+                            const id = chart.id;
+                            await this.renderMermaidChart(code, id);
+                        } catch (error) {
+                            console.error('Error rendering chart:', error);
+                            chart.innerHTML = `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
+                        }
+                    }
+                }
+            }
             this.currentMessageElement = null;
             this.toggleStopButton(false); // 隐藏停止按钮
             this.controller = null;

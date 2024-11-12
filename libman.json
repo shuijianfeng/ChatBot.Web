@@ -38,6 +38,14 @@
     {
       "library": "mermaid@11.4.0",
       "destination": "wwwroot/lib/mermaid/"
+    },
+    {
+      "library": "mathjax@3.2.2",
+      "destination": "wwwroot/lib/mathjax/"
+    },
+    {
+      "library": "KaTeX@0.16.9",
+      "destination": "wwwroot/lib/KaTeX/"
     }
   ]
 }

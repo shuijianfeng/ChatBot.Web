@@ -665,6 +665,9 @@ body {
 .message-content .mermaid-chart {
     max-width: 800px;
     margin: 1rem auto;
+    margin-top: 0; /* 移除顶部间距 */
+    margin: 0;
+    padding: 0;
 }
 /* 深色模式适配 */
 @media (prefers-color-scheme: dark) {
@@ -803,6 +806,9 @@ body {
     --hljs-number: #0550ae;
     --hljs-variable: #953800;
     --hljs-function: #8250df;
+    --math-bg: #f6f8fa;
+    --math-border: #dde1e4;
+    --math-color: #24292f;
 }
 
 /* 深色主题变量 */
@@ -838,6 +844,9 @@ body {
     --hljs-number: #79c0ff;
     --hljs-variable: #ffa657;
     --hljs-function: #d2a8ff;
+    --math-bg: #21262d;
+    --math-border: #30363d;
+    --math-color: #c9d1d9;
 }
 
 /* 代码高亮主题覆盖 */
@@ -871,37 +880,9 @@ body {
     color: var(--hljs-function) !important;
 }
 
-/* 图表样式 */
-.mermaid-chart {
-    margin: 1rem 0;
-    padding: 1rem;
-    background: #fff;
-    border: 1px solid #e1e4e8;
-    border-radius: 6px;
-    overflow: auto;
-}
 
-    .mermaid-chart svg {
-        max-width: 100%;
-        height: auto;
-        display: block;
-        margin: 0 auto;
-    }
-/* 图表加载和错误状态 */
-.chart-loading {
-    text-align: center;
-    padding: 1rem;
-    color: #666;
-}
 
-.chart-error {
-    padding: 1rem;
-    color: #cb2431;
-    background-color: #ffeef0;
-    border: 1px solid #ffdce0;
-    border-radius: 6px;
-    margin: 1rem 0;
-}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
     
@@ -1035,4 +1016,110 @@ pre {
 
     .copy-tooltip.show {
         opacity: 1;
+    }
+
+/* 暗色主题 */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --math-bg: #21262d;
+        --math-border: #30363d;
+        --math-color: #c9d1d9;
+       
+    }
+
+    .math-block, .math-inline {
+        color: var(--math-color);
+    }
+
+   
+}
+/* 数学公式容器 */
+.math-block {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--math-bg);
+    border: 1px solid var(--math-border);
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
+.math-inline {
+    padding: 0.2em 0.4em;
+    background: var(--math-bg);
+    border-radius: 4px;
+}
+
+
+
+/* 图表样式 */
+.mermaid-chart {
+    margin-top: 0px 0px 0px 0px; /* 移除顶部间距 */
+    margin: 0px 0px 0px 0px;
+    padding: 0px 0px 0px 0px;
+    background: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    overflow: auto;
+}
+
+    .mermaid-chart svg {
+        margin-top: 0px 0px 0px 0px; /* 移除顶部间距 */
+        margin: 0px 0px 0px 0px;
+        padding: 0px 0px 0px 0px;
+        max-width: 100%;
+        height: auto;
+        display: block;
+    }
+/* 图表加载和错误状态 */
+.chart-loading {
+    text-align: center;
+    padding: 1rem;
+    color: #666;
+}
+
+.chart-error {
+    padding: 1rem;
+    color: #cb2431;
+    background-color: #ffeef0;
+    border: 1px solid #ffdce0;
+    border-radius: 6px;
+    margin: 1rem 0;
+}
+
+/* 基础容器 */
+/*.code-block-wrapper {
+    margin: 1rem 0;
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    overflow: hidden;
+}*/
+
+/* 代码头部 */
+/*.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--color-canvas-subtle);
+    border-bottom: 1px solid var(--color-border-default);
+}*/
+
+/* Mermaid图表容器 */
+.mermaid-chart {
+    padding: 0 !important; /* 移除内边距 */
+    margin: 0 !important; /* 移除外边距 */
+}
+
+/* Mermaid图表 */
+.mermaid {
+    padding: 16px !important;
+    margin: 0 !important;
+    background-color: var(--color-canvas-default);
+}
+
+    /* SVG容器样式 */
+    .mermaid svg {
+        max-width: 100%;
+        height: auto;
+        width:auto;
     }

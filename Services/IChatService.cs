@@ -183,7 +183,8 @@ namespace ChatBot.Web.Services
             messages.Add(new
             {
                 role = "system",
-                content = "你是一个得力的助手,请用用简体中文回答"
+                content = "你是一个得力的助手,请用用简体中文回答。公式输出时用$和或$$包裹。"
+                //content = "你是一个得力的助手,请用用简体中文回答。"
             });
 
             // 添加历史消息
