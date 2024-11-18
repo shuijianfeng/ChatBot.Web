@@ -1,4 +1,5 @@
 ﻿@* _Layout.cshtml *@
+@inject ChatBot.Web.Services.IChatService ChatService
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -108,10 +109,10 @@
                             </div>
                             <div class="modeldropdown">
                                 <select class="form-select form-select-sm" id="global-model-selector">
-                                    <option value="软件及业务问答">软件及业务问答</option>
-                                    <option value="qwen-plus">通义千问</option>
-                                    
-                                    <option value="llama3.1-405b-instruct">Llama</option>
+                                    @foreach(var chatModel in ChatService.GetAvailableModels())
+                                    {
+                                        <option value="@chatModel">@chatModel</option>
+                                    }
                                 </select>
                             </div>
                             <div class ="px-3 py-2">
@@ -206,12 +207,20 @@
                 localStorage.setItem('theme', newTheme);
             });
 
-            // 加载保存的模型设置
+            
+            // 加载保存的模型设置或默认选择第一个模型
             const modelSelector = document.getElementById('global-model-selector');
+            const models = Array.from(modelSelector.options).map(option => option.value);
             const savedModel = localStorage.getItem('selectedModel');
-            if (savedModel) {
+
+            if (savedModel && models.includes(savedModel)) {
                 modelSelector.value = savedModel;
-            }
+            } else if (models.length > 0) {
+                modelSelector.value = models[0];
+                localStorage.setItem('selectedModel', models[0]);
+}
+
+
 
             // 保存模型选择
             modelSelector.addEventListener('change', (e) => {

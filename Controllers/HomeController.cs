@@ -31,6 +31,7 @@ namespace ChatBot.Controllers
         /// </summary>
         public IActionResult Index()
         {
+            //ViewBag.AvailableModels = _chatService.GetAvailableModels();
             return View();
         }
 
@@ -64,14 +65,15 @@ namespace ChatBot.Controllers
             try
             {
                 IAsyncEnumerable<string> stream;
-                if (request.Model== "软件及业务问答")
-                {
-                    stream = _chatService.GenerateStreamViaDashScopeAsync(request, "cb3fb45aeaf347b8bf51373d4ded12b2", cancellationToken);
-                }
-                else
-                {
-                    stream = _chatService.GenerateStreamViaOpenAIAsync( request, cancellationToken);
-                }
+                stream=_chatService.GenerateStreamAsync(request, cancellationToken);
+                //if (request.Model== "软件及业务问答")
+                //{
+                //    stream = _chatService.GenerateStreamViaDashScopeAsync(request, "cb3fb45aeaf347b8bf51373d4ded12b2", cancellationToken);
+                //}
+                //else
+                //{
+                //    stream = _chatService.GenerateStreamViaOpenAIAsync( request, cancellationToken);
+                //}
 
                 await foreach (var chunk in stream)
                 {

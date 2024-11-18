@@ -6,6 +6,8 @@ using System.Net.Http.Headers;
 using System.Net.Http;
 using System;
 using System.Runtime.CompilerServices;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.Extensions.Options;
 namespace ChatBot.Web.Services
 {
     /// <summary>
@@ -13,14 +15,15 @@ namespace ChatBot.Web.Services
     /// </summary>
     public interface IChatService
     {
-        /// <summary>
+        // <summary>
         /// 获取聊天响应流
         /// </summary>
         /// <param name="request">聊天请求</param>
         /// <returns>响应事件流</returns>
-        
-        IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatRequest request, CancellationToken cancellationToken );
-        IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatRequest request, string appId, CancellationToken cancellationToken );
+
+        IAsyncEnumerable<string> GenerateStreamAsync( ChatRequest request, CancellationToken cancellationToken);
+        List<string> GetAvailableModels();
+        ChatModelConfig GetModelConfig(string modelName);
     }
 
     /// <summary>
@@ -33,31 +36,80 @@ namespace ChatBot.Web.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<QianWenChatService> _logger;
         private readonly JsonSerializerOptions _jsonOptions;
+        private readonly ChatModelSettings _modelSettings;
 
         public QianWenChatService(
             IHttpClientFactory httpClientFactory,
             IConfiguration configuration,
-            ILogger<QianWenChatService> logger)
+            ILogger<QianWenChatService> logger, 
+            IOptions<ChatModelSettings> modelOptions)
         {
             _httpClientFactory = httpClientFactory;
             _configuration = configuration;
             _logger = logger;
-
+            _modelSettings = modelOptions.Value;
             // 配置JSON序列化选项
             _jsonOptions = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                //Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             };
         }
+
+        public List<string> GetAvailableModels()
+        {
+            if (_modelSettings == null || _modelSettings.Count == 0)
+            {
+                _logger.LogWarning("未加载到任何聊天模型配置");
+                return new List<string>();
+            }
+
+            var models = _modelSettings.Select(m => m.Name).ToList();
+            _logger.LogInformation("加载了 {ModelCount} 个聊天模型配置: {Models}", models.Count, string.Join(", ", models));
+            return models;
+        }
+
+
+        public ChatModelConfig GetModelConfig(string modelName)
+        {
+            foreach (var model in _modelSettings)
+            {
+                if (model.Name == modelName)
+                {
+                    return model;   
+                }
+            }
+            throw new ArgumentException($"模型名称 '{modelName}' 未配置。");
+        }
+
+        public async IAsyncEnumerable<string> GenerateStreamAsync(ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            var config = GetModelConfig(request.Model);
+            if (config.Isprompt)
+            {
+                await foreach (var item in GenerateStreamViaDashScopeAsync(config, request, cancellationToken))
+                {
+                    yield return item;
+                }
+            }
+            else
+            {
+                await foreach (var item in GenerateStreamViaOpenAIAsync(config, request, cancellationToken))
+                {
+                    yield return item;
+                }
+            }
+        }
+
+
         // 流式输出 - OpenAI 兼容方式
-        public async IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken )
+        public async IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatModelConfig modelconfg ,ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken )
         {
             // 验证配置
             var apiKey = Environment.GetEnvironmentVariable("AiApiKey");
-            var apiEndpoint = @"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+            var apiEndpoint = modelconfg.ApiEndpoint;
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
@@ -72,17 +124,18 @@ namespace ChatBot.Web.Services
             var requestContent = new
             {
 
-                model = request.Model,
+                model = modelconfg.Model,
                 messages = ToMessages(request),
-                stream = true,
-                temperature = request.Temperature,
-                max_tokens = request.MaxTokens,
-                enable_search = true,
+                stream = modelconfg.Stream,
+                temperature = modelconfg.Temperature,
+                max_tokens = modelconfg.MaxTokens,
+                enable_search = modelconfg.EnableSearch,
                 stream_options = new
                 {
-                    include_usage = true
+                    include_usage = modelconfg.Include_usage
                 }
             };
+           var str= JsonSerializer.Serialize(requestContent, _jsonOptions);
             var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
@@ -113,12 +166,12 @@ namespace ChatBot.Web.Services
         }
 
         // 流式输出 - DashScope 百练应用调用方式
-        public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatRequest request,string appId, [EnumeratorCancellation] CancellationToken cancellationToken )
+        public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken )
         {
             // 验证配置
-            string baseUrl = "https://dashscope.aliyuncs.com/api/v1/apps";
+            string baseUrl = modelconfg.ApiEndpoint;
             string endpoint = "completion";
-            var apiEndpoint = $"{baseUrl}/{appId}/{endpoint}";
+            var apiEndpoint = $"{baseUrl}/{modelconfg.Promptid}/{endpoint}";
 
             var apiKey = Environment.GetEnvironmentVariable("AiApiKey");
 
