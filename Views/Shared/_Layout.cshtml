@@ -48,6 +48,7 @@
       <script src="~/lib/katex/katex.min.js"></script>
      <link rel="stylesheet" href="~/lib/katex/katex.min.css" />
     *@
+    <link rel="stylesheet" href="~/lib/jsmind/style/jsmind.css" />
     <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.css" />
     <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.css" />
     <link rel="stylesheet" href="~/lib/primer/octicons/build/build.css"/>
@@ -164,6 +165,7 @@
     <script src="~/lib/bootstrap/js/bootstrap.bundle.js"></script>
     <script src="~/lib/marked/marked.min.js"></script>
     <script src="~/lib/mermaid/mermaid.js"></script>
+    <script src="~/lib/jsmind/es6/jsmind.js"></script>
     <script src="~/lib/highlight.js/highlight.min.js"></script>
     <script src="~/lib/highlight.js/languages/csharp.min.js"></script>
     <script src="~/lib/highlight.js/languages/java.min.js"></script>
@@ -250,6 +252,12 @@
                     URL.revokeObjectURL(url);
                 }
             });
+        });
+    </script>
+    @* 屏蔽右键 *@
+    <script>
+        document.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
         });
     </script>
 </body>

@@ -1123,3 +1123,174 @@ pre {
         height: auto;
         width:auto;
     }
+
+
+/* 图片预览样式 */
+.image-preview {
+    width: 70px; /* 固定宽度为50px */
+    height: auto;
+    position: relative;
+    margin-bottom: 10px;
+}
+
+    /* 固定图片预览宽度为50px */
+    .image-preview img {
+        width: 100%; /* 使图片宽度填满容器 */
+        height: auto;
+        border-radius: 8px;
+    }
+/* 使用更高特异性确保样式应用 */
+img.image-preview-img {
+    width: 50px !important; /* 强制应用宽度 */
+    height: auto;
+    border-radius: 8px;
+}
+.remove-image-button {
+    position: absolute;
+    top: 5px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    border: none;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+    .remove-image-button:hover {
+        background: rgba(0, 0, 0, 0.7);
+    }
+
+/* 上传的图片在消息中预览 */
+.uploaded-image-preview {
+    max-width: 200px;
+    height: auto;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+/* 上传图片按钮样式 */
+.icon-button {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-fg-default); /* 使用文本颜色变量 */
+}
+
+.icon-button i {
+    font-size: 1.5rem;
+    transition: color 0.3s;
+}
+
+.icon-button:hover {
+    color: var(--color-accent-emphasis); /* 悬停时颜色变化 */
+}
+
+/* 深色模式下上传图片按钮样式 */
+[data-theme="dark"] .icon-button {
+    color: var(--color-accent-fg); /* 根据深色主题调整图标颜色 */
+}
+
+    [data-theme="dark"] .icon-button:hover {
+        color: var(--color-accent-emphasis); /* 悬停时颜色变化 */
+    }
+
+/* 使用媒体查询适配系统主题 */
+@media (prefers-color-scheme: dark) {
+    .icon-button {
+        color: var(--color-accent-fg); /* 深色模式下的图标颜色 */
+    }
+
+        .icon-button:hover {
+            color: var(--color-accent-emphasis); /* 悬停时颜色变化 */
+        }
+}
+
+.jsmind-chart {
+    width: 100%;
+    height: 400px; /* 根据需要调整高度 */
+    border: 1px solid #ccc;
+    margin-top: 10px;
+}
+
+/*.image-wrapper {
+    position: relative;
+    display: inline-block;
+    margin: 5px;
+}
+
+.uploaded-image-preview {
+    max-width: 100px;
+    max-height: 100px;
+    border-radius: 5px;
+}
+
+.remove-image-button {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border: none;
+    color: #fff;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+    .remove-image-button:hover {
+        background-color: rgba(255, 0, 0, 0.8);
+    }
+*/
+
+/* 图片预览样式 */
+.preview-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.image-wrapper {
+    position: relative;
+    display: inline-block;
+    margin: 5px;
+}
+
+.uploaded-image-preview {
+    max-width: 100px;
+    max-height: 100px;
+    border-radius: 5px;
+}
+
+.remove-image-button {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border: none;
+    color: #fff;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+    .remove-image-button:hover {
+        background-color: rgba(255, 0, 0, 0.8);
+    }

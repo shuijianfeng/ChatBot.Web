@@ -1,5 +1,6 @@
 ﻿// ChatResponse.cs
 using System.Text.Json.Serialization;
+using static ChatBot.Models.llama32ChunkResponse.outputitem;
 
 namespace ChatBot.Models
 {
@@ -157,6 +158,11 @@ namespace ChatBot.Models
         /// </summary>
         [JsonPropertyName("session_id")]
         public string SessionId { get; set; }= string.Empty;
+        /// <summary>
+        /// 图片链接
+        /// </summary>
+        [JsonPropertyName("image")]
+        public string[] Image { get; set; } = Array.Empty<string>();
     }
 
     /// <summary>
@@ -175,6 +181,11 @@ namespace ChatBot.Models
         /// </summary>
         [JsonPropertyName("content")]
         public string Content { get; set; } = string.Empty;
+        /// <summary>
+        /// 图片链接
+        /// </summary>
+        [JsonPropertyName("images")]
+        public string[] Images { get; set; } = Array.Empty<string>();
     }
 
     /// <summary>
@@ -240,6 +251,66 @@ namespace ChatBot.Models
         }
     }
 
+    // 响应类型
+    public class ClaudeChunkResponse
+    {
+        public string type { get; set; }
+        public int index { get; set; }
+        [JsonPropertyName("delta")]
+        public delta deltaitem { get; set; }
+        public class delta
+        {
+            public string type { get; set; }
+            public string text { get; set; }
+        }
+    }
+
+    // 响应类型
+    public class OpenAIResponse
+    {
+        public choice[] choices { get; set; }
+
+        public class choice
+        {
+            public message message { get; set; }
+            public int index { get; set; }
+
+        }
+
+        public class message
+        {
+            public string content { get; set; }
+            public string role { get; set; }
+        }
+    }
+    // 响应类型
+    public class llama32ChunkResponse
+    {
+        public outputitem output { get; set; }
+        public class outputitem
+        {
+            public choice[] choices { get; set; }
+
+            public class choice
+            {
+                public message message { get; set; }
+                public int index { get; set; }
+
+            }
+
+            public class message
+            {
+
+                public string role { get; set; }
+                public contentitem[] content { get; set; }
+                public class contentitem
+                {
+                    public string text { get; set; }
+
+                }
+            }
+        }
+    }
     public class DashScopeChunkResponse
     {
         [JsonPropertyName("output")]

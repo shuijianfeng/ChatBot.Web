@@ -24,6 +24,9 @@
         <!-- 输入区域 -->
         <div class="chat-input-area">
             <div class="input-container">
+                <!-- 多图片预览容器 -->
+                <div id="preview-container" class="preview-container" style="display: none;">
+                </div>
                 <textarea id="message-input"
                           placeholder="输入您的提问..."
                           rows="1" aria-label="Message input"></textarea>
@@ -39,6 +42,16 @@
             </button>
             </div>
         </div>
+        <!-- 图片上传按钮 -->
+        <div class="upload-image-container" >
+            <!-- 初始隐藏 -->
+            <button class="btn icon-button" id="upload-image-button" title="上传图片" style="display: none;">
+                <i class="bi bi-image"></i>
+            </button>
+            <!-- 隐藏的文件输入 -->
+            <input type="file" id="image-input" accept="image/*" style="display: none;" />
+        </div>
+
     </div>
 
     

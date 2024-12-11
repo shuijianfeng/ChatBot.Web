@@ -13,189 +13,109 @@ class ChatUI {
         this.sendButton = document.getElementById('send-button');
         this.modelSelect = document.getElementById('global-model-selector');
 
+        // 图片上传相关元素
+        this.uploadImageButton = document.getElementById('upload-image-button');
+        this.imageInput = document.getElementById('image-input');
+        this.imagePreview = document.getElementById('image-preview');
+        /*this.previewImg = document.getElementById('preview-img');*/
+        this.previewContainer = document.getElementById('preview-container'); // 新增用于容纳多个图片的容器
+        this.removeImageButton = document.getElementById('remove-image-button');
+
         // 状态标志
         this.isProcessing = false;
         this.currentMessageElement = null;
         this.copyInProgress = false;
         this.currentUser = '我';
-        // 在 Chat 类构造函数中添加主题配置
-        //mermaid.initialize({
-        //    startOnLoad: false,
-        //    theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
-        //    flowchart: {
-        //        useMaxWidth: true,
-        //        htmlLabels: true,
-        //        curve: 'cardinal',
-        //    },
-        //    securityLevel: 'loose',
-        //    //darkMode: true,
-        //    themeVariables: {
-        //        // 明亮主题
-        //        //primaryColor: '#326de6',
-        //        //primaryTextColor: '#fff',
-        //        //primaryBorderColor: '#2251c9',
-        //        //lineColor: '#666',
-        //        //secondaryColor: '#f4f4f4',
-        //        //tertiaryColor: '#fff',
-              
-        //        //// 暗色主题支持
-        //        darkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
-        //        //background: '#0d1117',
-        //        //mainBkg: '#161b22',
-        //        //secondaryBkg: '#21262d',
-        //        //mainContrastColor: '#c9d1d9',
-        //        //darkTextColor: '#8b949e',
-        //        //lineColor: '#30363d',
-        //        //border1: '#30363d',
-        //        //border2: '#30363d',
-        //        //arrowheadColor: '#8b949e'
-        //        // 深色模式下的颜色配置
-        //        //darkMode: true,
-        //        //background: '#0d1117',
-        //        //primaryColor: '#58a6ff',
-        //        //primaryTextColor: '#ffffff',
-        //        //primaryBorderColor: '#58a6ff',
-        //        //lineColor: '#58a6ff',
-        //        //secondaryColor: '#30363d',
-        //        //tertiaryColor: '#ffffff',
-        //        //// 字体颜色配置
-        //        //textColor: '#e6edf3',       // 主要文本
-        //        //nodeBorder: '#58a6ff',      // 节点边框
-        //        //mainBkg: '#21262d',         // 主要背景
-        //        //labelTextColor: '#ffffff',   // 标签文本
-        //        //edgeLabelBackground: '#21262d', // 边缘标签背景
-        //        //clusterBkg: '#21262d',      // 集群背景
-        //        //titleColor: '#ffffff',       // 标题颜色
-        //        //// 流程图特定颜色
-        //        //nodeBkgColor: '#21262d',    // 节点背景
-        //        //nodeTextColor: '#ffffff'     // 节点文本
 
-        //        // 深色模式下的主题变量
-        //        primaryColor: '#58a6ff',           // 主要颜色
-        //        primaryBorderColor: '#58a6ff',     // 主要边框颜色
-        //        primaryTextColor: '#ffffff',        // 主要文本颜色
+        // 定义用于存储模型配置
+        this.chatModels = [];
+        this.uploadedImageUrls = []; // 修改为数组以支持多张图片
 
-        //        //pieTitleTextColor: '#ffffff',         // 标签文本颜色
-        //        //pieLegendTextColor: '#ffffff',         // 标签文本颜色
+        // 设置图片上传事件监听
+        this.uploadImageButton.addEventListener('click', () => this.imageInput.click());
+        this.imageInput.addEventListener('change', (event) => this.handleImageUpload(event));
+        //this.removeImageButton.addEventListener('click', () => this.removeAllImages());
 
-        //        // 标签和文本颜色增强
-        //        labelTextColor: '#ffffff',         // 标签文本颜色
-        //        textColor: '#e6edf3',             // 普通文本颜色
-                
-        //        // 节点样式增强
-        //        nodeTextColor: '#ffffff',          // 节点文本颜色
-        //        nodeBkgColor: '#21262d',          // 节点背景色
-        //        nodeBorder: '#58a6ff',            // 节点边框颜色
+        // 设置模型选择事件监听
+        this.modelSelect.addEventListener('change', () => this.toggleImageUploadButton());
 
-        //        // 连线和箭头样式
-        //        lineColor: '#58a6ff',             // 连线颜色
-        //        edgeLabelBackground: '#2f353d',   // 边缘标签背景
+        // 初始化图片上传按钮的可见性
+        this.fetchChatModels();
 
-        //        // 字体大小和粗细
-        //        fontSize: '16px',                 // 字体大小增大
-        //        fontFamily: 'Arial, sans-serif',  // 字体族
-        //        fontWeight: 'normal',             // 字体粗细
+        const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-        //        // 背景和边框
-        //        mainBkg: '#21262d',              // 主背景色
-        //        background: '#0d1117',            // 整体背景色
+        // Mermaid 初始化配置
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: isDarkMode ? 'base' : 'default',
 
-        //        // 提高对比度
-        //        contrast: 200,                    // 增加对比度
+            // 通用配置
+            htmlLabels: true,
+            useMaxWidth: true,         // 允许图表使用最大宽度
+            // 使用默认主题变量
+            themeVariables: isDarkMode ? {
 
+                background: '#0d1117',
+                mainBkg: '#161b22',
+                secondaryBkg: '#21262d',
+                mainContrastColor: '#c9d1d9',
+                primaryColor: '#58a6ff',
+                primaryTextColor: '#ffffff',
+                primaryBorderColor: '#58a6ff',
+                lineColor: '#30363d',
+                textColor: '#c9d1d9',
+                border1: '#30363d',
+                border2: '#30363d',
+                arrowheadColor: '#c9d1d9'
+            } : {
+                // 浅色模式下保持默认设置
+                darkMode: false
+            },
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
 
-               
-            
-        //    }
-        //});
-        
+            },
+            sequence: {
+                useMaxWidth: true,
+                showSequenceNumbers: true
+            }
+        });
 
-            // 检测当前主题模式
-            const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-            // Mermaid 初始化配置
+        // 监听主题变化
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
             mermaid.initialize({
-                startOnLoad: false,
-                theme: isDarkMode ? 'base' : 'default',
-                
-                // 通用配置
-                htmlLabels: true,
-                useMaxWidth: true,         // 允许图表使用最大宽度
-                // 使用默认主题变量
-                themeVariables: isDarkMode ? {
-                    //// 深色模式下的颜色配置
-                    //darkMode: true,
-                    //// 深色模式下的主题变量
-                    //primaryColor: '#58a6ff',           // 主要颜色
-                    //primaryBorderColor: '#58a6ff',     // 主要边框颜色
-                    //primaryTextColor: '#ffffff',        // 主要文本颜色
-
-                    //pieTitleTextColor: '#ffffff',         // 标签文本颜色
-                    //pieLegendTextColor: '#ffffff',         // 标签文本颜色
-
-                    //// 标签和文本颜色增强
-                    //labelTextColor: '#ffffff',         // 标签文本颜色
-                    //textColor: '#e6edf3',             // 普通文本颜色
-
-                    //// 节点样式增强
-                    //nodeTextColor: '#ffffff',          // 节点文本颜色
-                    //nodeBkgColor: '#21262d',          // 节点背景色
-                    //nodeBorder: '#58a6ff',            // 节点边框颜色
-
-                    //// 连线和箭头样式
-                    //lineColor: '#58a6ff',             // 连线颜色
-                    //edgeLabelBackground: '#2f353d',   // 边缘标签背景
-
-                    //// 字体大小和粗细
-                    //fontSize: '16px',                 // 字体大小增大
-                    //fontFamily: 'Arial, sans-serif',  // 字体族
-                    //fontWeight: 'normal',             // 字体粗细
-
-                    //// 背景和边框
-                    //mainBkg: '#21262d',              // 主背景色
-                    //background: '#0d1117',            // 整体背景色
-
-                    //        // 提高对比度
-                    //contrast: 200,                    // 增加对比度
-                    // 深色主题配置
-                    //darkMode: true,
-                    background: '#0d1117',
-                    mainBkg: '#161b22',
-                    secondaryBkg: '#21262d',
-                    mainContrastColor: '#c9d1d9',
-                    primaryColor: '#58a6ff',
-                    primaryTextColor: '#ffffff',
-                    primaryBorderColor: '#58a6ff',
-                    lineColor: '#30363d',
-                    textColor: '#c9d1d9',
-                    border1: '#30363d',
-                    border2: '#30363d',
-                    arrowheadColor: '#c9d1d9'
-                } : {
-                    // 浅色模式下保持默认设置
-                    darkMode: false
-                },
-                flowchart: {
-                    useMaxWidth: true,
-                    htmlLabels: true
-                    
-                },
-                sequence: {
-                    useMaxWidth: true,
-                    showSequenceNumbers: true
-                }
+                theme: e.matches ? 'dark' : 'default'
             });
+        });
 
-            // 监听主题变化
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-                mermaid.initialize({
-                    theme: e.matches ? 'dark' : 'default'
-                });
-            });
-        
         this.setupMarked();
 
         this.init();
+    }
+
+    async fetchChatModels() {
+        try {
+            const response = await fetch('/api/chat/GetChatModels');
+            if (!response.ok) {
+                throw new Error('无法获取聊天模型配置');
+            }
+            this.chatModels = await response.json();
+            this.toggleImageUploadButton(); // 配置加载完毕后更新按钮状态
+        } catch (error) {
+            console.error('获取聊天模型配置时出错:', error);
+        }
+    }
+
+    // 方法：根据选择的模型显示或隐藏图片上传按钮
+    toggleImageUploadButton() {
+        const selectedModel = this.modelSelect.value;
+        const model = this.chatModels.find(m => m.name === selectedModel);
+        if (model && model.enableImageUpload) {
+            this.uploadImageButton.style.display = 'flex'; // 或 'block'，根据您的CSS布局
+        } else {
+            this.uploadImageButton.style.display = 'none';
+        }
     }
 
     init() {
@@ -210,7 +130,7 @@ class ChatUI {
                 } else if (e.ctrlKey) {
 
                     // Ctrl + Enter:  允许换行，不阻止默认行为
-                   return;
+                    return;
                 } else {
                     // 普通 Enter: 发送消息
                     e.preventDefault();
@@ -221,6 +141,238 @@ class ChatUI {
 
     }
 
+    // 移除图片预览
+    removeImage() {
+        this.imagePreview.style.display = 'none';
+        this.previewImg.src = '';
+        this.imageInput.value = '';
+    }
+    // 移除所有图片预览
+    removeAllImages() {
+        this.previewContainer.innerHTML = '';
+        this.imageInput.value = '';
+        this.uploadedImageUrls = [];
+        this.previewContainer.style.display = "display: none;"
+    }
+    // 修改 handleImageUpload 方法，添加单个图片移除功能
+    async handleImageUpload(event) {
+        const files = event.target.files;
+        if (!files.length) return;
+
+        for (const file of files) {
+            // 检查文件类型
+            if (!file.type.startsWith('image/')) {
+                alert('请选择有效的图片文件。');
+                continue;
+            }
+
+            // 可选：限制文件大小（例如，最大5MB）
+            const maxSize = 5 * 1024 * 1024; // 5MB
+            if (file.size > maxSize) {
+                alert('图片大小不能超过5MB。');
+                continue;
+            }
+            // 压缩图片
+            //const compressedFile = await this.compressImage(file,800,0.8); // 目标宽度800px，质量0.7
+            // 显示上传中的状态
+            this.appendMessage('user', '正在上传图片...', true);
+            this.setLoadingState(true);
+
+            try {
+                // 创建 FormData 对象
+                const formData = new FormData();
+                formData.append('image', file);
+
+                // 发送图片到后端API
+                const response = await fetch('/api/chat/upload-image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('图片上传失败');
+                }
+
+                const data = await response.json();
+                const imageUrl = data.url; // 假设后端返回图片的URL
+
+                // 创建图片预览容器
+                const imgWrapper = document.createElement('div');
+                imgWrapper.className = 'image-wrapper';
+
+                // 创建图片元素
+                const imgElement = document.createElement('img');
+                imgElement.src = imageUrl;
+                imgElement.alt = '上传的图片';
+                imgElement.className = 'uploaded-image-preview';
+
+                // 创建移除按钮
+                const removeButton = document.createElement('button');
+                removeButton.className = 'remove-image-button';
+                removeButton.innerHTML = '&times;'; // 使用乘号符号
+                removeButton.title = '移除图片';
+
+                // 添加点击事件以移除该图片预览
+                removeButton.addEventListener('click', () => {
+                    this.previewContainer.removeChild(imgWrapper);
+                    const index = this.uploadedImageUrls.indexOf(imageUrl);
+                    if (index > -1) {
+                        this.uploadedImageUrls.splice(index, 1);
+                    }
+                    // 如果没有图片，隐藏预览容器
+                    if (this.uploadedImageUrls.length === 0) {
+                        this.previewContainer.style.display = 'none';
+                    }
+                });
+
+                // 组装图片预览元素
+                imgWrapper.appendChild(imgElement);
+                imgWrapper.appendChild(removeButton);
+                this.previewContainer.appendChild(imgWrapper);
+                this.previewContainer.style.display = 'flex';
+
+                // 存储图片URL以便发送
+                this.uploadedImageUrls.push(imageUrl);
+
+                // 移除上传中的状态
+                this.removeLastUserMessage();
+
+            } catch (error) {
+                console.error('图片上传错误:', error);
+                this.appendMessage('user', '图片上传失败，请重试。');
+            } finally {
+                this.setLoadingState(false);
+                // 清除文件输入
+                this.imageInput.value = '';
+            }
+        }
+    }
+
+    // 修改 compressImage 方法以提高压缩后图片的清晰度
+    compressImage(file, maxWidth = 1024, quality = 0.8) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            img.onload = () => {
+                let { width, height } = img;
+
+                // 仅在图片宽度大于 maxWidth 时进行缩放
+                if (width > maxWidth) {
+                    height = height * (maxWidth / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // 根据原始文件类型选择适当的输出格式
+                const fileExtension = file.name.split('.').pop().toLowerCase();
+                let outputFormat = 'image/jpeg'; // 默认格式
+
+                if (fileExtension === 'png') {
+                    outputFormat = 'image/png';
+                } else if (fileExtension === 'webp') {
+                    outputFormat = 'image/webp';
+                }
+
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const compressedFileName = file.name.replace(/\.[^/.]+$/, `.${outputFormat.split('/')[1]}`);
+                        const compressedFile = new File([blob], compressedFileName, {
+                            type: outputFormat,
+                            lastModified: Date.now()
+                        });
+                        resolve(compressedFile);
+                    } else {
+                        reject(new Error('图片压缩失败'));
+                    }
+                }, outputFormat, quality);
+            };
+
+            img.onerror = () => {
+                reject(new Error('图片加载失败'));
+            };
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+
+    // 添加压缩图片的辅助方法
+    // 修改 compressImage 方法以提高压缩后图片的清晰度
+    //compressImage(file, maxWidth = 1024, quality = 0.8) {
+    //    return new Promise((resolve, reject) => {
+    //        const img = new Image();
+    //        const canvas = document.createElement('canvas');
+    //        const ctx = canvas.getContext('2d');
+
+    //        img.onload = () => {
+    //            let { width, height } = img;
+
+    //            // 仅在图片宽度大于 maxWidth 时进行缩放
+    //            if (width > maxWidth) {
+    //                height = height * (maxWidth / width);
+    //                width = maxWidth;
+    //            }
+
+    //            canvas.width = width;
+    //            canvas.height = height;
+    //            ctx.drawImage(img, 0, 0, width, height);
+
+    //            // 根据原始文件类型选择适当的输出格式
+    //            const fileExtension = file.name.split('.').pop().toLowerCase();
+    //            let outputFormat = 'image/jpeg'; // 默认格式
+
+    //            if (fileExtension === 'png') {
+    //                outputFormat = 'image/png';
+    //            } else if (fileExtension === 'webp') {
+    //                outputFormat = 'image/webp';
+    //            }
+
+    //            canvas.toBlob((blob) => {
+    //                if (blob) {
+    //                    const compressedFileName = file.name.replace(/\.[^/.]+$/, `.${outputFormat.split('/')[1]}`);
+    //                    const compressedFile = new File([blob], compressedFileName, {
+    //                        type: outputFormat,
+    //                        lastModified: Date.now()
+    //                    });
+    //                    resolve(compressedFile);
+    //                } else {
+    //                    reject(new Error('图片压缩失败'));
+    //                }
+    //            }, outputFormat, quality);
+    //        };
+
+    //        img.onerror = () => {
+    //            reject(new Error('图片加载失败'));
+    //        };
+
+    //        const reader = new FileReader();
+    //        reader.onload = (e) => {
+    //            img.src = e.target.result;
+    //        };
+    //        reader.readAsDataURL(file);
+    //    });
+    //}
+
+
+    // 移除最后一条用户消息（用于移除“正在上传图片...”的提示）
+    removeLastUserMessage() {
+        if (this.messages.length > 0) {
+            const lastMessage = this.messages.pop();
+            const lastMessageElement = this.messagesContainer.lastElementChild;
+            if (lastMessageElement && lastMessageElement.classList.contains('user-message')) {
+                this.messagesContainer.removeChild(lastMessageElement);
+            }
+        }
+    }
 
     setupEventListeners() {
         const stopButton = document.querySelector('.stop-button');
@@ -288,7 +440,7 @@ class ChatUI {
             }
         });
     }
-   
+
     enhanceCodeBlock(pre) {
         // 创建包装器
         const wrapper = document.createElement('div');
@@ -322,8 +474,22 @@ class ChatUI {
             chart.appendChild(pre);
             wrapper.appendChild(chart);
         }
-        else 
-            wrapper.appendChild(pre);
+        else
+        {
+            //包装包装用mermaid-chartmermaid
+            if (language === 'jsmind') {
+                const chartId = `jsmind-${Math.random().toString(36).substr(2, 9)}`;
+                const chart = document.createElement('div');
+                chart.className = 'jsmind-chart';
+                chart.id = chartId
+                chart.appendChild(pre);
+                wrapper.appendChild(chart);
+            }
+            else {
+                wrapper.appendChild(pre);
+            }
+        }
+          
     }
 
     detectLanguage(codeElement) {
@@ -360,7 +526,7 @@ class ChatUI {
         button.addEventListener('click', async () => {
             const pre = button.closest('.code-block-wrapper').querySelector('pre');
             /*const code = pre.textContent;*/
-            const code =button.dataset.copyContent
+            const code = button.dataset.copyContent
             try {
                 await navigator.clipboard.writeText(code);
                 this.showCopyFeedback(button, true);
@@ -437,35 +603,43 @@ class ChatUI {
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content markdown-body';
         contentDiv.dataset.rawContent = content;
-
-        try {
-            contentDiv.innerHTML = marked.parse(content);
-            contentDiv.querySelectorAll('pre code').forEach((block) => {
-                hljs.highlightElement(block);
+        if (this.uploadedImageUrls.length > 0) {
+            let imagesHtml = '';
+            this.uploadedImageUrls.forEach(url => {
+                imagesHtml += `<img src="${url}" alt="上传的图片" class="uploaded-image-preview" />\n`;
             });
+            contentDiv.innerHTML = imagesHtml + marked.parse(content);
+        }
+        else {
+            try {
+                contentDiv.innerHTML = marked.parse(content);
+                contentDiv.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
 
-            // 添加复制按钮到每个代码块
-            contentDiv.querySelectorAll('pre').forEach((pre) => {
-                const codeBlock = pre.querySelector('code');
-                if (codeBlock) {
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'code-block-wrapper';
+                // 添加复制按钮到每个代码块
+                contentDiv.querySelectorAll('pre').forEach((pre) => {
+                    const codeBlock = pre.querySelector('code');
+                    if (codeBlock) {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'code-block-wrapper';
 
-                    const copyButton = this.createCopyButton(codeBlock.textContent);
-                    copyButton.className = 'code-copy-button';
+                        const copyButton = this.createCopyButton(codeBlock.textContent);
+                        copyButton.className = 'code-copy-button';
 
-                    pre.parentNode.insertBefore(wrapper, pre);
-                    wrapper.appendChild(pre);
-                    wrapper.appendChild(copyButton);
-                }
-            });
+                        pre.parentNode.insertBefore(wrapper, pre);
+                        wrapper.appendChild(pre);
+                        wrapper.appendChild(copyButton);
+                    }
+                });
 
-            // 添加消息复制按钮
-            const copyButton = this.createCopyButton(content);
-            actionsDiv.appendChild(copyButton);
-        } catch (e) {
-            console.error('Markdown 渲染错误:', e);
-            contentDiv.textContent = content;
+                // 添加消息复制按钮
+                const copyButton = this.createCopyButton(content);
+                actionsDiv.appendChild(copyButton);
+            } catch (e) {
+                console.error('Markdown 渲染错误:', e);
+                contentDiv.textContent = content;
+            }
         }
         //messageDiv.appendChild(avatarDiv);
         headerDiv.appendChild(roleSpan);
@@ -524,9 +698,9 @@ class ChatUI {
 
         return copyButton;
     }
-   
+
     setupMarked() {
-        
+
         const renderer = new marked.Renderer();
         const originalCode = renderer.code.bind(renderer);
         renderer.code = (code, language) => {
@@ -534,8 +708,7 @@ class ChatUI {
                 const chartId = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
                 return `<div class="mermaid-chart" id="${chartId}">${code}</div>`;
             }
-            else
-            {
+            else {
                 if (language && hljs.getLanguage(language)) {
                     try {
                         return hljs.highlight(code, {
@@ -546,7 +719,7 @@ class ChatUI {
                         console.error('代码高亮错误:', e);
                     }
                 }
-                
+
                 /*return code;*/
             }
             return originalCode(code, language);
@@ -571,9 +744,9 @@ class ChatUI {
                     .catch(err => console.error('MathJax 渲染错误:', err));
 
             }
-           
+
         };
-        
+
         // 导出renderMath方法供外部使用
         this.renderMath = renderMath;
     }
@@ -607,7 +780,7 @@ class ChatUI {
         return messageElement.outerHTML;
     }
 
-    
+
     async renderMermaidChart(code, containerId) {
         try {
             // 等待 Mermaid 加载完成
@@ -708,7 +881,7 @@ class ChatUI {
             this.copyInProgress = false;
         }
     }
-    
+
     async appendMessage(message) {
         const messagesContainer = this.container.querySelector('.chat-messages');
         const rendered = await this.renderMessage(message);
@@ -726,7 +899,8 @@ class ChatUI {
             // 添加消息到内存
             this.messages.push({
                 role: role,
-                content: content
+                content: content,
+                images: this.uploadedImageUrls.slice() // 复制数组
             });
 
             // 创建并添加消息元素到UI
@@ -749,15 +923,15 @@ class ChatUI {
             // 更新内存中最后一条消息的内容
             if (this.messages.length > 0) {
                 this.messages[this.messages.length - 1].content = contentDiv.dataset.rawContent;
-
+                this.messages[this.messages.length - 1].images = this.uploadedImageUrls.slice(); // 确保 images 更新
             }
 
             copyButton.dataset.copyContent = contentDiv.dataset.rawContent;
 
             try {
-                
+
                 contentDiv.innerHTML = marked.parse(contentDiv.dataset.rawContent);
-                
+
                 // 处理所有代码块
                 contentDiv.querySelectorAll('pre code').forEach((block) => {
                     // 添加语言类标识
@@ -766,7 +940,7 @@ class ChatUI {
                         block.parentElement.classList.add('language-' + language.replace('language-', ''));
                     }
                     // 添加程序框标题和程序框复制按钮
-                    
+
                     const pre = block.parentElement;
                     if (!pre.closest('.code-block-wrapper')) {
                         this.enhanceCodeBlock(pre);
@@ -775,7 +949,7 @@ class ChatUI {
                     // 应用高亮
                     hljs.highlightElement(block);
                 });
-                
+
                 /// 在内容更新后触发 MathJax 渲染
                 //if (contentDiv) {
                 //    renderMath(contentDiv);
@@ -823,6 +997,7 @@ class ChatUI {
             }
         }
     }
+   
     // 转换聊天记录为API格式
     convertToApiMessages() {
         // 添加系统消息
@@ -832,11 +1007,10 @@ class ChatUI {
         this.messages.forEach(msg => {
             // 确保消息格式正确
             if (msg.role && msg.content) {
-                // 将 'assistant' 转换为 'system' 以匹配API格式
-                const role = msg.role === 'assistant' ? 'system' : msg.role;
                 apiMessages.push({
-                    role: role,
-                    content: msg.content
+                    role: msg.role,
+                    content: msg.content,
+                    images: msg.images // 包含多张图片
                 });
             }
         });
@@ -860,13 +1034,16 @@ class ChatUI {
         this.toggleStopButton(true); // 显示停止按钮
         this.controller = new AbortController();
         const message = this.messageInput.value.trim();
+        const imageUrls = this.uploadedImageUrls.slice(); // 复制数组
+
         if (!message || this.isProcessing) return;
 
         this.setLoadingState(true);
         this.appendMessage('user', message);
         this.messageInput.value = '';
+        this.removeAllImages(); // 清除图片预览
         this.autoResizeTextarea();
-
+        //this.uploadedImageUrl = null; // 清除已上传的图片URL
         try {
             const message = this.messageInput.value.trim();
 
@@ -881,6 +1058,7 @@ class ChatUI {
                     history: history,
                     model: this.modelSelect.value,
                     timestamp: new Date().toISOString()
+                    
                 }),
                 signal: this.controller.signal
 
@@ -944,8 +1122,8 @@ class ChatUI {
 
         } finally {
             this.setLoadingState(false);
-            
-            
+
+
             if (this.currentMessageElement) {
                 //渲染数学公式
                 this.renderMath(this.currentMessageElement);
@@ -963,10 +1141,30 @@ class ChatUI {
                         }
                     }
                 }
+
+                const jsmindCharts = this.currentMessageElement.querySelectorAll('.jsmind-chart');
+                if (jsmindCharts.length > 0) {
+                    for (const chart of jsmindCharts) {
+                        try {
+                           
+                            var options = {
+                                container: chart.id, // [必选] 容器的ID
+                                editable: false,                // [可选] 是否启用编辑
+                                theme: 'orange'                // [可选] 主题
+                            };
+                            var jm = new jsMind(options);
+                            jm.show();
+                        } catch (error) {
+                            console.error('Error rendering chart:', error);
+                            chart.innerHTML = `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
+                        }
+                    }
+                }
             }
             this.currentMessageElement = null;
             this.toggleStopButton(false); // 隐藏停止按钮
             this.controller = null;
+            this.uploadedImageUrls = []; // 清除已上传的图片URLs
         }
     }
 }

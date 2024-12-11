@@ -15,6 +15,8 @@ namespace ChatBot.Models
         public bool Include_usage { get; set; }
         public bool Isprompt { get; set; }
         public string Promptid { get; set; } = string.Empty;
+        public bool EnableImageUpload { get; set; }
+        public bool Incremental_output { get; set; }
     }
 
     public class ChatModelSettings: List<ChatModelConfig> 

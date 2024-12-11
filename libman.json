@@ -46,6 +46,15 @@
     {
       "library": "KaTeX@0.16.9",
       "destination": "wwwroot/lib/KaTeX/"
+    },
+    {
+      "provider": "unpkg",
+      "library": "jsmind@0.8.6",
+      "destination": "wwwroot/lib/jsmind/"
+    },
+    {
+      "library": "compressorjs@1.2.1",
+      "destination": "wwwroot/lib/compressorjs/"
     }
   ]
 }
