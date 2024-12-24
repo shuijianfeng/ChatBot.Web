@@ -9,24 +9,24 @@
     <meta name="csrf-token" content="@GetAntiForgeryToken()" />
     <meta name="user-login" content="@User.Identity.Name">
     <title>@ViewData["Title"] - AI助手</title>
-    
+
     @* 基础样式 *@
-    <script src="~/lib/mathjax/es5.js"></script>
-    <script src="~/lib/mathjax/es5/tex-mml-chtml.js"></script>
+
+    <script src="~/lib/mathjax/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
     <script>
-        
-        MathJax = {
-            tex: {
+               MathJax = {
+          tex: {
                 inlineMath: [['$', '$'], ['\\(', '\\)']],
                 displayMath: [['$$', '$$'],['\\[','\\]']],
                 processEscapes: true,
+                processEnvironments: true
             },
             svg: {
                 fontCache: 'global'
             },
             options: {
                 skipHtmlTags: ['pre', 'code', 'script', 'noscript', 'style', 'textarea', 'match']
-            },                   
+            },
             startup: {
                 ready: () => {
                     MathJax.startup.defaultReady();
@@ -36,27 +36,22 @@
                 },
                 pageReady: () => {
                     MathJax.startup.defaultPageReady();
-                
-                 
+
+
             },
-                typeset: false;
-        
+                typeset: false
+            }
         };
-         
     </script>
-      @*
-      <script src="~/lib/katex/katex.min.js"></script>
-     <link rel="stylesheet" href="~/lib/katex/katex.min.css" />
-    *@
     <link rel="stylesheet" href="~/lib/jsmind/style/jsmind.css" />
     <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.css" />
     <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.css" />
-    <link rel="stylesheet" href="~/lib/primer/octicons/build/build.css"/>
+    <link rel="stylesheet" href="~/lib/primer/octicons/build/build.css" />
     <link rel="stylesheet" href="~/lib/highlight.js/styles/github.css" />
     <link rel="stylesheet" href="~/lib/highlight.js/styles/github-dark.css media=" (prefers-color-scheme: dark) />
-    <link rel="stylesheet" href="~/lib/octicons/build.css"/>
+    <link rel="stylesheet" href="~/lib/octicons/build.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    
+
 
     @* 网站图标 *@
     <link rel="icon" type="image/png" href="~/favicon.png" />
@@ -110,13 +105,13 @@
                             </div>
                             <div class="modeldropdown">
                                 <select class="form-select form-select-sm" id="global-model-selector">
-                                    @foreach(var chatModel in ChatService.GetAvailableModels())
+                                    @foreach (var chatModel in ChatService.GetAvailableModels())
                                     {
                                         <option value="@chatModel">@chatModel</option>
                                     }
                                 </select>
                             </div>
-                            <div class ="px-3 py-2">
+                            <div class="px-3 py-2">
                                 <label></label>
 
                             </div>
@@ -174,12 +169,12 @@
     <script src="~/lib/highlight.js/languages/xml.min.js"></script>
     <script src="~/lib/highlight.js/languages/json.min.js"></script>
     <script src="~/lib/highlight.js/languages/css.min.js"></script>
-    
+
     <script src="~/js/site.js" asp-append-version="true"></script>
     <script src="~/js/chartRenderer.js" asp-append-version="true"></script>
-    
+
     <script src="~/js/chat.js"></script>
-    
+
     @* <script src="~/js/codeBlock.js" asp-append-version="true"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -192,67 +187,70 @@
 
     @* 主题和设置管理脚本 *@
     <script>
-        // 主题切换功能
-        document.addEventListener('DOMContentLoaded', () => {
-            const themeToggle = document.getElementById('theme-toggle');
-            const body = document.body;
+                // 主题切换功能
+                document.addEventListener('DOMContentLoaded', () => {
+                    const themeToggle = document.getElementById('theme-toggle');
+                    const body = document.body;
 
-            // 加载保存的主题
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            body.setAttribute('data-theme', savedTheme);
-            themeToggle.checked = savedTheme === 'dark';
+                    // 加载保存的主题
+                    const savedTheme = localStorage.getItem('theme') || 'light';
+                    body.setAttribute('data-theme', savedTheme);
+                    themeToggle.checked = savedTheme === 'dark';
 
-            // 主题切换事件
-            themeToggle.addEventListener('change', (e) => {
-                const newTheme = e.target.checked ? 'dark' : 'light';
-                body.setAttribute('data-theme', newTheme);
-                localStorage.setItem('theme', newTheme);
-            });
-
-            
-            // 加载保存的模型设置或默认选择第一个模型
-            const modelSelector = document.getElementById('global-model-selector');
-            const models = Array.from(modelSelector.options).map(option => option.value);
-            const savedModel = localStorage.getItem('selectedModel');
-
-            if (savedModel && models.includes(savedModel)) {
-                modelSelector.value = savedModel;
-            } else if (models.length > 0) {
-                modelSelector.value = models[0];
-                localStorage.setItem('selectedModel', models[0]);
-}
+                    // 主题切换事件
+                    themeToggle.addEventListener('change', (e) => {
+                        const newTheme = e.target.checked ? 'dark' : 'light';
+                        body.setAttribute('data-theme', newTheme);
+                        localStorage.setItem('theme', newTheme);
+                    });
 
 
 
-            // 保存模型选择
-            modelSelector.addEventListener('change', (e) => {
-                localStorage.setItem('selectedModel', e.target.value);
-            });
+                    // 加载保存的模型设置或默认选择第一个模型
+                    const modelSelector = document.getElementById('global-model-selector');
+                    const models = Array.from(modelSelector.options).map(option => option.value);
+                    const savedModel = localStorage.getItem('selectedModel');
 
-            // 清除历史记录
-            document.getElementById('clear-history').addEventListener('click', () => {
-                if (confirm('确定要清除所有聊天历史记录吗？')) {
-                    localStorage.removeItem('chatHistory');
-                    window.location.reload();
-                }
-            });
+                    if (savedModel && models.includes(savedModel)) {
+                        modelSelector.value = savedModel;
+                    } else if (models.length > 0) {
+                        modelSelector.value = models[0];
+                        localStorage.setItem('selectedModel', models[0]);
+        }
 
-            // 导出聊天记录
-            document.getElementById('export-history').addEventListener('click', () => {
-                const history = localStorage.getItem('chatHistory');
-                if (history) {
-                    const blob = new Blob([history], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `chat-history-${new Date().toISOString().slice(0, 10)}.json`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                }
-            });
-        });
+
+
+
+
+                    // 保存模型选择
+                    modelSelector.addEventListener('change', (e) => {
+                        localStorage.setItem('selectedModel', e.target.value);
+                    });
+
+                    // 清除历史记录
+                    document.getElementById('clear-history').addEventListener('click', () => {
+                        if (confirm('确定要清除所有聊天历史记录吗？')) {
+                            localStorage.removeItem('chatHistory');
+                            window.location.reload();
+                        }
+                    });
+
+                    // 导出聊天记录
+                    document.getElementById('export-history').addEventListener('click', () => {
+                        const history = localStorage.getItem('chatHistory');
+                        if (history) {
+                            const blob = new Blob([history], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `chat-history-${new Date().toISOString().slice(0, 10)}.json`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                        }
+                    });
+                });
     </script>
     @* 屏蔽右键 *@
     <script>

@@ -1,6 +1,11 @@
 ﻿
 class ChatUI {
     constructor() {
+
+        //this.networkButton = document.getElementById('network-search-button');
+        //this.networkIcon = document.getElementById('network-icon');
+        this.isNetworkEnabled = false; // 默认启用联网搜索
+
         this.MathJax = window.MathJax;
         this.messages = []; // 存储聊天记录
         this.session_id = '';
@@ -38,6 +43,22 @@ class ChatUI {
 
         // 设置模型选择事件监听
         this.modelSelect.addEventListener('change', () => this.toggleImageUploadButton());
+
+        //this.networkButton.addEventListener('click', () => {
+        //    this.isNetworkEnabled = !this.isNetworkEnabled;
+        //    if (this.isNetworkEnabled) {
+        //        this.networkIcon.classList.remove('bi-wifi-off');
+        //        this.networkIcon.classList.add('bi-globe2');
+        //        this.networkButton.title = "禁用联网搜索";
+               
+        //    } else {
+        //        this.networkIcon.classList.remove('bi-globe2');
+        //        this.networkIcon.classList.add('bi-wifi-off');
+        //        this.networkButton.title = "启用联网搜索";
+        //        // 发送设置更新到后端
+              
+        //    }
+        //});
 
         // 初始化图片上传按钮的可见性
         this.fetchChatModels();
@@ -116,6 +137,11 @@ class ChatUI {
         } else {
             this.uploadImageButton.style.display = 'none';
         }
+        //if (model && model.enableSearch) {
+        //    this.networkButton.style.display = 'flex'; // 或 'block'，根据您的CSS布局
+        //} else {
+        //    this.networkButton.style.display = 'none';
+        //}
     }
 
     init() {
@@ -1057,7 +1083,8 @@ class ChatUI {
                     message: message,
                     history: history,
                     model: this.modelSelect.value,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    EnableSearch:this.isNetworkEnabled
                     
                 }),
                 signal: this.controller.signal

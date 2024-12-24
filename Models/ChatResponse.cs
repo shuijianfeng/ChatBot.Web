@@ -1,7 +1,5 @@
-﻿// ChatResponse.cs
+﻿
 using System.Text.Json.Serialization;
-using static ChatBot.Models.llama32ChunkResponse.outputitem;
-
 namespace ChatBot.Models
 {
     /// <summary>
@@ -163,6 +161,12 @@ namespace ChatBot.Models
         /// </summary>
         [JsonPropertyName("image")]
         public string[] Image { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// 是否启用流式输出
+        /// </summary>
+        [JsonPropertyName("EnableSearch")]
+        public bool EnableSearch { get; set; } = false;
     }
 
     /// <summary>
@@ -248,6 +252,31 @@ namespace ChatBot.Models
         {
             public string content { get; set; }
             public string role { get; set; }
+        }
+    }
+
+    // 响应类型
+    public class GeminiChunkResponse
+    {
+        public candidate[] candidates { get; set; }
+
+        public class candidate
+        {
+            public content content { get; set; }
+
+
+        }
+        public class content
+        {
+            public parts[] parts { get; set; }
+           
+
+        }
+
+        public class parts
+        {
+            public string text { get; set; }
+           
         }
     }
 
@@ -351,4 +380,25 @@ namespace ChatBot.Models
         public DateTime Timestamp { get; set; }
     }
 
+    public class SearchResult
+    {
+        public string Title { get; set; }
+        public string Snippet { get; set; }
+        public string Link { get; set; }
+        public DateTime PublishedDate { get; set; }
+        public int ClickRate { get; set; }
+
+        // 综合评分
+        public double GetRelevanceScore()
+        {
+            // 时间衰减因子（越新的内容分数越高）
+            double timeDecay = Math.Exp((PublishedDate - DateTime.Now).TotalDays / 365.0);
+
+            // 点击率权重
+            double clickWeight = Math.Log(ClickRate + 1);
+
+            return timeDecay * clickWeight;
+        }
+    }
+    
 }

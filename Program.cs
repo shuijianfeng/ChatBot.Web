@@ -8,7 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<ChatModelSettings>(builder.Configuration.GetSection("ChatModels"));
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
-builder.Services.AddScoped<IChatService,QianWenChatService > ();
+builder.Services.AddScoped<IChatService,ChatService > ();
 
 var app = builder.Build();
 
@@ -20,6 +20,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+//app.MapStaticAssets();
 app.UseRouting();
 app.MapControllers();
 app.MapDefaultControllerRoute();

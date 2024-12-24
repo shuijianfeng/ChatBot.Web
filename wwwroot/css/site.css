@@ -38,6 +38,15 @@ body {
     background-color: var(--header-bg);
 }
 
+/* 浅色模式下的导航栏折叠按钮样式 */
+.navbar-light .navbar-toggler {
+    border-color: rgba(0, 0, 0, 0.1); /* 浅色边框 */
+    color: rgba(0, 0, 0, 0.5); /* 按钮图标颜色 */
+}
+
+.navbar-light .navbar-toggler-icon {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(0, 0, 0, 0.7)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
 
 /* 深色模式下的导航栏折叠按钮样式 */
 [data-theme="dark"] .navbar-toggler,
@@ -65,7 +74,7 @@ body {
 }
 
 /* 使用 !important 确保样式优先级 */
-@media (prefers-color-scheme: dark) {
+/*@media (prefers-color-scheme: dark) {
     .navbar-toggler {
         border-color: rgba(255, 255, 255, 0.3) !important;
         color: rgba(255, 255, 255, 0.8) !important;
@@ -74,7 +83,7 @@ body {
     .navbar-toggler-icon {
         background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255, 255, 255, 0.8)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
     }
-}
+}*/
 
 /* 消息容器 */
 .messages-container {
@@ -1294,3 +1303,4 @@ img.image-preview-img {
     .remove-image-button:hover {
         background-color: rgba(255, 0, 0, 0.8);
     }
+
