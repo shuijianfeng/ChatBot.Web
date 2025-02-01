@@ -1304,3 +1304,22 @@ img.image-preview-img {
         background-color: rgba(255, 0, 0, 0.8);
     }
 
+/* 调整 language 为“推理过程”的代码块宽度 */
+/*.Thinking-chart {
+    width: 100%;
+}
+
+    .Thinking-chart pre {
+        width: 100%;
+    }*/
+
+/* 确保推理过程代码块占满消息容器宽度 */
+/*.Thinking-chart {
+    width: 100%;
+}
+
+.message-content {*/
+    /* 确保消息内容允许子元素占满全宽 */
+    /*width: 100%;
+    box-sizing: border-box;
+}*/

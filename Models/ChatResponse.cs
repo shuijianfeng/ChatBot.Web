@@ -251,6 +251,7 @@ namespace ChatBot.Models
         public class delta
         {
             public string content { get; set; }
+            public string reasoning_content { get; set; }
             public string role { get; set; }
         }
     }
@@ -308,8 +309,10 @@ namespace ChatBot.Models
 
         public class message
         {
+            public string reasoning_content { get; set; }
             public string content { get; set; }
             public string role { get; set; }
+            
         }
     }
     // 响应类型

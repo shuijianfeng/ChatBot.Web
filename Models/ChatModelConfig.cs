@@ -7,6 +7,7 @@ namespace ChatBot.Models
     {
         public string Name { get; set; } = string.Empty; // Ä£ĞÍÃû³Æ
         public string ApiEndpoint { get; set; } = string.Empty;
+        public string EnvironmentApikeyName { get; set; } = string.Empty;
         public float Temperature { get; set; }
         public int MaxTokens { get; set; }
         public bool EnableSearch { get; set; }

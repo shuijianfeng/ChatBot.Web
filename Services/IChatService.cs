@@ -19,6 +19,8 @@ using System.Runtime.Intrinsics.X86;
 using System.IO;
 using AngleSharp.Dom;
 using static ChatBot.Models.GeminiChunkResponse;
+using System.Data;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace ChatBot.Web.Services
 {
@@ -179,9 +181,6 @@ namespace ChatBot.Web.Services
             return Task.FromResult(string.Join("\n", summaries));
         }
 
-      
-
-
         private async Task<List<string>> PerformGoogleSearch(string query)
         {
             var client = _httpClientFactory.CreateClient();
@@ -275,12 +274,12 @@ namespace ChatBot.Web.Services
                         }
                         break;
                     
-                    case "deepseek":
-                        await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
-                        {
-                            yield return item;
-                        }
-                        break;
+                    //case "deepseek":
+                    //    await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
+                    //    {
+                    //        yield return item;
+                    //    }
+                    //    break;
                     
                     default:
                         if (config.Name.StartsWith("OpenAi"))
@@ -310,9 +309,19 @@ namespace ChatBot.Web.Services
                                 }
                                 else
                                 {
-                                    await foreach (var item in GenerateStreamViaOpenAIAsync(config, request, cancellationToken))
+                                    if (config.Name.StartsWith("DeepSeek"))
                                     {
-                                        yield return item;
+                                        await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
+                                        {
+                                            yield return item;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        await foreach (var item in GenerateStreamViaOpenAIAsync(config, request, cancellationToken))
+                                        {
+                                            yield return item;
+                                        }
                                     }
                                 }
                             }
@@ -326,12 +335,12 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> GenerateStreamViallama32Async(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable("AiApiKey");
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
-                throw new InvalidOperationException("通义千问API配置缺失");
+                throw new InvalidOperationException("API配置缺失");
             }
 
             // 创建HTTP客户端
@@ -391,12 +400,12 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> GenerateStreamViaVLAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable("AiApiKey");
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
-                throw new InvalidOperationException("通义千问API配置缺失");
+                throw new InvalidOperationException("API配置缺失");
             }
 
             // 创建HTTP客户端
@@ -452,12 +461,12 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable("AiApiKey");
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
-                throw new InvalidOperationException("通义千问API配置缺失");
+                throw new InvalidOperationException("API配置缺失");
             }
 
             // 创建HTTP客户端
@@ -517,11 +526,11 @@ namespace ChatBot.Web.Services
             string endpoint = "completion";
             var apiEndpoint = $"{baseUrl}/{modelconfg.Promptid}/{endpoint}";
 
-            var apiKey = Environment.GetEnvironmentVariable("AiApiKey");
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
-                throw new InvalidOperationException("通义千问API配置缺失");
+                throw new InvalidOperationException("API配置缺失");
             }
 
             // 创建HTTP客户端
@@ -572,12 +581,12 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> DeepbricksOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable("DeepbricksKey");
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
-                throw new InvalidOperationException("DeepbricksAPI配置缺失");
+                throw new InvalidOperationException("API配置缺失");
             }
 
             // 创建HTTP客户端
@@ -645,13 +654,13 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable("OpenAiKey");
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
 
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
-                throw new InvalidOperationException("DeepbricksAPI配置缺失");
+                throw new InvalidOperationException("API配置缺失");
             }
 
             // 创建HTTP客户端
@@ -726,12 +735,12 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> ClaudeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable("ClaudeApi");
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
-                throw new InvalidOperationException("DeepbricksAPI配置缺失");
+                throw new InvalidOperationException("API配置缺失");
             }
             string Search = string.Empty;
             if (request.EnableSearch)
@@ -750,7 +759,7 @@ namespace ChatBot.Web.Services
             {
 
                 model = modelconfg.Model,
-                system = "你是一个得力的助手,请用用简体中文回答。公式输出时用$和或$$包裹。"+ Search,
+                system = "你是一个得力的助手,请用简体中文回答。如果有推理过程也使用中文回答。如果输出中有LaTeX格式的公式请用$或$$包裹" + Search,
                 messages = ToMessagesClaude(request),
 
                 stream = modelconfg.Stream,
@@ -808,12 +817,12 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> DeepseekOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable("DeepseekKey");
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
-                throw new InvalidOperationException("DeepseekAPI配置缺失");
+                throw new InvalidOperationException("API配置缺失");
             }
 
             // 创建HTTP客户端
@@ -827,13 +836,13 @@ namespace ChatBot.Web.Services
                 model = modelconfg.Model,
                 messages = ToMessagesOpenAi(request),
                 stream = modelconfg.Stream,
-                temperature = modelconfg.Temperature,
-                //max_tokens = modelconfg.MaxTokens,
-                enable_search = modelconfg.EnableSearch,
-                stream_options = new
-                {
-                    include_usage = modelconfg.Include_usage
-                }
+                //temperature = modelconfg.Temperature,
+                ////max_tokens = modelconfg.MaxTokens,
+                //enable_search = modelconfg.EnableSearch,
+                //stream_options = new
+                //{
+                //    include_usage = modelconfg.Include_usage
+                //}
             };
             
             var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
@@ -845,13 +854,17 @@ namespace ChatBot.Web.Services
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
-
+            bool beging= false;
+            bool end = false;
+            bool beging1 = false;
+            bool end1 = false;
             while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
             {
-                var line = await reader.ReadLineAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
+               
                 if (modelconfg.Stream)
                 {
+                    var line = await reader.ReadLineAsync(cancellationToken);
+                    if (string.IsNullOrEmpty(line)) continue;
                     if (line.StartsWith("data: "))
                     {
                         line = line.Substring(6);
@@ -859,18 +872,73 @@ namespace ChatBot.Web.Services
 
                         var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
                         var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
+                        var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
+                        if (!string.IsNullOrEmpty(reasoning_content))
+                        {
+                            if (!beging)
+                            {
+                                yield return "<think>" + "\n" + "\n"+ "```Thoughts" + "\n" + "\n" + reasoning_content;
+                                beging = true;
+                            }
+                            else
+                            {
+                                yield return reasoning_content;
+                                
+                            }
+                            
+                        }
                         if (!string.IsNullOrEmpty(content))
                         {
-                            yield return content;
+                            if (beging&&!end)
+                            {
+                                yield return "\n"+"\n" + "```"  + "\n"+ "\n" + "</think>"  + "\n"+"\n"  + content;
+                                end = true;
+                            }
+                            else
+                            {
+                                if (content == "<think>" && !beging1 && !end1)
+                                {
+                                    yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
+                                    beging1 = true;
+                                }
+                                else
+                                {
+                                    if (content == "</think>" && beging1 && !end1)
+                                    {
+                                        yield return  "\n" + "\n" + "```" + "\n" + "\n" + content  + "\n";
+                                        end1 = true;
+                                    }
+                                    else
+                                    {
+                                        yield return content;
+                                    }
+                                   
+                                }
+                                
+                            }
+                            
                         }
+                        
                     }
                 }
                 else
                 {
+                    var line = await reader.ReadToEndAsync(cancellationToken);
+                    if (string.IsNullOrEmpty(line)) continue;
                     var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
                     var content = chunk?.choices?.FirstOrDefault()?.message?.content;
+                    var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
+                    if (!string.IsNullOrEmpty(reasoning_content))
+                    {
+                        reasoning_content = "<think>"+ reasoning_content+ "</think>";
+                        reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                        reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                        yield return reasoning_content+ content;
+                    }
                     if (!string.IsNullOrEmpty(content))
                     {
+                        content = content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                        content = content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
                         yield return content;
                     }
                 }
@@ -880,14 +948,14 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable("GeminiKey");
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
             apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
 
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
-                throw new InvalidOperationException("GoogleKey配置缺失");
+                throw new InvalidOperationException("配置缺失");
             }
             if (modelconfg.Stream)
             {
@@ -904,12 +972,21 @@ namespace ChatBot.Web.Services
             // 准备请求内容
             var requestContent = new
             {
-                system_instruction= new
+                system_instruction = new
                 {
                     parts = new { text = "你是一个得力的助手,请用简体中文回答。如果有推理过程也使用中文回答。如果输出中有LaTeX格式的公式请用$或$$包裹" }
                 },
-      
+
                 contents = ToMessagesGemini(request),
+                //config = new
+                //{
+                //     system_instruction = new
+                //    {
+                //        parts = new { text = "你是一个得力的助手,请用简体中文回答。如果有推理过程也使用中文回答。如果输出中有LaTeX格式的公式请用$或$$包裹" }
+                //    },
+                //    thinking_config = new
+                //    { include_thoughts = true }
+                //}
                 //tools = new List<object>
                 //{
                 //      new
@@ -926,7 +1003,7 @@ namespace ChatBot.Web.Services
                 //}
 
             };
-            //var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
             var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
@@ -991,7 +1068,7 @@ namespace ChatBot.Web.Services
                     messages.Add(new
                     {
                         role = msg.Role,
-                        content = new List<object> { new { text = msg.Content } }
+                        content = new List<object> { new { text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) } }
                     });
                 }
                 else
@@ -999,7 +1076,7 @@ namespace ChatBot.Web.Services
                     messages.Add(new
                     {
                         role = msg.Role,
-                        content = new List<object> { new { image = msg.Images }, new { text = msg.Content } }
+                        content = new List<object> { new { image = msg.Images }, new { text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) } }
                     });
                 }
             }
@@ -1021,14 +1098,14 @@ namespace ChatBot.Web.Services
             var messages = new List<object>();
 
             // 添加系统提示词
-            if (issystem && !isimage)
+            if (issystem )
             {
                 messages.Add(new
                 {
                     role = "system",
                     content = new List<object> {
 
-                        new { type = "text", text = "你是一个得力的助手,请用简体中文回答。公式输出时用$和或$$包裹。"+Search } }
+                        new { type = "text", text = "你是一个得力的助手,请用简体中文回答。如果有推理过程也使用中文回答。如果输出中有LaTeX格式的公式请用$或$$包裹"+Search } }
 
                 });
             }
@@ -1039,7 +1116,8 @@ namespace ChatBot.Web.Services
                 if (msg.Images?.Any() == true)
                 {
                     var contentlist = new List<object>();
-                    contentlist.Add(new { type = "text", text = msg.Content });
+                    
+                    contentlist.Add(new { type = "text", text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
                     foreach (var image in msg.Images)
                     {
 
@@ -1056,7 +1134,7 @@ namespace ChatBot.Web.Services
                     messages.Add(new
                     {
                         role = msg.Role,
-                        content = msg.Content
+                        content = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content)
                     });
                 }
             }
@@ -1083,8 +1161,9 @@ namespace ChatBot.Web.Services
             {
                 if (msg.Images?.Any() == true)
                 {
+                     
                     var contentlist = new List<object>();
-                    contentlist.Add(new {  text = msg.Content });
+                    contentlist.Add(new {  text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
                     foreach (var image in msg.Images)
                     {
 
@@ -1099,7 +1178,7 @@ namespace ChatBot.Web.Services
                 else
                 {
                     var contentlist = new List<object>();
-                    contentlist.Add(new {  text = msg.Content });
+                    contentlist.Add(new {  text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
                     contents.Add(new
                     {
                         role = msg.Role== "assistant"? "model" : msg.Role,
@@ -1128,7 +1207,7 @@ namespace ChatBot.Web.Services
                         contentList.Add(new
                         {
                             type = "text",
-                            text = msg.Content
+                            text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content)
                         });
                     }
 
@@ -1159,7 +1238,7 @@ namespace ChatBot.Web.Services
                     messages.Add(new
                     {
                         role = msg.Role,
-                        content = msg.Content
+                        content = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content)
                     });
                 }
             }
@@ -1238,7 +1317,8 @@ namespace ChatBot.Web.Services
 
             if (request.History.Count > 0 && request.History[request.History.Count - 1].Role == "user")
             {
-                messages = request.History[request.History.Count - 1].Content;
+                messages = (request.History[request.History.Count - 1].Role == "assistant" ? delstr(request.History[request.History.Count - 1].Content, "<think>", "</think>") : request.History[request.History.Count - 1].Content);
+                //messages = request.History[request.History.Count - 1].Content;
             }
 
 
@@ -1286,6 +1366,36 @@ namespace ChatBot.Web.Services
             };
 
             yield return errorEvent;
+        }
+
+        public static string delstr(string source, string startDelimiter, string endDelimiter)
+        {
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(startDelimiter) || string.IsNullOrEmpty(endDelimiter) || !source.Contains(startDelimiter) || !source.Contains(endDelimiter))
+                return source;
+
+            // 使用 ReadOnlySpan 避免分配
+            ReadOnlySpan<char> span = source.AsSpan();
+            int startIndex = span.IndexOf(startDelimiter.AsSpan());
+
+            if (startIndex == -1)
+                return source;
+
+            int endIndex = span[startIndex..].IndexOf(endDelimiter.AsSpan());
+            if (endIndex == -1)
+                return source;
+
+            endIndex += startIndex; // 调整为完整字符串的索引
+
+            // 使用 string.Create 高效创建结果字符串
+            int finalLength = source.Length - (endIndex - startIndex + endDelimiter.Length);
+            int endDelimiterlen = endDelimiter.Length;
+            return string.Create(finalLength, (source, startIndex, endIndex, endDelimiterlen), (span, state) =>
+            {
+
+                source.AsSpan(0, state.startIndex).CopyTo(span);
+                source.AsSpan(state.endIndex + state.endDelimiterlen)
+                      .CopyTo(span[state.startIndex..]);
+            });
         }
     }
 }

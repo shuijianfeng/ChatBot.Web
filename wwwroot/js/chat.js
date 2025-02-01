@@ -483,17 +483,24 @@ class ChatUI {
         // 保存原始代码
         const originalCode = code.textContent;
         // 获取语言
-        const language = this.detectLanguage(code);
+        let language = this.detectLanguage(code);
+        //if (language === 'Thoughts') {
+            
+        //    setTimeout(() => {
 
+        //        const currentTime = new Date().toLocaleTimeString();
+        //        language = `Thoughts: ${currentTime}`;
+        //    }, 1000); // 延迟3秒后显示时间
+        //}
         // 创建标题栏
         const header = this.createCodeHeader(language, originalCode);
-
+        
         // 重新组织结构
         pre.parentNode.insertBefore(wrapper, pre);
         wrapper.appendChild(header);
         //包装包装用mermaid-chartmermaid
         if (language === 'mermaid') {
-            const chartId = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
+            const chartId = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
             const chart = document.createElement('div');
             chart.className = 'mermaid-chart';
             chart.id = chartId
@@ -504,7 +511,7 @@ class ChatUI {
         {
             //包装包装用mermaid-chartmermaid
             if (language === 'jsmind') {
-                const chartId = `jsmind-${Math.random().toString(36).substr(2, 9)}`;
+                const chartId = `jsmind-${Math.random().toString(36).slice(2, 11)}`;
                 const chart = document.createElement('div');
                 chart.className = 'jsmind-chart';
                 chart.id = chartId
@@ -512,7 +519,43 @@ class ChatUI {
                 wrapper.appendChild(chart);
             }
             else {
-                wrapper.appendChild(pre);
+                if (language === 'Thoughts') {
+                    
+                    header.style.maxWidth = '700px'
+                    wrapper.style.maxWidth = '700px'
+                   
+                    pre.style.maxWidth = '700px'
+
+                    header.style.width = '100%'; // 添加这行代码，设置宽度为100%
+
+                    wrapper.style.width = '100%'; // 添加这行代码，设置宽度为100%
+                    wrapper.style.height ='auto'
+
+                    pre.style.width = '100%';          // 代码块宽度100%
+                    pre.style.height = 'auto';         // 代码块高度自动
+
+                    pre.style.overflow = 'hidden';     // 隐藏滚动条
+                    pre.style.whiteSpace = 'pre-wrap'; // 允许内容自动换行
+                    pre.style.overflowwrap = 'break-word';      // 防止长内容不换行
+                    pre.style.wordWrap = 'break-word';      // 防止长内容不换行
+                    code.style.width = '100%';          // 代码块宽度100%
+                    code.style.height = 'auto'; 
+                    code.style.overflow = 'hidden';     // 隐藏滚动条
+                    code.style.whiteSpace = 'pre-wrap'; // 允许内容自动换行
+                    code.style.overflowwrap = 'break-word';      // 防止长内容不换行
+
+                    const details = document.createElement('details');
+                    details.open = true;
+                    const summary = document.createElement('summary');
+                    details.appendChild(summary);
+                    details.appendChild(pre);
+                    wrapper.appendChild(details);
+                    
+                    
+                }
+                else {
+                    wrapper.appendChild(pre);
+                }
             }
         }
           
@@ -1112,7 +1155,7 @@ class ChatUI {
 
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
-                            const data = line.slice(5);
+                            const data = line.slice(6);
                             if (data === '[DONE]') continue;
 
                             try {
@@ -1200,10 +1243,3 @@ class ChatUI {
 document.addEventListener('DOMContentLoaded', () => {
     const chat = new ChatUI();
 });
-
-
-
-
-
-
-
