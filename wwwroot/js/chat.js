@@ -694,10 +694,12 @@ class ChatUI {
         deleteButton.className = 'delete-button';
         deleteButton.setAttribute('aria-label', 'Delete');
         deleteButton.innerHTML = `
-    <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-        <path fill="currentColor" d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+    <svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path fill="currentColor" d="M8 0.5L15.5 8L8 15.5L0.5 8L8 0.5Z"/>
+        <path fill="currentColor" d="M12 7H4V9H12V7Z"/>
     </svg>
 `;
+
         
         // 添加删除事件监听
         deleteButton.addEventListener('click', () => {
