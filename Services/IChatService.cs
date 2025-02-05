@@ -834,7 +834,7 @@ namespace ChatBot.Web.Services
             {
 
                 model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request),
+                messages = ToMessagesOpenAi(request,true),
                 stream = modelconfg.Stream,
                 //temperature = modelconfg.Temperature,
                 ////max_tokens = modelconfg.MaxTokens,
@@ -1083,7 +1083,6 @@ namespace ChatBot.Web.Services
 
             return messages;
         }
-
         private static List<object> ToMessagesOpenAi(ChatRequest request, bool issystem = true, string Search = "")
         {
             bool isimage = false;
@@ -1122,6 +1121,7 @@ namespace ChatBot.Web.Services
                     {
 
                         contentlist.Add(new { type = "image_url", image_url = new { url = $"data:image/jpeg;base64,{ConvertUrlToBase64(image)}" } });
+                        
                     }
                     messages.Add(new
                     {

@@ -172,6 +172,7 @@ class ChatUI {
         this.imagePreview.style.display = 'none';
         this.previewImg.src = '';
         this.imageInput.value = '';
+        
     }
     // 移除所有图片预览
     removeAllImages() {
@@ -179,6 +180,7 @@ class ChatUI {
         this.imageInput.value = '';
         this.uploadedImageUrls = [];
         this.previewContainer.style.display = "display: none;"
+        
     }
     // 修改 handleImageUpload 方法，添加单个图片移除功能
     async handleImageUpload(event) {
@@ -249,6 +251,7 @@ class ChatUI {
                     if (this.uploadedImageUrls.length === 0) {
                         this.previewContainer.style.display = 'none';
                     }
+                    this.updateSendButtonState();
                 });
 
                 // 组装图片预览元素
@@ -449,7 +452,7 @@ class ChatUI {
 
     updateSendButtonState() {
         const isEmpty = !this.messageInput.value.trim();
-        this.sendButton.disabled = isEmpty || this.isProcessing;
+        this.sendButton.disabled = isEmpty && this.uploadedImageUrls.length==0 || this.isProcessing;
     }
 
     setLoadingState(loading) {
@@ -624,6 +627,23 @@ class ChatUI {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach(mutation => {
                 mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === 1 && node.classList.contains('message')) { // 元素节点且为消息
+                        const deleteBtn = node.querySelector('.delete-button');
+                        if (!deleteBtn) {
+                            const actionsDiv = node.querySelector('.message-actions');
+                            if (actionsDiv) {
+                                const deleteButton = document.createElement('button');
+                                deleteButton.className = 'delete-button';
+                                deleteButton.innerHTML = '&times;';
+                                deleteButton.title = '删除消息';
+                                deleteButton.addEventListener('click', () => {
+                                    this.deleteMessage(node);
+                                });
+                                actionsDiv.appendChild(deleteButton);
+                            }
+                        }
+                    }
+
                     if (node.nodeType === 1) { // 元素节点
                         const newCodeBlocks = node.querySelectorAll('pre');
                         newCodeBlocks.forEach(pre => {
@@ -669,6 +689,24 @@ class ChatUI {
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
 
+        // 创建删除按钮
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'delete-button';
+        deleteButton.setAttribute('aria-label', 'Copy');
+        deleteButton.innerHTML = `
+       <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+           <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/>
+                <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
+       </svg>
+   `;
+        
+        // 添加删除事件监听
+        deleteButton.addEventListener('click', () => {
+            this.deleteMessage(messageDiv);
+        });
+
+        
+
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content markdown-body';
         contentDiv.dataset.rawContent = content;
@@ -678,6 +716,10 @@ class ChatUI {
                 imagesHtml += `<img src="${url}" alt="上传的图片" class="uploaded-image-preview" />\n`;
             });
             contentDiv.innerHTML = imagesHtml + marked.parse(content);
+            const copyButton = this.createCopyButton(content);
+            
+            actionsDiv.appendChild(deleteButton);
+            actionsDiv.appendChild(copyButton);
         }
         else {
             try {
@@ -704,6 +746,8 @@ class ChatUI {
 
                 // 添加消息复制按钮
                 const copyButton = this.createCopyButton(content);
+                
+                actionsDiv.appendChild(deleteButton);
                 actionsDiv.appendChild(copyButton);
             } catch (e) {
                 console.error('Markdown 渲染错误:', e);
@@ -719,6 +763,15 @@ class ChatUI {
 
         return { messageDiv, contentDiv };
     }
+
+    // 删除消息的方法
+    deleteMessage(messageElement) {
+        if (confirm('确定要删除这条消息吗？')) {
+            this.messagesContainer.removeChild(messageElement);
+            // 如果需要同步删除到服务器或进行其他操作，请在这里添加相应代码
+        }
+    }
+
     // 获取复制图标
     getCopyIcon() {
         return `<svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
@@ -964,7 +1017,7 @@ class ChatUI {
     // 添加消息到内存和UI
     appendMessage(role, content, isStreaming = false) {
         // 如果是流式响应的第一部分，添加新消息
-        if (!isStreaming || !this.currentMessageElement) {
+        if (!this.currentMessageElement || role === "user") {
             // 添加消息到内存
             this.messages.push({
                 role: role,
@@ -976,8 +1029,59 @@ class ChatUI {
             const { messageDiv, contentDiv } = this.createMessageElement(role, content);
             this.messagesContainer.appendChild(messageDiv);
 
-            if (isStreaming) {
+            if (isStreaming || role==="user") {
                 this.currentMessageElement = messageDiv;
+            }
+            else
+            {
+                this.currentMessageElement = messageDiv;
+                // 更新现有消息的内容
+                const contentDiv = this.currentMessageElement.querySelector('.message-content');
+                const copyButton = this.currentMessageElement.querySelector('.copy-button');
+
+                if (!contentDiv.dataset.rawContent) {
+                    contentDiv.dataset.rawContent = '';
+                }
+                contentDiv.dataset.rawContent = content;
+
+                // 更新内存中最后一条消息的内容
+                if (this.messages.length > 0) {
+                    this.messages[this.messages.length - 1].content = contentDiv.dataset.rawContent;
+                    this.messages[this.messages.length - 1].images = this.uploadedImageUrls.slice(); // 确保 images 更新
+                }
+
+                copyButton.dataset.copyContent = contentDiv.dataset.rawContent;
+
+                try {
+
+                    contentDiv.innerHTML = marked.parse(contentDiv.dataset.rawContent);
+
+                    // 处理所有代码块
+                    contentDiv.querySelectorAll('pre code').forEach((block) => {
+                        // 添加语言类标识
+                        const language = block.getAttribute('class') || '';
+                        if (language) {
+                            block.parentElement.classList.add('language-' + language.replace('language-', ''));
+                        }
+                        // 添加程序框标题和程序框复制按钮
+
+                        const pre = block.parentElement;
+                        if (!pre.closest('.code-block-wrapper')) {
+                            this.enhanceCodeBlock(pre);
+                        }
+
+                        // 应用高亮
+                        hljs.highlightElement(block);
+                    });
+
+                    /// 在内容更新后触发 MathJax 渲染
+                    //if (contentDiv) {
+                    //    renderMath(contentDiv);
+                    //}
+                } catch (e) {
+                    console.error('Markdown 渲染错误:', e);
+                    contentDiv.textContent = contentDiv.dataset.rawContent;
+                }
             }
         } else {
             // 更新现有消息的内容
@@ -1075,7 +1179,7 @@ class ChatUI {
         // 添加历史消息
         this.messages.forEach(msg => {
             // 确保消息格式正确
-            if (msg.role && msg.content) {
+            if (msg.role && (msg.content || msg.images.length>0)) {
                 apiMessages.push({
                     role: msg.role,
                     content: msg.content,
@@ -1105,7 +1209,7 @@ class ChatUI {
         const message = this.messageInput.value.trim();
         const imageUrls = this.uploadedImageUrls.slice(); // 复制数组
 
-        if (!message || this.isProcessing) return;
+        if (!message && imageUrls.length==0 || this.isProcessing) return;
 
         this.setLoadingState(true);
         this.appendMessage('user', message);
@@ -1164,7 +1268,7 @@ class ChatUI {
                                     throw new Error(parsed.error);
                                 }
                                 if (parsed.content) {
-                                    this.appendMessage('assistant', parsed.content, true);
+                                    this.appendMessage('assistant', parsed.content, this.stream);
                                 }
                             } catch (e) {
                                 console.error('SSE数据解析错误:', e);

@@ -222,6 +222,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    left:  auto;
     padding: 2px 6px;
     background: transparent;
     border: none;
@@ -986,6 +987,14 @@ pre {
         color: #fff;
     }
 
+[data-bs-theme="dark"] .delete-button {
+    color: #adb5bd;
+}
+
+    [data-bs-theme="dark"] .delete-button:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: #fff;
+    }
 [data-bs-theme="dark"] pre {
     background-color: #1e1e1e;
     border-color: #444;
@@ -1304,22 +1313,37 @@ img.image-preview-img {
         background-color: rgba(255, 0, 0, 0.8);
     }
 
-/* 调整 language 为“推理过程”的代码块宽度 */
-/*.Thinking-chart {
-    width: 100%;
+
+/* 复制按钮样式 */
+.delete-button {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #6c757d;
+    border-radius: 4px;
+    transition: all 0.2s ease;
 }
 
-    .Thinking-chart pre {
-        width: 100%;
-    }*/
+    .delete-button:hover {
+        background-color: var(--color-neutral-muted);
+        color: var(--color-fg-default);
+    }
 
-/* 确保推理过程代码块占满消息容器宽度 */
-/*.Thinking-chart {
-    width: 100%;
-}
+    .delete-button svg {
+        width: 16px;
+        height: 16px;
+    }
 
-.message-content {*/
-    /* 确保消息内容允许子元素占满全宽 */
-    /*width: 100%;
-    box-sizing: border-box;
-}*/
+/* 复制按钮图标大小 */
+    .delete-button .octicon {
+        width: 16px;
+        height: 16px;
+    }
+/* 复制图标悬停效果 */
+    .delete-button:hover .icon {
+        color: var(--color-accent-fg);
+    }
+
