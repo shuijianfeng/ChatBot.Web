@@ -1347,10 +1347,11 @@ img.image-preview-img {
         color: var(--color-accent-fg);
     }*/
 
+/* 删除按钮基础样式 */
 .delete-button {
-    display: flex; /* 使用 flex 布局 */
-    align-items: center; /* 垂直居中 */
-    justify-content: center; /* 水平居中 */
+    display: inline-flex !important; /* 使用 !important 确保显示 */
+    align-items: center !important;
+    justify-content: center !important;
     padding: 4px 8px;
     background: transparent;
     border: none;
@@ -1358,14 +1359,19 @@ img.image-preview-img {
     color: var(--color-fg-muted);
     border-radius: 4px;
     transition: all 0.2s ease;
+    opacity: 1 !important; /* 确保可见 */
+    visibility: visible !important;
 }
 
+    /* 删除按钮悬停样式 */
     .delete-button:hover {
         background-color: var(--color-neutral-muted);
-        color: var(--color-danger-fg); /* 使用危险色 */
+        color: var(--color-danger-fg);
     }
 
+    /* 删除按钮图标样式 */
     .delete-button svg {
         width: 16px;
         height: 16px;
+        display: block !important; /* 确保图标显示 */
     }

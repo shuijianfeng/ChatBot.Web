@@ -692,13 +692,12 @@ class ChatUI {
         // 创建删除按钮
         const deleteButton = document.createElement('button');
         deleteButton.className = 'delete-button';
-        deleteButton.setAttribute('aria-label', 'Copy');
+        deleteButton.setAttribute('aria-label', 'Delete');
         deleteButton.innerHTML = `
-       <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-           <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/>
-                <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
-       </svg>
-   `;
+    <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+        <path fill="currentColor" d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+    </svg>
+`;
         
         // 添加删除事件监听
         deleteButton.addEventListener('click', () => {
