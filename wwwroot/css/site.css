@@ -218,7 +218,7 @@ body {
 }
 
 /* 复制按钮样式 */
-.delete-button
+.delete-button,
 .copy-button {
     display: flex;
     align-items: center;
@@ -231,26 +231,27 @@ body {
     color: var(--color-fg-muted);
     cursor: pointer;
     transition: all 0.2s;
+    background: transparent;
 }
-.delete-button:hover
+.delete-button:hover,
 .copy-button:hover {
     background-color: var(--color-neutral-muted);
     color: var(--color-fg-default);
 }
-.delete-button svg
+.delete-button svg,
 .copy-button svg {
     width: 16px;
     height: 16px;
 }
 
     /* 复制按钮图标大小 */
-.delete-button .octicon
+.delete-button .octicon,
 .copy-button .octicon {
     width: 16px;
     height: 16px;
 }
     /* 复制图标悬停效果 */
-.delete-button:hover .icon
+.delete-button:hover .icon,
 .copy-button:hover .icon {
     color: var(--color-accent-fg);
 }
@@ -946,7 +947,7 @@ pre {
 }
 
 /* 复制按钮样式 */
-.delete-button
+.delete-button,
 .copy-button {
     display: flex;
     align-items: center;
@@ -960,7 +961,7 @@ pre {
     border-radius: 4px;
     transition: all 0.2s ease;
 }
-.delete-button:hover
+.delete-button:hover,
 .copy-button:hover {
     background-color: rgba(0, 0, 0, 0.05);
     color: #212529;
