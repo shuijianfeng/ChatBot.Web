@@ -179,6 +179,7 @@ body {
     padding: 4px 0;
     margin-bottom: 4px;
     min-height: 24px; /* 设置最小高度 */
+    gap: 8px; /* 增加header内元素的间距 */
 }
 /* 角色容器样式 */
 .role-container {
@@ -207,6 +208,8 @@ body {
     gap: 4px;
     opacity: 0;
     transition: opacity 0.2s;
+    gap: 4px; /* 增加按钮之间的间距 */
+    margin-left: 16px; /* 增加与 message-role 的间距 */
 }
 
 /* AI 消息特殊样式 */
@@ -225,7 +228,7 @@ body {
     align-items: center;
     justify-content: center;
     
-    padding: 2px 6px;
+    padding: 2px 4px;
     background: transparent;
     border: none;
     border-radius: 4px;
@@ -240,7 +243,7 @@ body {
     align-items: center;
     justify-content: center;
     left: auto;
-    padding: 2px 6px;
+    padding: 2px 4px;
     background: transparent;
     border: none;
     border-radius: 4px;
