@@ -627,22 +627,22 @@ class ChatUI {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach(mutation => {
                 mutation.addedNodes.forEach(node => {
-                    if (node.nodeType === 1 && node.classList.contains('message')) { // 元素节点且为消息
-                        const deleteBtn = node.querySelector('.delete-button');
-                        if (!deleteBtn) {
-                            const actionsDiv = node.querySelector('.message-actions');
-                            if (actionsDiv) {
-                                const deleteButton = document.createElement('button');
-                                deleteButton.className = 'delete-button';
-                                deleteButton.innerHTML = '&times;';
-                                deleteButton.title = '删除消息';
-                                deleteButton.addEventListener('click', () => {
-                                    this.deleteMessage(node);
-                                });
-                                actionsDiv.appendChild(deleteButton);
-                            }
-                        }
-                    }
+                    //if (node.nodeType === 1 && node.classList.contains('message')) { // 元素节点且为消息
+                    //    const deleteBtn = node.querySelector('.delete-button');
+                    //    if (!deleteBtn) {
+                    //        const actionsDiv = node.querySelector('.message-actions');
+                    //        if (actionsDiv) {
+                    //            const deleteButton = document.createElement('button');
+                    //            deleteButton.className = 'delete-button';
+                    //            deleteButton.innerHTML = '&times;';
+                    //            deleteButton.title = '删除消息';
+                    //            deleteButton.addEventListener('click', () => {
+                    //                this.deleteMessage(node);
+                    //            });
+                    //            actionsDiv.appendChild(deleteButton);
+                    //        }
+                    //    }
+                    //}
 
                     if (node.nodeType === 1) { // 元素节点
                         const newCodeBlocks = node.querySelectorAll('pre');
