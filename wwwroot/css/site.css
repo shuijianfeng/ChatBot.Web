@@ -1375,3 +1375,22 @@ img.image-preview-img {
         height: 16px;
         display: block !important; /* 确保图标显示 */
     }
+
+    /* 删除按钮内的SVG图标样式 */
+    .delete-button svg {
+        width: 16px !important; /* 强制设置宽度 */
+        height: 16px !important; /* 强制设置高度 */
+        display: block !important; /* 确保显示 */
+        min-width: 16px; /* 设置最小宽度 */
+        min-height: 16px; /* 设置最小高度 */
+    }
+
+/* 删除按钮基础样式 */
+.delete-button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 4px;
+}
