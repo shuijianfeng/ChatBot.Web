@@ -218,11 +218,12 @@ body {
 }
 
 /* 复制按钮样式 */
+.delete-button
 .copy-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    left:  auto;
+    left: auto;
     padding: 2px 6px;
     background: transparent;
     border: none;
@@ -231,26 +232,28 @@ body {
     cursor: pointer;
     transition: all 0.2s;
 }
-
-    .copy-button:hover {
-        background-color: var(--color-neutral-muted);
-        color: var(--color-fg-default);
-    }
-
-    .copy-button svg {
-        width: 16px;
-        height: 16px;
-    }
+.delete-button:hover
+.copy-button:hover {
+    background-color: var(--color-neutral-muted);
+    color: var(--color-fg-default);
+}
+.delete-button svg
+.copy-button svg {
+    width: 16px;
+    height: 16px;
+}
 
     /* 复制按钮图标大小 */
-    .copy-button .octicon {
-        width: 16px;
-        height: 16px;
-    }
+.delete-button .octicon
+.copy-button .octicon {
+    width: 16px;
+    height: 16px;
+}
     /* 复制图标悬停效果 */
-    .copy-button:hover .icon {
-        color: var(--color-accent-fg);
-    }
+.delete-button:hover .icon
+.copy-button:hover .icon {
+    color: var(--color-accent-fg);
+}
 /* 复制成功动画 */
 @keyframes copySuccess {
     0% {
@@ -943,22 +946,25 @@ pre {
 }
 
 /* 复制按钮样式 */
+.delete-button
 .copy-button {
     display: flex;
     align-items: center;
     padding: 4px 8px;
     background: transparent;
-    border: none;
+    border: none !important; /* 强制移除边框 */
+    outline: none !important; /* 移除轮廓 */
+    
     cursor: pointer;
     color: #6c757d;
     border-radius: 4px;
     transition: all 0.2s ease;
 }
-
-    .copy-button:hover {
-        background-color: rgba(0, 0, 0, 0.05);
-        color: #212529;
-    }
+.delete-button:hover
+.copy-button:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: #212529;
+}
 
 /* 代码块容器 */
 .code-block-wrapper {
@@ -1348,9 +1354,9 @@ img.image-preview-img {
     }*/
 
 /* 删除按钮基础样式 */
-.delete-button {
-    display: inline-flex !important; /* 使用 !important 确保显示 */
-    align-items: center !important;
+/*.delete-button {
+    display: inline-flex !important;*/ /* 使用 !important 确保显示 */
+    /*align-items: center !important;
     justify-content: center !important;
     padding: 4px 8px;
     background: transparent;
@@ -1359,34 +1365,34 @@ img.image-preview-img {
     color: var(--color-fg-muted);
     border-radius: 4px;
     transition: all 0.2s ease;
-    opacity: 1 !important; /* 确保可见 */
-    visibility: visible !important;
-}
+    opacity: 1 !important;*/ /* 确保可见 */
+    /*visibility: visible !important;
+}*/
 
     /* 删除按钮悬停样式 */
-    .delete-button:hover {
+    /*.delete-button:hover {
         background-color: var(--color-neutral-muted);
         color: var(--color-danger-fg);
-    }
+    }*/
 
     /* 删除按钮图标样式 */
-    .delete-button svg {
+    /*.delete-button svg {
         width: 16px;
         height: 16px;
-        display: block !important; /* 确保图标显示 */
-    }
+        display: block !important;*/ /* 确保图标显示 */
+    /*}*/
 
     /* 删除按钮内的SVG图标样式 */
-    .delete-button svg {
-        width: 16px !important; /* 强制设置宽度 */
-        height: 16px !important; /* 强制设置高度 */
-        display: block !important; /* 确保显示 */
-        min-width: 16px; /* 设置最小宽度 */
-        min-height: 16px; /* 设置最小高度 */
-    }
+    /*.delete-button svg {
+        width: 16px !important;*/ /* 强制设置宽度 */
+        /*height: 16px !important;*/ /* 强制设置高度 */
+        /*display: block !important;*/ /* 确保显示 */
+        /*min-width: 16px;*/ /* 设置最小宽度 */
+        /*min-height: 16px;*/ /* 设置最小高度 */
+    /*}*/
 
 /* 删除按钮和图标样式 */
-.delete-button {
+/*.delete-button {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -1394,7 +1400,7 @@ img.image-preview-img {
     background: transparent;
     border: none;
     cursor: pointer;
-}
+}*/
     .delete-button svg.icon {
         width: 16px !important;
         height: 16px !important;
