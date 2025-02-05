@@ -218,8 +218,24 @@ body {
 }
 
 /* ¸´ÖÆ°´Å¥ÑùÊ½ */
-.delete-button,
+
+.delete-button {
+    left: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    padding: 2px 6px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--color-fg-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+}
 .copy-button {
+    
     display: flex;
     align-items: center;
     justify-content: center;
@@ -947,16 +963,17 @@ pre {
 }
 
 /* ¸´ÖÆ°´Å¥ÑùÊ½ */
-.delete-button,
+/*.delete-button,
 .copy-button {
-    display: flex;
-    align-items: center;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     padding: 4px 8px;
-    background: transparent;
-    border: none !important; /* Ç¿ÖÆÒÆ³ý±ß¿ò */
-    outline: none !important; /* ÒÆ³ýÂÖÀª */
-    
-    cursor: pointer;
+    background: !important;
+    border: none !important;*/ /* Ç¿ÖÆÒÆ³ý±ß¿ò */
+    /*outline: none !important;*/ /* ÒÆ³ýÂÖÀª */
+
+    /*cursor: pointer;
     color: #6c757d;
     border-radius: 4px;
     transition: all 0.2s ease;
@@ -965,7 +982,7 @@ pre {
 .copy-button:hover {
     background-color: rgba(0, 0, 0, 0.05);
     color: #212529;
-}
+}*/
 
 /* ´úÂë¿éÈÝÆ÷ */
 .code-block-wrapper {
@@ -1402,8 +1419,9 @@ img.image-preview-img {
     border: none;
     cursor: pointer;
 }*/
-    .delete-button svg.icon {
-        width: 16px !important;
-        height: 16px !important;
-        display: block !important;
-    }
+.delete-button svg.icon {
+    width: 16px !important;
+    height: 16px !important;
+    display: block !important;
+    fill: currentColor !important;
+}
