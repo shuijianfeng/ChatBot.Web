@@ -8,6 +8,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="wwwroot\lib\octicons\**" />
+    <Content Remove="wwwroot\lib\octicons\**" />
+    <EmbeddedResource Remove="wwwroot\lib\octicons\**" />
+    <None Remove="wwwroot\lib\octicons\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Update="Views\Home\_ViewImports.cshtml">
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

@@ -31,22 +31,10 @@
       "library": "@primer/octicons@19.14.0",
       "destination": "wwwroot/lib/primer/octicons/"
     },
-    {
-      "provider": "unpkg",
-      "library": "octicons@9.0.0-rc.c8c7f64",
-      "destination": "wwwroot/lib/octicons/"
-    },
-    {
-      "library": "mermaid@11.4.1",
-      "destination": "wwwroot/lib/mermaid/"
-    },
+    
     {
       "library": "mathjax@3.2.2",
       "destination": "wwwroot/lib/mathjax/"
-    },
-    {
-      "library": "KaTeX@0.16.9",
-      "destination": "wwwroot/lib/KaTeX/"
     },
     {
       "provider": "unpkg",
@@ -56,6 +44,11 @@
     {
       "library": "compressorjs@1.2.1",
       "destination": "wwwroot/lib/compressorjs/"
+    },
+    {
+      "provider": "cdnjs",
+      "library": "mermaid@11.4.0",
+      "destination": "wwwroot/lib/mermaid/"
     }
   ]
 }
