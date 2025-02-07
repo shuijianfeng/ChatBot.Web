@@ -133,3 +133,6 @@ Special thanks to all contributors and the open-source community for their suppo
 
 For questions or support, please open an issue on the [GitHub repository](https://github.com/yourusername/ChatBot/issues).
 
+
+
+![File](file.png)
