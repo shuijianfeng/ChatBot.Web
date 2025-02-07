@@ -205,10 +205,10 @@ body {
 .message-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+   
     opacity: 0;
     transition: opacity 0.2s;
-    gap: 4px; /* 增加按钮之间的间距 */
+    gap: 1px; /* 增加按钮之间的间距 */
     margin-left: 16px; /* 增加与 message-role 的间距 */
 }
 
@@ -842,6 +842,7 @@ body {
     --math-bg: #f6f8fa;
     --math-border: #dde1e4;
     --math-color: #24292f;
+    
 }
 
 /* 深色主题变量 */
@@ -880,6 +881,7 @@ body {
     --math-bg: #21262d;
     --math-border: #30363d;
     --math-color: #c9d1d9;
+    
 }
 
 /* 代码高亮主题覆盖 */
@@ -1427,4 +1429,9 @@ img.image-preview-img {
     height: 16px !important;
     display: block !important;
     fill: currentColor !important;
+}
+
+.message-model {
+    font-size: 0.8em; /* 可选：调整字体大小 */
+    color: var(--color-fg-muted); /* 设置为灰色 */
 }

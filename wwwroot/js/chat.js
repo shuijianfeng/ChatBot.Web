@@ -677,7 +677,7 @@ class ChatUI {
 
         const roleSpan = document.createElement('span');
         roleSpan.className = 'message-role';
-        roleSpan.textContent = role === 'assistant' ? 'Ai助手' : '您';
+        roleSpan.textContent = role === 'assistant' ? 'Ai助手  ' : '您';
 
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
@@ -749,6 +749,13 @@ class ChatUI {
         }
         //messageDiv.appendChild(avatarDiv);
         headerDiv.appendChild(roleSpan);
+
+        if (role === 'assistant') {
+            const modelSpan = document.createElement('span');
+            modelSpan.className = 'message-model';
+            modelSpan.textContent = this.modelSelect.value;
+            headerDiv.appendChild(modelSpan);
+        }
         headerDiv.appendChild(actionsDiv);
         containerDiv.appendChild(headerDiv);
         containerDiv.appendChild(contentDiv);
@@ -760,6 +767,10 @@ class ChatUI {
     // 删除消息的方法
     deleteMessage(messageElement) {
         if (confirm('确定要删除这条消息吗？')) {
+            const index = Array.from(this.messagesContainer.children).indexOf(messageElement);
+            if (index > -1) {
+                this.messages.splice(index, 1);
+            }
             this.messagesContainer.removeChild(messageElement);
         }
     }

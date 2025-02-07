@@ -259,75 +259,64 @@ namespace ChatBot.Web.Services
             }
             else
             {
-                switch (config.Name)
+                switch (config.ChatModelType)
                 {
-                    case "llama3.2":
+                    case ChatModelType.Llama:
                         await foreach (var item in GenerateStreamViallama32Async(config, request, cancellationToken))
                         {
                             yield return item;
                         }
                         break;
-                    case "通义千问-视觉":
-                        await foreach (var item in GenerateStreamViaVLAsync(config, request, cancellationToken))
+                    case ChatModelType.QwenVl:
                         {
-                            yield return item;
+                            await foreach (var item in GenerateStreamViaVLAsync(config, request, cancellationToken))
+                            {
+                                yield return item;
+                            }
+                            break;
                         }
-                        break;
-                    
-                    //case "deepseek":
-                    //    await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
-                    //    {
-                    //        yield return item;
-                    //    }
-                    //    break;
-                    
-                    default:
-                        if (config.Name.StartsWith("OpenAi"))
+                    case ChatModelType.DeepSeek:
+                        {
+                            await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
+                            {
+                                yield return item;
+                            }
+                            break;
+                        }
+                    case ChatModelType.Deepbricks:
+                        {
+                            await foreach (var item in DeepbricksOpenAIAsync(config, request, cancellationToken))
+                            {
+                                yield return item;
+                            }
+                            break;
+                        }
+                    case ChatModelType.Claude:
+                        {
+                            await foreach (var item in ClaudeAsync(config, request, cancellationToken))
+                            {
+                                yield return item;
+                            }
+                            break;
+                        }
+                        case ChatModelType.Gemini:
+                        {
+                            await foreach (var item in GeminiAsync(config, request, cancellationToken))
+                            {
+                                yield return item;
+                            }
+                            break;
+                        }
+                        default:
                         {
                             await foreach (var item in OpenAIAsync(config, request, cancellationToken))
                             {
                                 yield return item;
                             }
+                            break;
                         }
-                        else
-                        {
-                            if (config.Name.StartsWith("Claude"))
-                            {
-                                await foreach (var item in ClaudeAsync(config, request, cancellationToken))
-                                {
-                                    yield return item;
-                                }
-                            }
-                            else
-                            {
-                                if (config.Name.StartsWith("Google"))
-                                {
-                                    await foreach (var item in GeminiAsync(config, request, cancellationToken))
-                                    {
-                                        yield return item;
-                                    }
-                                }
-                                else
-                                {
-                                    if (config.Name.StartsWith("DeepSeek"))
-                                    {
-                                        await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
-                                        {
-                                            yield return item;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        await foreach (var item in GenerateStreamViaOpenAIAsync(config, request, cancellationToken))
-                                        {
-                                            yield return item;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        break;
                 }
+                
             }
         }
 
@@ -354,7 +343,7 @@ namespace ChatBot.Web.Services
                 model = modelconfg.Model,
                 input = new
                 {
-                    messages = ToMessagesllama32(request)
+                    messages = ToMessagesllama32(request, modelconfg)
                 }
                 //stream = modelconfg.Stream,
                 //temperature = modelconfg.Temperature,
@@ -417,7 +406,7 @@ namespace ChatBot.Web.Services
             {
 
                 model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request),
+                messages = ToMessagesOpenAi(request, modelconfg),
                 stream = modelconfg.Stream,
                 //temperature = modelconfg.Temperature,
                 //max_tokens = modelconfg.MaxTokens,
@@ -478,7 +467,7 @@ namespace ChatBot.Web.Services
             {
 
                 model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request),
+                messages = ToMessagesOpenAi(request, modelconfg),
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature,
                 //max_tokens = modelconfg.MaxTokens,
@@ -510,13 +499,48 @@ namespace ChatBot.Web.Services
 
                     var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
                     var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
+                    bool beging1 = false;
+                    bool end1 = false;
                     if (!string.IsNullOrEmpty(content))
                     {
-                        yield return content;
+                        if (modelconfg.Model == "deepseek-r1")
+                        {
+
+                           
+                          
+                            
+                                if (content=="<think>" &&!beging1 && !end1)
+                                {
+                                    yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
+                                    beging1 = true;
+                                }
+                                else
+                                {
+                                    if (content == "</think>" && beging1 && !end1)
+                                    {
+                                        yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
+                                        end1 = true;
+                                    }
+                                    else
+                                    {
+                                        yield return content;
+                                    }
+
+                                }
+
+                            
+
+                        }
+
+                        else
+                        {
+                                yield return content;
+                            }
+                        }
                     }
                 }
             }
-        }
+        
 
         // 阿里平台流式输出 - DashScope 百练应用调用方式
         public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -598,15 +622,16 @@ namespace ChatBot.Web.Services
             {
 
                 model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request, true),
+                messages = ToMessagesOpenAi(request, modelconfg),
                 stream = modelconfg.Stream,
-                temperature = modelconfg.Temperature,
+                
+                //temperature = modelconfg.Temperature,
                 //max_tokens = modelconfg.MaxTokens,
-                enable_search = modelconfg.EnableSearch,
-                stream_options = new
-                {
-                    include_usage = modelconfg.Include_usage
-                }
+                //enable_search = modelconfg.EnableSearch,
+                //stream_options = new
+                //{
+                //    include_usage = modelconfg.Include_usage
+                //}
             };
             
             var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
@@ -679,7 +704,7 @@ namespace ChatBot.Web.Services
             {
 
                 model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request, !modelconfg.Model.EndsWith("o1-mini"), Search),
+                messages = ToMessagesOpenAi(request, modelconfg),
                 stream = modelconfg.Stream,
                 
                 //temperature = modelconfg.Temperature,
@@ -759,8 +784,8 @@ namespace ChatBot.Web.Services
             {
 
                 model = modelconfg.Model,
-                system = "你是一个得力的助手,请用简体中文回答。如果有推理过程也使用中文回答。如果输出中有LaTeX格式的公式请用$或$$包裹" + Search,
-                messages = ToMessagesClaude(request),
+                system = modelconfg.Systemprompt,
+                messages = ToMessagesClaude(request, modelconfg),
 
                 stream = modelconfg.Stream,
                 //temperature = modelconfg.Temperature,
@@ -834,7 +859,7 @@ namespace ChatBot.Web.Services
             {
 
                 model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request,true),
+                messages = ToMessagesOpenAi(request, modelconfg),
                 stream = modelconfg.Stream,
                 //temperature = modelconfg.Temperature,
                 ////max_tokens = modelconfg.MaxTokens,
@@ -974,10 +999,10 @@ namespace ChatBot.Web.Services
             {
                 system_instruction = new
                 {
-                    parts = new { text = "你是一个得力的助手,请用简体中文回答。如果有推理过程也使用中文回答。如果输出中有LaTeX格式的公式请用$或$$包裹" }
+                    parts = new { text = modelconfg.Systemprompt }
                 },
-
-                contents = ToMessagesGemini(request),
+               
+                contents = ToMessagesGemini(request, modelconfg),
                 //config = new
                 //{
                 //     system_instruction = new
@@ -1049,7 +1074,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        private static List<object> ToMessagesllama32(ChatRequest request)
+        private static List<object> ToMessagesllama32(ChatRequest request, ChatModelConfig modelconfg)
         {
 
             var messages = new List<object>();
@@ -1058,7 +1083,7 @@ namespace ChatBot.Web.Services
             messages.Add(new
             {
                 role = "system",
-                content = new List<object> { new { text = "你是一个得力的助手,请用简体中文回答。公式输出时用$和或$$包裹。" } }
+                content = new List<object> { new { text = modelconfg.Systemprompt } }
             });
             // 添加历史消息
             foreach (var msg in request.History)
@@ -1083,28 +1108,21 @@ namespace ChatBot.Web.Services
 
             return messages;
         }
-        private static List<object> ToMessagesOpenAi(ChatRequest request, bool issystem = true, string Search = "")
+        private static List<object> ToMessagesOpenAi(ChatRequest request, ChatModelConfig modelconfg)
         {
-            bool isimage = false;
-            foreach (var msg in request.History)
-            {
-                if (msg.Images.Length > 0)
-                {
-                    isimage = true;
-                }
-            }
+           
 
             var messages = new List<object>();
 
             // 添加系统提示词
-            if (issystem )
+            if (!string.IsNullOrWhiteSpace( modelconfg.Systemprompt))
             {
                 messages.Add(new
                 {
                     role = "system",
                     content = new List<object> {
 
-                        new { type = "text", text = "你是一个得力的助手,请用简体中文回答。如果有推理过程也使用中文回答。如果输出中有LaTeX格式的公式请用$或$$包裹"+Search } }
+                        new { type = "text", text = modelconfg.Systemprompt} }
 
                 });
             }
@@ -1112,7 +1130,7 @@ namespace ChatBot.Web.Services
 
             foreach (var msg in request.History)
             {
-                if (msg.Images?.Any() == true)
+                if (msg.Images?.Any() == true&& modelconfg.EnableImageUpload)
                 {
                     var contentlist = new List<object>();
                     
@@ -1122,6 +1140,7 @@ namespace ChatBot.Web.Services
 
                         contentlist.Add(new { type = "image_url", image_url = new { url = $"data:image/jpeg;base64,{ConvertUrlToBase64(image)}" } });
                         
+
                     }
                     messages.Add(new
                     {
@@ -1142,16 +1161,9 @@ namespace ChatBot.Web.Services
 
             return messages;
         }
-        private static List<object> ToMessagesGemini(ChatRequest request)
+        private static List<object> ToMessagesGemini(ChatRequest request ,ChatModelConfig modelconfg)
         {
-            bool isimage = false;
-            foreach (var msg in request.History)
-            {
-                if (msg.Images.Length > 0)
-                {
-                    isimage = true;
-                }
-            }
+            
 
             var contents = new List<object>();
 
@@ -1159,7 +1171,7 @@ namespace ChatBot.Web.Services
 
             foreach (var msg in request.History)
             {
-                if (msg.Images?.Any() == true)
+                if (msg.Images?.Any() == true&& modelconfg.EnableImageUpload)
                 {
                      
                     var contentlist = new List<object>();
@@ -1190,7 +1202,7 @@ namespace ChatBot.Web.Services
 
             return contents;
         }
-        private static List<object> ToMessagesClaude(ChatRequest request)
+        private static List<object> ToMessagesClaude(ChatRequest request, ChatModelConfig modelconfg)
         {
             var messages = new List<object>();
 
