@@ -6,21 +6,11 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Options;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.Formats.Gif;
-using SixLabors.ImageSharp.Formats.Bmp;
-using SixLabors.ImageSharp.Formats.Webp;
+
 using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.Processing.Processors.Quantization;
-using System.Net.Http;
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
-using System.Runtime.Intrinsics.X86;
-using System.IO;
 using AngleSharp.Dom;
-using static ChatBot.Models.GeminiChunkResponse;
+
 using System.Data;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace ChatBot.Web.Services
 {
@@ -80,11 +70,11 @@ namespace ChatBot.Web.Services
             var url = $"https://cdsjf.xyz/googleapis/customsearch/v1?" +
                       $"key={apiKey}&" +
                       $"cx=6443be91738ab4541&" +
-                      $"hl=zh-CN&"+ 
-                        $"safe=active&"+  
-                        $"cr=countryCN&"+  
-                        $"gl=cn&"+  
-                        $"filter=1&"+
+                      $"hl=zh-CN&" +
+                        $"safe=active&" +
+                        $"cr=countryCN&" +
+                        $"gl=cn&" +
+                        $"filter=1&" +
                       $"q={Uri.EscapeDataString(query)}&" +
                       $"num={maxResults}&" +
                       $"sort=date"; // 按日期排序
@@ -299,7 +289,7 @@ namespace ChatBot.Web.Services
                             }
                             break;
                         }
-                        case ChatModelType.Gemini:
+                    case ChatModelType.Gemini:
                         {
                             await foreach (var item in GeminiAsync(config, request, cancellationToken))
                             {
@@ -307,7 +297,7 @@ namespace ChatBot.Web.Services
                             }
                             break;
                         }
-                        default:
+                    default:
                         {
                             await foreach (var item in OpenAIAsync(config, request, cancellationToken))
                             {
@@ -316,7 +306,7 @@ namespace ChatBot.Web.Services
                             break;
                         }
                 }
-                
+
             }
         }
 
@@ -401,26 +391,48 @@ namespace ChatBot.Web.Services
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
-            // 准备请求内容
-            var requestContent = new
+            HttpResponseMessage response = null;
+            if (modelconfg.Temperature > 0)
             {
-
-                model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request, modelconfg),
-                stream = modelconfg.Stream,
-                //temperature = modelconfg.Temperature,
-                //max_tokens = modelconfg.MaxTokens,
-                //enable_search = modelconfg.EnableSearch,
-                stream_options = new
+                var requestContent = new
                 {
-                    include_usage = modelconfg.Include_usage
-                }
-            };
-           
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
+                    temperature = modelconfg.Temperature,
+
+                    stream_options = new
+                    {
+                        include_usage = modelconfg.Include_usage
+                    }
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            else
             {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                var requestContent = new
+                {
+
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
+                   
+                    stream_options = new
+                    {
+                        include_usage = modelconfg.Include_usage
+                    }
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
 
             response.EnsureSuccessStatusCode();
 
@@ -446,7 +458,7 @@ namespace ChatBot.Web.Services
             }
         }
 
-        // 阿里平台流式输出 - OpenAI 兼容方式
+        // 阿里平台流式输出 OpenAI 兼容方式
         public async IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
@@ -462,27 +474,49 @@ namespace ChatBot.Web.Services
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
-            // 准备请求内容
-            var requestContent = new
+            HttpResponseMessage response = null;
+            if (modelconfg.Temperature > 0)
             {
-
-                model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request, modelconfg),
-                stream = modelconfg.Stream,
-                temperature = modelconfg.Temperature,
-                //max_tokens = modelconfg.MaxTokens,
-                enable_search = modelconfg.EnableSearch,
-                stream_options = new
+                var requestContent = new
                 {
-                    include_usage = modelconfg.Include_usage
-                }
-            };
-            
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
+                    temperature = modelconfg.Temperature,
+                    enable_search = modelconfg.EnableSearch,
+                    stream_options = new
+                    {
+                        include_usage = modelconfg.Include_usage
+                    }
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            else
+            {
+                var requestContent = new
+                {
+
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
+                    
+                    enable_search = modelconfg.EnableSearch,
+                    stream_options = new
+                    {
+                        include_usage = modelconfg.Include_usage
+                    }
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -506,41 +540,41 @@ namespace ChatBot.Web.Services
                         if (modelconfg.Model == "deepseek-r1")
                         {
 
-                           
-                          
-                            
-                                if (content=="<think>" &&!beging1 && !end1)
+
+
+
+                            if (content == "<think>" && !beging1 && !end1)
+                            {
+                                yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
+                                beging1 = true;
+                            }
+                            else
+                            {
+                                if (content == "</think>" && beging1 && !end1)
                                 {
-                                    yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
-                                    beging1 = true;
+                                    yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
+                                    end1 = true;
                                 }
                                 else
                                 {
-                                    if (content == "</think>" && beging1 && !end1)
-                                    {
-                                        yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
-                                        end1 = true;
-                                    }
-                                    else
-                                    {
-                                        yield return content;
-                                    }
-
+                                    yield return content;
                                 }
 
-                            
+                            }
+
+
 
                         }
 
                         else
                         {
-                                yield return content;
-                            }
+                            yield return content;
                         }
                     }
                 }
             }
-        
+        }
+
 
         // 阿里平台流式输出 - DashScope 百练应用调用方式
         public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -563,7 +597,7 @@ namespace ChatBot.Web.Services
             client.DefaultRequestHeaders.TryAddWithoutValidation("X-DashScope-SSE", "enable");
             string s_id = SessionId;
 
-          
+
             // 准备请求内容
             var requestContent = new
             {
@@ -601,7 +635,7 @@ namespace ChatBot.Web.Services
             }
         }
 
-        // Deepbricks平台流式输出 - OpenAI 兼容方式
+        // Deepbricks OpenAI 兼容方式
         public async IAsyncEnumerable<string> DeepbricksOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
@@ -617,28 +651,42 @@ namespace ChatBot.Web.Services
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
-            // 准备请求内容
-            var requestContent = new
+            HttpResponseMessage response = null;
+            if (modelconfg.Temperature > 0)
             {
+                var requestContent = new
+                {
 
-                model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request, modelconfg),
-                stream = modelconfg.Stream,
-                
-                //temperature = modelconfg.Temperature,
-                //max_tokens = modelconfg.MaxTokens,
-                //enable_search = modelconfg.EnableSearch,
-                //stream_options = new
-                //{
-                //    include_usage = modelconfg.Include_usage
-                //}
-            };
-            
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
+
+                    temperature = modelconfg.Temperature,
+
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            else
             {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                var requestContent = new
+                {
 
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
+
+
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -675,7 +723,7 @@ namespace ChatBot.Web.Services
             }
         }
 
-        //  - OpenAI 官方 兼容方式
+        //OpenAI 官方
         public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
@@ -691,36 +739,41 @@ namespace ChatBot.Web.Services
             // 创建HTTP客户端
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-            string Search = string.Empty;
-            if (request.EnableSearch)
-            {
 
-                var list = await PerformAdvancedSearch(request.History[request.History.Count - 1].Content);
-                
-                Search = await SummarizeSearchResults(request.History[^1].Content, list);
+
+            HttpResponseMessage response = null;
+            if (modelconfg.Temperature > 0)
+            {
+                var requestContent = new
+                {
+
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
+                    temperature = modelconfg.Temperature,
+
+                };
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
-            // 准备请求内容
-            var requestContent = new
+            else
             {
+                var requestContent = new
+                {
 
-                model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request, modelconfg),
-                stream = modelconfg.Stream,
-                
-                //temperature = modelconfg.Temperature,
-                //max_tokens = modelconfg.MaxTokens,
-                //enable_search = modelconfg.EnableSearch,
-                //stream_options = new
-                //{
-                //    include_usage = modelconfg.Include_usage
-                //}
-            };
-            //var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
 
+
+                };
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -756,7 +809,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        //  - Claude 官方 兼容方式
+        //Claude 官方
         public async IAsyncEnumerable<string> ClaudeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
@@ -767,40 +820,54 @@ namespace ChatBot.Web.Services
             {
                 throw new InvalidOperationException("API配置缺失");
             }
-            string Search = string.Empty;
-            if (request.EnableSearch)
-            {
 
-                var list = await PerformAdvancedSearch(request.History[request.History.Count - 1].Content);
-                Search = await SummarizeSearchResults(request.History[^1].Content, list);
-
-            }
             // 创建HTTP客户端
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("x-api-key", $"{apiKey}");
             client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
             // 准备请求内容
-            var requestContent = new
+            HttpResponseMessage response = null;
+            if (modelconfg.Temperature > 0)
             {
+                var requestContent = new
+                {
 
-                model = modelconfg.Model,
-                system = modelconfg.Systemprompt,
-                messages = ToMessagesClaude(request, modelconfg),
+                    model = modelconfg.Model,
+                    system = modelconfg.Systemprompt,
+                    messages = ToMessagesClaude(request, modelconfg),
 
-                stream = modelconfg.Stream,
-                //temperature = modelconfg.Temperature,
-                max_tokens = modelconfg.MaxTokens,
-                //enable_search = modelconfg.EnableSearch,
-                //stream_options = new
-                //{
-                //    include_usage = modelconfg.Include_usage
-                //}
-            };
-            
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                    stream = modelconfg.Stream,
+                    temperature = modelconfg.Temperature,
+                    max_tokens = modelconfg.MaxTokens,
+
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            else
             {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                var requestContent = new
+                {
+
+                    model = modelconfg.Model,
+                    system = modelconfg.Systemprompt,
+                    messages = ToMessagesClaude(request, modelconfg),
+
+                    stream = modelconfg.Stream,
+
+                    max_tokens = modelconfg.MaxTokens,
+
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+
 
             response.EnsureSuccessStatusCode();
 
@@ -838,7 +905,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        // Ddeepseek OpenAI 兼容方式
+        //Deepseek OpenAI 兼容方式
         public async IAsyncEnumerable<string> DeepseekOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
@@ -854,38 +921,52 @@ namespace ChatBot.Web.Services
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
-            // 准备请求内容
-            var requestContent = new
+            HttpResponseMessage response = null;
+            if (modelconfg.Temperature > 0)
             {
+                var requestContent = new
+                {
 
-                model = modelconfg.Model,
-                messages = ToMessagesOpenAi(request, modelconfg),
-                stream = modelconfg.Stream,
-                //temperature = modelconfg.Temperature,
-                ////max_tokens = modelconfg.MaxTokens,
-                //enable_search = modelconfg.EnableSearch,
-                //stream_options = new
-                //{
-                //    include_usage = modelconfg.Include_usage
-                //}
-            };
-            
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
+                    temperature = modelconfg.Temperature,
+
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            else
             {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                var requestContent = new
+                {
 
+                    model = modelconfg.Model,
+                    messages = ToMessagesOpenAi(request, modelconfg),
+                    stream = modelconfg.Stream,
+
+
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
-            bool beging= false;
+            bool beging = false;
             bool end = false;
             bool beging1 = false;
             bool end1 = false;
             while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
             {
-               
+
                 if (modelconfg.Stream)
                 {
                     var line = await reader.ReadLineAsync(cancellationToken);
@@ -902,21 +983,21 @@ namespace ChatBot.Web.Services
                         {
                             if (!beging)
                             {
-                                yield return "<think>" + "\n" + "\n"+ "```Thoughts" + "\n" + "\n" + reasoning_content;
+                                yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
                                 beging = true;
                             }
                             else
                             {
                                 yield return reasoning_content;
-                                
+
                             }
-                            
+
                         }
                         if (!string.IsNullOrEmpty(content))
                         {
-                            if (beging&&!end)
+                            if (beging && !end)
                             {
-                                yield return "\n"+"\n" + "```"  + "\n"+ "\n" + "</think>"  + "\n"+"\n"  + content;
+                                yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                                 end = true;
                             }
                             else
@@ -930,20 +1011,20 @@ namespace ChatBot.Web.Services
                                 {
                                     if (content == "</think>" && beging1 && !end1)
                                     {
-                                        yield return  "\n" + "\n" + "```" + "\n" + "\n" + content  + "\n";
+                                        yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
                                         end1 = true;
                                     }
                                     else
                                     {
                                         yield return content;
                                     }
-                                   
+
                                 }
-                                
+
                             }
-                            
+
                         }
-                        
+
                     }
                 }
                 else
@@ -955,10 +1036,10 @@ namespace ChatBot.Web.Services
                     var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
                     if (!string.IsNullOrEmpty(reasoning_content))
                     {
-                        reasoning_content = "<think>"+ reasoning_content+ "</think>";
+                        reasoning_content = "<think>" + reasoning_content + "</think>";
                         reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
                         reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                        yield return reasoning_content+ content;
+                        yield return reasoning_content + content;
                     }
                     if (!string.IsNullOrEmpty(content))
                     {
@@ -969,7 +1050,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        //  - google GeminiA
+        //google Gemini
         public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // 验证配置
@@ -985,7 +1066,7 @@ namespace ChatBot.Web.Services
             if (modelconfg.Stream)
             {
                 apiEndpoint = apiEndpoint + $":streamGenerateContent?alt=sse&key={apiKey}";
-                
+
             }
             else
             {
@@ -993,46 +1074,48 @@ namespace ChatBot.Web.Services
             }
             // 创建HTTP客户端
             var client = _httpClientFactory.CreateClient();
-            
-            // 准备请求内容
-            var requestContent = new
-            {
-                system_instruction = new
-                {
-                    parts = new { text = modelconfg.Systemprompt }
-                },
-               
-                contents = ToMessagesGemini(request, modelconfg),
-                //config = new
-                //{
-                //     system_instruction = new
-                //    {
-                //        parts = new { text = "你是一个得力的助手,请用简体中文回答。如果有推理过程也使用中文回答。如果输出中有LaTeX格式的公式请用$或$$包裹" }
-                //    },
-                //    thinking_config = new
-                //    { include_thoughts = true }
-                //}
-                //tools = new List<object>
-                //{
-                //      new
-                //    {
-                //          google_search_retrieval= new
-                //          {
-                //            dynamic_retrieval_config = new
-                //            {
-                //                mode= "MODE_DYNAMIC",
-                //                dynamic_threshold=0.3
-                //            }
-                //          }
-                //    }
-                //}
 
-            };
-            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+            HttpResponseMessage response = null;
+            if (modelconfg.Temperature > 0)
             {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                var requestContent = new
+                {
+                    system_instruction = new
+                    {
+                        parts = new { text = modelconfg.Systemprompt }
+                    },
+
+                    contents = ToMessagesGemini(request, modelconfg),
+                    generationConfig = new { temperature = modelconfg.Temperature }
+
+
+                };
+                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            else
+            {
+                var requestContent = new
+                {
+                    system_instruction = new
+                    {
+                        parts = new { text = modelconfg.Systemprompt }
+                    },
+
+                    contents = ToMessagesGemini(request, modelconfg),
+
+
+
+                };
+                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
 
             response.EnsureSuccessStatusCode();
 
@@ -1041,7 +1124,7 @@ namespace ChatBot.Web.Services
 
             while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
             {
-                
+
                 if (modelconfg.Stream)
                 {
                     var line = await reader.ReadLineAsync(cancellationToken);
@@ -1049,7 +1132,7 @@ namespace ChatBot.Web.Services
                     if (line.StartsWith("data: "))
                     {
                         line = line.Substring(6);
-                      
+
                         var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
                         var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
 
@@ -1061,16 +1144,16 @@ namespace ChatBot.Web.Services
                 }
                 else
                 {
-                        var line = await reader.ReadToEndAsync(cancellationToken);
-                    
-                        var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
-                        var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
+                    var line = await reader.ReadToEndAsync(cancellationToken);
 
-                        if (!string.IsNullOrEmpty(content))
-                        {
-                            yield return content;
-                        }
-                    
+                    var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
+                    var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
+
+                    if (!string.IsNullOrEmpty(content))
+                    {
+                        yield return content;
+                    }
+
                 }
             }
         }
@@ -1110,12 +1193,12 @@ namespace ChatBot.Web.Services
         }
         private static List<object> ToMessagesOpenAi(ChatRequest request, ChatModelConfig modelconfg)
         {
-           
+
 
             var messages = new List<object>();
 
             // 添加系统提示词
-            if (!string.IsNullOrWhiteSpace( modelconfg.Systemprompt))
+            if (!string.IsNullOrWhiteSpace(modelconfg.Systemprompt))
             {
                 messages.Add(new
                 {
@@ -1130,16 +1213,16 @@ namespace ChatBot.Web.Services
 
             foreach (var msg in request.History)
             {
-                if (msg.Images?.Any() == true&& modelconfg.EnableImageUpload)
+                if (msg.Images?.Any() == true && modelconfg.EnableImageUpload)
                 {
                     var contentlist = new List<object>();
-                    
+
                     contentlist.Add(new { type = "text", text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
                     foreach (var image in msg.Images)
                     {
 
                         contentlist.Add(new { type = "image_url", image_url = new { url = $"data:image/jpeg;base64,{ConvertUrlToBase64(image)}" } });
-                        
+
 
                     }
                     messages.Add(new
@@ -1161,25 +1244,25 @@ namespace ChatBot.Web.Services
 
             return messages;
         }
-        private static List<object> ToMessagesGemini(ChatRequest request ,ChatModelConfig modelconfg)
+        private static List<object> ToMessagesGemini(ChatRequest request, ChatModelConfig modelconfg)
         {
-            
+
 
             var contents = new List<object>();
 
-           
+
 
             foreach (var msg in request.History)
             {
-                if (msg.Images?.Any() == true&& modelconfg.EnableImageUpload)
+                if (msg.Images?.Any() == true && modelconfg.EnableImageUpload)
                 {
-                     
+
                     var contentlist = new List<object>();
-                    contentlist.Add(new {  text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
+                    contentlist.Add(new { text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
                     foreach (var image in msg.Images)
                     {
 
-                        contentlist.Add(new { inline_data = new { mime_type="image/jpeg", data = $"{ConvertUrlToBase64(image)}" } });
+                        contentlist.Add(new { inline_data = new { mime_type = "image/jpeg", data = $"{ConvertUrlToBase64(image)}" } });
                     }
                     contents.Add(new
                     {
@@ -1190,10 +1273,10 @@ namespace ChatBot.Web.Services
                 else
                 {
                     var contentlist = new List<object>();
-                    contentlist.Add(new {  text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
+                    contentlist.Add(new { text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
                     contents.Add(new
                     {
-                        role = msg.Role== "assistant"? "model" : msg.Role,
+                        role = msg.Role == "assistant" ? "model" : msg.Role,
                         parts = contentlist
                     });
                 }
