@@ -392,7 +392,7 @@ namespace ChatBot.Web.Services
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
             HttpResponseMessage response = null;
-            if (modelconfg.Temperature > 0)
+            if (modelconfg.Temperature >= 0)
             {
                 var requestContent = new
                 {
@@ -475,7 +475,7 @@ namespace ChatBot.Web.Services
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
             HttpResponseMessage response = null;
-            if (modelconfg.Temperature > 0)
+            if (modelconfg.Temperature >= 0)
             {
                 var requestContent = new
                 {
@@ -652,7 +652,7 @@ namespace ChatBot.Web.Services
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
             HttpResponseMessage response = null;
-            if (modelconfg.Temperature > 0)
+            if (modelconfg.Temperature >= 0)
             {
                 var requestContent = new
                 {
@@ -742,7 +742,7 @@ namespace ChatBot.Web.Services
 
 
             HttpResponseMessage response = null;
-            if (modelconfg.Temperature > 0)
+            if (modelconfg.Temperature >= 0)
             {
                 var requestContent = new
                 {
@@ -827,7 +827,7 @@ namespace ChatBot.Web.Services
             client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
             // 准备请求内容
             HttpResponseMessage response = null;
-            if (modelconfg.Temperature > 0)
+            if (modelconfg.Temperature >= 0)
             {
                 var requestContent = new
                 {
@@ -922,7 +922,7 @@ namespace ChatBot.Web.Services
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
             HttpResponseMessage response = null;
-            if (modelconfg.Temperature > 0)
+            if (modelconfg.Temperature >= 0)
             {
                 var requestContent = new
                 {
@@ -1076,7 +1076,7 @@ namespace ChatBot.Web.Services
             var client = _httpClientFactory.CreateClient();
 
             HttpResponseMessage response = null;
-            if (modelconfg.Temperature > 0)
+            if (modelconfg.Temperature >= 0)
             {
                 var requestContent = new
                 {
