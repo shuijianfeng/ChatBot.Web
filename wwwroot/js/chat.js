@@ -43,7 +43,7 @@ class ChatUI {
 
         // 设置模型选择事件监听
         this.modelSelect.addEventListener('change', () => this.toggleImageUploadButton());
-
+        
         //this.networkButton.addEventListener('click', () => {
         //    this.isNetworkEnabled = !this.isNetworkEnabled;
         //    if (this.isNetworkEnabled) {
@@ -127,7 +127,32 @@ class ChatUI {
             console.error('获取聊天模型配置时出错:', error);
         }
     }
+    // 添加显示全屏图片的方法
+    showFullSizeImage(src) {
+        // 创建遮罩层
+        const overlay = document.createElement('div');
+        overlay.className = 'image-overlay';
 
+        // 创建图片元素
+        const img = document.createElement('img');
+        img.src = src;
+        img.className = 'fullsize-image';
+
+        // 添加关闭提示
+        const closeHint = document.createElement('div');
+        closeHint.className = 'close-hint';
+        closeHint.textContent = '点击任意位置关闭';
+
+        // 组装元素
+        overlay.appendChild(img);
+        overlay.appendChild(closeHint);
+        document.body.appendChild(overlay);
+
+        // 点击关闭
+        overlay.addEventListener('click', () => {
+            document.body.removeChild(overlay);
+        });
+    }
     // 方法：根据选择的模型显示或隐藏图片上传按钮
     toggleImageUploadButton() {
         const selectedModel = this.modelSelect.value;
@@ -233,7 +258,12 @@ class ChatUI {
                 imgElement.src = imageUrl;
                 imgElement.alt = '上传的图片';
                 imgElement.className = 'uploaded-image-preview';
-
+                // 添加消息容器的点击事件委托
+                imgElement.addEventListener('dblclick', (e) => {
+                    
+                        this.showFullSizeImage(imgElement.src);
+                    
+                });
                 // 创建移除按钮
                 const removeButton = document.createElement('button');
                 removeButton.className = 'remove-image-button';
@@ -706,9 +736,17 @@ class ChatUI {
         if (this.uploadedImageUrls.length > 0) {
             let imagesHtml = '';
             this.uploadedImageUrls.forEach(url => {
+
+                
                 imagesHtml += `<img src="${url}" alt="上传的图片" class="uploaded-image-preview" />\n`;
             });
             contentDiv.innerHTML = imagesHtml + marked.parse(content);
+            // 为所有上传的图片添加双击事件
+            contentDiv.querySelectorAll('.uploaded-image-preview').forEach(img => {
+                img.addEventListener('dblclick', () => {
+                    this.showFullSizeImage(img.src);
+                });
+            });
             const copyButton = this.createCopyButton(content);
             
             actionsDiv.appendChild(deleteButton);

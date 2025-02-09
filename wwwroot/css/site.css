@@ -1435,3 +1435,58 @@ img.image-preview-img {
     font-size: 0.8em; /* 可选：调整字体大小 */
     color: var(--color-fg-muted); /* 设置为灰色 */
 }
+
+/* 图片遮罩层样式 */
+.image-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    cursor: pointer;
+}
+
+/* 全屏图片样式 */
+.fullsize-image {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+}
+
+/* 关闭提示样式 */
+.close-hint {
+    position: fixed;
+    bottom: 20px;
+    color: white;
+    font-size: 14px;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+}
+
+/* 添加双击提示样式 */
+.uploaded-image-preview {
+    cursor: pointer;
+}
+
+    /* 悬停提示 */
+    .uploaded-image-preview:hover::after {
+        content: '双击查看大图';
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        white-space: nowrap;
+        pointer-events: none;
+    }
