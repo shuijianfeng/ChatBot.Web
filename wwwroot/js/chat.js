@@ -866,6 +866,47 @@ class ChatUI {
 
         const renderer = new marked.Renderer();
         const originalCode = renderer.code.bind(renderer);
+        // 修改链接渲染器
+        renderer.link = (href, title, text) => {
+            // 处理 href 为对象的情况
+            let safeHref = '#';
+            if (href) {
+                if (typeof href === 'object') {
+                    // 尝试从对象中获取 URL
+                    safeHref = href.url || href.href || href.toString() || '#';
+                } else {
+                    safeHref = href;
+                }
+                // 确保 href 是字符串并进行编码
+                safeHref = encodeURI(safeHref.toString());
+            }
+
+            // 处理文本内容
+            const safeText = text || (typeof href === 'string' ? href : href.text);
+            const titleAttr = title ? ` title="${title.replace(/"/g, '&quot;')}"` : '';
+
+            // 返回安全的链接 HTML
+            return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="external-link"${titleAttr}>${safeText}<svg class="external-link-icon" width="12" height="12" viewBox="0 0 12 12">
+            <path fill="currentColor" d="M3.75 3v-1h6.5v6.5h-1V4.31L3.81 9.69l-.71-.71L8.69 3.5H3.75z"/>
+        </svg></a>`;
+        };
+
+        // 修改图片渲染器
+        renderer.image = (href, title, text) => {
+            // 确保所有参数都有效
+            const safeHref = href || '';
+            const safeAlt = text ? ` alt="${text.replace(/"/g, '&quot;')}"` : '';
+            const titleAttr = title ? ` title="${title.replace(/"/g, '&quot;')}"` : '';
+
+            // 如果没有有效的图片地址,返回替代文本
+            if (!safeHref) {
+                return text || '';
+            }
+
+            // 返回安全的图片HTML
+            return `<img src="${safeHref}"${safeAlt}${titleAttr} class="message-image" ondblclick="window.chatUI.showFullSizeImage('${safeHref}')">`;
+        };
+
         renderer.code = (code, language) => {
             if (language === 'mermaid') {
                 const chartId = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
@@ -888,18 +929,27 @@ class ChatUI {
             return originalCode(code, language);
         };
 
-        // 配置 marked
+        //// 配置 marked
+        //marked.setOptions({
+        //    renderer: renderer,
+        //    gfm: true,
+        //    tables: true,
+        //    breaks: true,
+        //    pedantic: false,
+        //    smartLists: true,
+        //    smartypants: false,
+        //    sanitize: false
+        //});
+        // 设置 marked 选项
         marked.setOptions({
             renderer: renderer,
             gfm: true,
-            tables: true,
             breaks: true,
-            pedantic: false,
+            sanitize: false,
             smartLists: true,
             smartypants: false,
-            sanitize: false
+            xhtml: false
         });
-
         // 6. 在内容更新后触发渲染
         const renderMath = (element) => {
             if (MathJax && MathJax.typesetPromise) {

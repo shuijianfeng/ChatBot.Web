@@ -1,137 +1,143 @@
 ﻿class ChartRenderer {
-    constructor() {
-        // 初始化 mermaid
-        mermaid.initialize({
-            startOnLoad: false,
-            theme: 'default',
-            securityLevel: 'loose',
-            flowchart: {
-                useMaxWidth: true,
-                htmlLabels: true,
-                curve: 'basis'
-            }
-        });
+    //constructor() {
+    //    // 初始化 mermaid
+    //    mermaid.initialize({
+    //        startOnLoad: false,
+    //        theme: 'default',
+    //        securityLevel: 'loose',
+    //        flowchart: {
+    //            useMaxWidth: true,
+    //            htmlLabels: true,
+    //            curve: 'basis'
+    //        }
+    //    });
 
-        // 扩展 marked 以支持图表
-        this.setupMarked();
-    }
+    //    // 扩展 marked 以支持图表
+    //    this.setupMarked();
+    //}
 
-    setupMarked() {
-        const renderer = new marked.Renderer();
-        const originalCode = renderer.code.bind(renderer);
+    //setupMarked() {
+    //    const renderer = new marked.Renderer();
+    //    const originalCode = renderer.code.bind(renderer);
 
-        // 重写 code 渲染方法
-        renderer.code = (code, language) => {
-            if (this.isChartLanguage(language)) {
-                return this.renderChart(code, language);
-            }
-            return originalCode(code, language);
-        };
+    //    // 修改链接渲染，以在新窗口中打开
+    //    renderer.link = (href, title, text) => {
+    //        const titleAttribute = title ? ` title="${title}"` : '';
+    //        return `<a href="${href}" target="_blank" rel="noopener noreferrer"${titleAttribute}>${text}</a>`;
+    //    };
 
-        // 配置 marked
-        marked.setOptions({
-            renderer: renderer,
-            highlight: (code, lang) => {
-                if (this.isChartLanguage(lang)) {
-                    return code;
-                }
-                // 可以添加其他代码高亮处理
-                return code;
-            }
-        });
-    }
+    //    // 重写 code 渲染方法
+    //    renderer.code = (code, language) => {
+    //        if (this.isChartLanguage(language)) {
+    //            return this.renderChart(code, language);
+    //        }
+    //        return originalCode(code, language);
+    //    };
 
-    isChartLanguage(language) {
-        return ['mermaid', 'chart', 'pie', 'bar', 'line'].includes(language);
-    }
+    //    // 配置 marked
+    //    marked.setOptions({
+    //        renderer: renderer,
+    //        highlight: (code, lang) => {
+    //            if (this.isChartLanguage(lang)) {
+    //                return code;
+    //            }
+    //            // 可以添加其他代码高亮处理
+    //            return code;
+    //        }
+    //    });
+    //}
 
-    renderChart(code, type) {
-        const chartId = `chart-${Math.random().toString(36).substr(2, 9)}`;
+    //isChartLanguage(language) {
+    //    return ['mermaid', 'chart', 'pie', 'bar', 'line'].includes(language);
+    //}
 
-        // 根据不同图表类型处理代码
-        let chartCode = code;
-        if (type !== 'mermaid') {
-            chartCode = this.convertToMermaid(code, type);
-        }
+    //renderChart(code, type) {
+    //    const chartId = `chart-${Math.random().toString(36).substr(2, 9)}`;
 
-        try {
-            // 异步渲染图表
-            setTimeout(() => {
-                mermaid.render(chartId, chartCode, (svgCode) => {
-                    const container = document.getElementById(chartId);
-                    if (container) {
-                        container.innerHTML = svgCode;
-                    }
-                });
-            }, 0);
+    //    // 根据不同图表类型处理代码
+    //    let chartCode = code;
+    //    if (type !== 'mermaid') {
+    //        chartCode = this.convertToMermaid(code, type);
+    //    }
 
-            return `<div class="chart-container" id="${chartId}">
-                      <div class="chart-loading">Loading chart...</div>
-                    </div>`;
-        } catch (error) {
-            console.error('Chart rendering error:', error);
-            return `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
-        }
-    }
+    //    try {
+    //        // 异步渲染图表
+    //        setTimeout(() => {
+    //            mermaid.render(chartId, chartCode, (svgCode) => {
+    //                const container = document.getElementById(chartId);
+    //                if (container) {
+    //                    container.innerHTML = svgCode;
+    //                }
+    //            });
+    //        }, 0);
 
-    convertToMermaid(code, type) {
-        // 将其他格式转换为 Mermaid 语法
-        switch (type) {
-            case 'pie':
-                return this.convertToPieChart(code);
-            case 'bar':
-                return this.convertToBarChart(code);
-            case 'line':
-                return this.convertToLineChart(code);
-            default:
-                return code;
-        }
-    }
+    //        return `<div class="chart-container" id="${chartId}">
+    //                  <div class="chart-loading">Loading chart...</div>
+    //                </div>`;
+    //    } catch (error) {
+    //        console.error('Chart rendering error:', error);
+    //        return `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
+    //    }
+    //}
 
-    convertToPieChart(code) {
-        const lines = code.trim().split('\n');
-        let mermaidCode = 'pie\n';
+    //convertToMermaid(code, type) {
+    //    // 将其他格式转换为 Mermaid 语法
+    //    switch (type) {
+    //        case 'pie':
+    //            return this.convertToPieChart(code);
+    //        case 'bar':
+    //            return this.convertToBarChart(code);
+    //        case 'line':
+    //            return this.convertToLineChart(code);
+    //        default:
+    //            return code;
+    //    }
+    //}
 
-        lines.forEach(line => {
-            const [label, value] = line.split(':').map(s => s.trim());
-            if (label && value) {
-                mermaidCode += `    "${label}" : ${value}\n`;
-            }
-        });
+    //convertToPieChart(code) {
+    //    const lines = code.trim().split('\n');
+    //    let mermaidCode = 'pie\n';
 
-        return mermaidCode;
-    }
+    //    lines.forEach(line => {
+    //        const [label, value] = line.split(':').map(s => s.trim());
+    //        if (label && value) {
+    //            mermaidCode += `    "${label}" : ${value}\n`;
+    //        }
+    //    });
 
-    convertToBarChart(code) {
-        const lines = code.trim().split('\n');
-        let mermaidCode = 'graph TD\n';
+    //    return mermaidCode;
+    //}
 
-        lines.forEach((line, index) => {
-            const [label, value] = line.split(':').map(s => s.trim());
-            if (label && value) {
-                mermaidCode += `    ${index}["${label}"] --- |${value}| B${index}((${value}))\n`;
-            }
-        });
+    //convertToBarChart(code) {
+    //    const lines = code.trim().split('\n');
+    //    let mermaidCode = 'graph TD\n';
 
-        return mermaidCode;
-    }
+    //    lines.forEach((line, index) => {
+    //        const [label, value] = line.split(':').map(s => s.trim());
+    //        if (label && value) {
+    //            mermaidCode += `    ${index}["${label}"] --- |${value}| B${index}((${value}))\n`;
+    //        }
+    //    });
 
-    convertToLineChart(code) {
-        const lines = code.trim().split('\n');
-        let mermaidCode = 'xychart-beta\n    title "Line Chart"\n    x-axis [';
+    //    return mermaidCode;
+    //}
 
-        const points = [];
-        lines.forEach(line => {
-            const [x, y] = line.split(',').map(s => s.trim());
-            if (x && y) {
-                points.push([x, y]);
-            }
-        });
+    //convertToLineChart(code) {
+    //    const lines = code.trim().split('\n');
+    //    let mermaidCode = 'xychart-beta\n    title "Line Chart"\n    x-axis [';
 
-        mermaidCode += points.map(p => `"${p[0]}"`).join(' ') + ']\n';
-        mermaidCode += '    y-axis "Value"\n';
-        mermaidCode += '    line [' + points.map(p => p[1]).join(' ') + ']\n';
+    //    const points = [];
+    //    lines.forEach(line => {
+    //        const [x, y] = line.split(',').map(s => s.trim());
+    //        if (x && y) {
+    //            points.push([x, y]);
+    //        }
+    //    });
 
-        return mermaidCode;
-    }
+    //    mermaidCode += points.map(p => `"${p[0]}"`).join(' ') + ']\n';
+    //    mermaidCode += '    y-axis "Value"\n';
+    //    mermaidCode += '    line [' + points.map(p => p[1]).join(' ') + ']\n';
+
+    //    return mermaidCode;
+    //}
 }

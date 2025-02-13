@@ -1,8 +1,14 @@
 // Models/ChatModelConfig.cs
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace ChatBot.Models
 {
+    public class SearchTermsResponse
+    {
+        [JsonPropertyName("search_terms")]
+        public List<string> SearchTerms { get; set; }
+    }
     public enum ChatModelType
     {
         OPenAi,
@@ -13,7 +19,8 @@ namespace ChatBot.Models
         QwenVl,
         Llama,
         Deepbricks,
-        
+        OpenAiDeepResearch,
+        GeminiDeepResearch,
     }
 
     public class ChatModelConfig

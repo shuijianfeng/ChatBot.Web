@@ -1490,3 +1490,32 @@ img.image-preview-img {
         white-space: nowrap;
         pointer-events: none;
     }
+
+.external-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--color-accent-fg);
+    text-decoration: none;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+    .external-link:hover {
+        background-color: var(--color-accent-fg-muted);
+        text-decoration: none;
+    }
+
+    .external-link .link-text {
+        text-decoration: underline;
+    }
+
+.external-link-icon {
+    flex-shrink: 0;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.external-link:hover .external-link-icon {
+    opacity: 1;
+}
