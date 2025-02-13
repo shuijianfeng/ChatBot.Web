@@ -259,15 +259,15 @@ body {
 }
 .delete-button svg,
 .copy-button svg {
-    width: 16px;
-    height: 16px;
+    width: 20px;
+    height: 20px;
 }
 
     /* 复制按钮图标大小 */
 .delete-button .octicon,
 .copy-button .octicon {
-    width: 16px;
-    height: 16px;
+    width: 20px;
+    height: 20px;
 }
     /* 复制图标悬停效果 */
 .delete-button:hover .icon,
@@ -1425,8 +1425,8 @@ img.image-preview-img {
     cursor: pointer;
 }*/
 .delete-button svg.icon {
-    width: 16px !important;
-    height: 16px !important;
+    width: 20px !important;
+    height: 20px !important;
     display: block !important;
     fill: currentColor !important;
 }
@@ -1518,4 +1518,65 @@ img.image-preview-img {
 
 .external-link:hover .external-link-icon {
     opacity: 1;
+}
+
+.message-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* 添加导出按钮相关样式 */
+.export-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding:  2px 4px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--color-fg-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+    .export-button:hover {
+        background-color: var(--color-neutral-muted);
+        color: var(--color-accent-fg);
+    }
+
+    .export-button svg {
+        width: 22px;
+        height: 22px;
+    }
+
+        .export-button svg text {
+            fill: currentColor;
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+
+.export-group {
+    display: flex;
+    gap: 1px;
+}
+
+/* 深色模式适配 */
+[data-theme="dark"] .export-button,
+.dark-mode .export-button {
+    color: var(--color-fg-muted);
+}
+
+    [data-theme="dark"] .export-button:hover,
+    .dark-mode .export-button:hover {
+        background-color: var(--color-neutral-muted);
+        color: var(--color-accent-fg);
+    }
+
+.export-group {
+    display: flex;
+    gap: 0; /* 移除间隙，让按钮连在一起 */
+    border: 1px solid var(--color-border-default);
+    border-radius: 4px;
+    overflow: hidden; /* 确保内部按钮不会超出圆角边框 */
+    padding: 2px; /* 添加内边距，让按钮与边框有一定距离 */
 }
