@@ -10,7 +10,16 @@ using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
 
 using System.Data;
-using static ChatBot.Models.GeminiChunkResponse;
+
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
+using PdfSharp.Drawing;
+using PdfSharp.Pdf;
+
+using DocumentFormat.OpenXml;
+using Color = DocumentFormat.OpenXml.Wordprocessing.Color;
+using PdfSharp.Fonts;
+
 
 
 namespace ChatBot.Web.Services
@@ -31,6 +40,8 @@ namespace ChatBot.Web.Services
         List<string> GetAvailableModels();
         List<ChatModelConfig> GetModels();
         ChatModelConfig GetModelConfig(string modelName);
+        Task<byte[]> ExportMessageToPdf(string content);
+        Task<byte[]> ExportMessageToDocx(string content);
     }
 
     /// <summary>
@@ -2367,6 +2378,274 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
             }
 
             return tokens;
+        }
+
+
+        public async Task<byte[]> ExportMessageToDocx(string content)
+        {
+            //content = Markdig.Markdown.ToPlainText(content);
+            using (var ms = new MemoryStream())
+            {
+                using (var doc = WordprocessingDocument.Create(ms, WordprocessingDocumentType.Document))
+                {
+                    var mainPart = doc.AddMainDocumentPart();
+                    mainPart.Document = new Document();
+                    var body = mainPart.Document.AppendChild(new Body());
+
+                    // 添加标题样式
+                    var titleStyle = new Style
+                    {
+                        StyleId = "Title",
+                        Type = StyleValues.Paragraph
+                    };
+                    titleStyle.Append(new StyleName { Val = "Title" });
+                    titleStyle.Append(new PrimaryStyle());
+
+                    var docStyles = mainPart.StyleDefinitionsPart ?? mainPart.AddNewPart<StyleDefinitionsPart>();
+                    docStyles.Styles = new Styles();
+                    docStyles.Styles.Append(titleStyle);
+
+                    // 添加标题
+                    var titlePara = body.AppendChild(new Paragraph(
+                        new ParagraphProperties(
+                            new ParagraphStyleId { Val = "Title" }
+                        ),
+                        new Run(
+                            new RunProperties(
+                                new RunFonts { Ascii = "微软雅黑", EastAsia = "微软雅黑" },
+                                new FontSize { Val = "32" },
+                                new Bold()
+                            ),
+                            new Text("聊天记录")
+                        )
+                    ));
+
+                    // 添加导出时间
+                    var timePara = body.AppendChild(new Paragraph(
+                        new Run(
+                            new RunProperties(
+                                new RunFonts { Ascii = "微软雅黑", EastAsia = "微软雅黑" },
+                                new FontSize { Val = "24" }
+                            ),
+                            new Text($"导出时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}")
+                        )
+                    ));
+
+                    // 按行处理内容
+                    var lines = content.Split('\n');
+                    foreach (var line in lines)
+                    {
+                        var para = body.AppendChild(new Paragraph());
+                        var run = new Run();
+                        var runProps = new RunProperties(
+                            new RunFonts { Ascii = "微软雅黑", EastAsia = "微软雅黑" },
+                            new FontSize { Val = "24" }
+                        );
+
+                        // 处理代码块
+                        if (line.StartsWith("```"))
+                        {
+                            runProps = new RunProperties(
+                                new RunFonts { Ascii = "Consolas", EastAsia = "Consolas" },
+                                new FontSize { Val = "20" },
+                                new Color { Val = "666666" }
+                            );
+                        }
+                        // 处理标题
+                        else if (line.StartsWith("#"))
+                        {
+                            runProps.Append(new Bold());
+                            runProps.Append(new FontSize { Val = "28" });
+                        }
+                        // 处理粗体
+                        else if (line.Contains("**"))
+                        {
+                            runProps.Append(new Bold());
+                        }
+                        // 处理斜体
+                        else if (line.Contains("*"))
+                        {
+                            runProps.Append(new Italic());
+                        }
+
+                        run.Append(runProps);
+                        run.Append(new Text(line));
+                        para.Append(run);
+                    }
+
+                    doc.Save();
+                }
+                return ms.ToArray();
+            }
+        }
+
+        
+        public async Task<byte[]> ExportMessageToPdf(string content)
+        {
+            try
+            {
+                //content=Markdig.Markdown.ToPlainText(content);
+                // 注册编码和字体
+                System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+                if (GlobalFontSettings.FontResolver == null)
+                {
+                    GlobalFontSettings.FontResolver = new CustomFontResolver();
+                }
+
+                using (var ms = new MemoryStream())
+                {
+                    using (var document = new PdfDocument())
+                    {
+                        var page = document.AddPage();
+                        var gfx = XGraphics.FromPdfPage(page);
+
+                        // 尝试使用不同的中文字体
+                        XFont titleFont, normalFont, codeFont;
+                        try
+                        {
+                            titleFont = new XFont("SimHei", 16, XFontStyleEx.Regular);
+                            normalFont = new XFont("KaiU", 12, XFontStyleEx.Regular);
+                            codeFont = new XFont("SimHei", 11, XFontStyleEx.Regular);
+                        }
+                        catch
+                        {
+                            // 如果上述字体不可用，尝试其他字体
+                            var defaultFont = GlobalFontSettings.FontResolver.ResolveTypeface(null, false, false).FaceName;
+                            titleFont = new XFont(defaultFont, 16, XFontStyleEx.Regular);
+                            normalFont = new XFont(defaultFont, 12, XFontStyleEx.Regular);
+                            codeFont = new XFont(defaultFont, 11, XFontStyleEx.Regular);
+                        }
+
+                        // 绘制标题
+                        gfx.DrawString("聊天记录", titleFont, XBrushes.Black, 50, 50);
+
+                        // 绘制时间
+                        gfx.DrawString($"导出时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}",
+                            normalFont, XBrushes.Black, 50, 80);
+
+                        // 绘制分隔线
+                        gfx.DrawLine(XPens.Gray, 50, 100, 550, 100);
+
+                        // 处理内容
+                        var yPosition = 120.0;
+                        var lines = content.Split('\n');
+                        var maxWidth = page.Width - 100;
+
+                        foreach (var line in lines)
+                        {
+                            if (yPosition > page.Height - 50)
+                            {
+                                page = document.AddPage();
+                                gfx = XGraphics.FromPdfPage(page);
+                                yPosition = 50;
+                            }
+
+                            var font = line.StartsWith("```") ? codeFont : normalFont;
+                            var size = gfx.MeasureString(line, font);
+
+                            // 处理长行自动换行
+                            if (size.Width > maxWidth)
+                            {
+                                var words = line.ToCharArray();
+                                var currentLine = new StringBuilder();
+
+                                foreach (var c in words)
+                                {
+                                    currentLine.Append(c);
+                                    var testSize = gfx.MeasureString(currentLine.ToString(), font);
+
+                                    if (testSize.Width >= maxWidth)
+                                    {
+                                        gfx.DrawString(currentLine.ToString(), font, XBrushes.Black,
+                                            new XRect(50, yPosition, maxWidth, font.Height),
+                                            XStringFormats.TopLeft);
+                                        yPosition += font.Height + 2;
+                                        currentLine.Clear();
+                                    }
+                                }
+
+                                if (currentLine.Length > 0)
+                                {
+                                    gfx.DrawString(currentLine.ToString(), font, XBrushes.Black,
+                                        new XRect(50, yPosition, maxWidth, font.Height),
+                                        XStringFormats.TopLeft);
+                                }
+                            }
+                            else
+                            {
+                                gfx.DrawString(line, font, XBrushes.Black,
+                                    new XRect(50, yPosition, maxWidth, font.Height),
+                                    XStringFormats.TopLeft);
+                            }
+
+                            yPosition += font.Height + 5;
+                        }
+
+                        document.Save(ms);
+                    }
+                    return ms.ToArray();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"PDF生成失败: {ex.Message}", ex);
+            }
+        }
+    }
+
+    public class CustomFontResolver : IFontResolver
+    {
+        private static readonly Dictionary<string, string> FontFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        {"kaiu", "kaiu.ttf"},        // 标楷体
+        {"simhei", "simhei.ttf"},    // 黑体
+        {"msyh", "msyh.ttf"},        // 微软雅黑
+        {"simsun", "simsun.ttc"},    // 宋体
+        {"simkai", "simkai.ttf"}     // 楷体
+    };
+
+        private static readonly Dictionary<string, byte[]> FontData = new Dictionary<string, byte[]>();
+
+        static CustomFontResolver()
+        {
+            var fontPath = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+            foreach (var font in FontFiles)
+            {
+                var path = Path.Combine(fontPath, font.Value);
+                if (File.Exists(path))
+                {
+                    FontData[font.Key] = File.ReadAllBytes(path);
+                }
+            }
+
+            if (FontData.Count == 0)
+            {
+                throw new FileNotFoundException("未找到任何可用的中文字体");
+            }
+        }
+
+        public byte[] GetFont(string faceName)
+        {
+            string key = faceName.ToLower();
+            if (FontData.ContainsKey(key))
+            {
+                return FontData[key];
+            }
+            // 如果请求的字体不存在，返回第一个可用的字体
+            return FontData.First().Value;
+        }
+
+        public FontResolverInfo ResolveTypeface(string familyName, bool isBold, bool isItalic)
+        {
+            // 依次尝试可用的字体
+            foreach (var font in FontFiles.Keys)
+            {
+                if (FontData.ContainsKey(font))
+                {
+                    return new FontResolverInfo(font);
+                }
+            }
+            throw new Exception("没有可用的中文字体");
         }
     }
 }

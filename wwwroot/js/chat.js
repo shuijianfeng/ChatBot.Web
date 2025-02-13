@@ -364,65 +364,7 @@ class ChatUI {
     }
 
 
-    // 添加压缩图片的辅助方法
-    // 修改 compressImage 方法以提高压缩后图片的清晰度
-    //compressImage(file, maxWidth = 1024, quality = 0.8) {
-    //    return new Promise((resolve, reject) => {
-    //        const img = new Image();
-    //        const canvas = document.createElement('canvas');
-    //        const ctx = canvas.getContext('2d');
-
-    //        img.onload = () => {
-    //            let { width, height } = img;
-
-    //            // 仅在图片宽度大于 maxWidth 时进行缩放
-    //            if (width > maxWidth) {
-    //                height = height * (maxWidth / width);
-    //                width = maxWidth;
-    //            }
-
-    //            canvas.width = width;
-    //            canvas.height = height;
-    //            ctx.drawImage(img, 0, 0, width, height);
-
-    //            // 根据原始文件类型选择适当的输出格式
-    //            const fileExtension = file.name.split('.').pop().toLowerCase();
-    //            let outputFormat = 'image/jpeg'; // 默认格式
-
-    //            if (fileExtension === 'png') {
-    //                outputFormat = 'image/png';
-    //            } else if (fileExtension === 'webp') {
-    //                outputFormat = 'image/webp';
-    //            }
-
-    //            canvas.toBlob((blob) => {
-    //                if (blob) {
-    //                    const compressedFileName = file.name.replace(/\.[^/.]+$/, `.${outputFormat.split('/')[1]}`);
-    //                    const compressedFile = new File([blob], compressedFileName, {
-    //                        type: outputFormat,
-    //                        lastModified: Date.now()
-    //                    });
-    //                    resolve(compressedFile);
-    //                } else {
-    //                    reject(new Error('图片压缩失败'));
-    //                }
-    //            }, outputFormat, quality);
-    //        };
-
-    //        img.onerror = () => {
-    //            reject(new Error('图片加载失败'));
-    //        };
-
-    //        const reader = new FileReader();
-    //        reader.onload = (e) => {
-    //            img.src = e.target.result;
-    //        };
-    //        reader.readAsDataURL(file);
-    //    });
-    //}
-
-
-    // 移除最后一条用户消息（用于移除“正在上传图片...”的提示）
+    
     removeLastUserMessage() {
         if (this.messages.length > 0) {
             const lastMessage = this.messages.pop();
@@ -703,8 +645,6 @@ class ChatUI {
         const headerDiv = document.createElement('div');
         headerDiv.className = 'message-header';
 
-
-
         const roleSpan = document.createElement('span');
         roleSpan.className = 'message-role';
         roleSpan.textContent = role === 'assistant' ? 'Ai助手  ' : '您';
@@ -712,9 +652,41 @@ class ChatUI {
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
 
+        // 添加导出按钮
+        const exportGroup = document.createElement('div');
+        exportGroup.className = 'export-group';
+
+        // DOCX 导出按钮
+    const exportDocxBtn = document.createElement('button');
+    exportDocxBtn.className = 'export-button';
+    exportDocxBtn.title = '导出为Word文档';
+    exportDocxBtn.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V5C21 3.89543 20.1046 3 19 3Z" 
+              stroke="currentColor" stroke-width="2" fill="none"/>
+        <text x="7" y="17" font-family="Arial" font-size="12" font-weight="bold" fill="currentColor">W</text>
+    </svg>`;
+    /*exportDocxBtn.onclick = () => this.exportMessageToDocx(content);*/
+
+    // PDF 导出按钮
+    const exportPdfBtn = document.createElement('button');
+    exportPdfBtn.className = 'export-button';
+    exportPdfBtn.title = '导出为PDF文档';
+    exportPdfBtn.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">  
+        <path d="M19 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V5C21 3.89543 20.1046 3 19 3Z" 
+              stroke="currentColor" stroke-width="2" fill="none"/>
+        <text x="5.5" y="17" font-family="Arial" font-size="10" font-weight="bold" fill="currentColor">PDF</text>
+    </svg>`;
+    //exportPdfBtn.onclick = () => this.exportMessageToPdf(content);
+
+        exportGroup.appendChild(exportDocxBtn);
+        exportGroup.appendChild(exportPdfBtn);
+        
         // 创建删除按钮
         const deleteButton = document.createElement('button');
         deleteButton.className = 'delete-button';
+        deleteButton.title = '删除消息';
         deleteButton.setAttribute('aria-label', 'Delete');
         // 更新删除按钮的SVG图标
         deleteButton.innerHTML = `
@@ -748,9 +720,13 @@ class ChatUI {
                 });
             });
             const copyButton = this.createCopyButton(content);
-            
-            actionsDiv.appendChild(deleteButton);
-            actionsDiv.appendChild(copyButton);
+            exportPdfBtn.onclick = () => this.exportMessageToPdf(copyButton.dataset.copyContent);
+            exportDocxBtn.onclick = () => this.exportMessageToDocx(copyButton.dataset.copyContent);
+            exportGroup.appendChild(deleteButton);
+            exportGroup.appendChild(copyButton);
+            actionsDiv.appendChild(exportGroup);
+            //actionsDiv.appendChild(deleteButton);
+            //actionsDiv.appendChild(copyButton);
         }
         else {
             try {
@@ -777,9 +753,14 @@ class ChatUI {
 
                 // 添加消息复制按钮
                 const copyButton = this.createCopyButton(content);
-                
-                actionsDiv.appendChild(deleteButton);
-                actionsDiv.appendChild(copyButton);
+                exportPdfBtn.onclick = () => this.exportMessageToPdf(copyButton.dataset.copyContent);
+                exportDocxBtn.onclick = () => this.exportMessageToDocx(copyButton.dataset.copyContent);
+                exportGroup.appendChild(deleteButton);
+                exportGroup.appendChild(copyButton);
+                actionsDiv.appendChild(exportGroup);
+                //actionsDiv.appendChild(exportGroup);
+                //actionsDiv.appendChild(deleteButton);
+                //actionsDiv.appendChild(copyButton);
             } catch (e) {
                 console.error('Markdown 渲染错误:', e);
                 contentDiv.textContent = content;
@@ -802,7 +783,118 @@ class ChatUI {
         return { messageDiv, contentDiv };
     }
 
-    // 删除消息的方法
+    async exportMessageToDocx(content) {
+        try {
+            const response = await fetch('/api/chat/export-message-docx', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: content
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('导出失败');
+            }
+
+            // 获取文件名
+            const contentDisposition = response.headers.get('content-disposition');
+            let filename = 'chat.docx';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (filenameMatch && filenameMatch[1]) {
+                    filename = filenameMatch[1].replace(/['"]/g, '');
+                }
+            }
+
+            // 获取二进制数据并创建下载
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '聊天消息' + filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('导出DOCX失败:', error);
+            alert('导出DOCX失败,请重试');
+        }
+    }
+    //async exportMessageToDocx(content) {
+    //    try {
+    //        const response = await fetch('/api/chat/export-message-docx', {
+    //            method: 'POST',
+    //            headers: {
+    //                'Content-Type': 'application/json'
+    //            },
+    //            body: JSON.stringify({
+    //                content: content
+    //            })
+    //        });
+
+    //        if (!response.ok) {
+    //            throw new Error('导出失败');
+    //        }
+
+    //        const data = await response.json();
+    //        // 创建下载链接
+    //        const downloadLink = document.createElement('a');
+    //        downloadLink.href = data.url;
+    //        downloadLink.download = data.url.split('/').pop(); // 获取文件名
+    //        document.body.appendChild(downloadLink);
+    //        downloadLink.click();
+    //        document.body.removeChild(downloadLink);
+    //    } catch (error) {
+    //        console.error('导出DOCX失败:', error);
+    //        alert('导出DOCX失败,请重试');
+    //    }
+    //}
+    async exportMessageToPdf(content) {
+        try {
+            const response = await fetch('/api/chat/export-message-pdf', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: content
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('导出失败');
+            }
+
+            // 获取文件名
+            const contentDisposition = response.headers.get('content-disposition');
+            let filename = 'chat.pdf';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (filenameMatch && filenameMatch[1]) {
+                    filename = filenameMatch[1].replace(/['"]/g, '');
+                }
+            }
+
+            // 获取二进制数据并创建下载
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '聊天消息'+filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('导出PDF失败:', error);
+            alert('导出PDF失败,请重试');
+        }
+    }
+
     deleteMessage(messageElement) {
         if (confirm('确定要删除这条消息吗？')) {
             const index = Array.from(this.messagesContainer.children).indexOf(messageElement);
@@ -824,6 +916,7 @@ class ChatUI {
     createCopyButton(textToCopy) {
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-button';
+        copyButton.title = '复制消息';
         copyButton.setAttribute('aria-label', 'Copy');
         copyButton.innerHTML = `
             <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
