@@ -19,6 +19,9 @@ using PdfSharp.Pdf;
 using DocumentFormat.OpenXml;
 using Color = DocumentFormat.OpenXml.Wordprocessing.Color;
 using PdfSharp.Fonts;
+using DocumentFormat.OpenXml.EMMA;
+using static ChatBot.Models.GeminiChunkResponse;
+using static ChatBot.Models.DashScopeChunkResponse;
 
 
 
@@ -49,6 +52,7 @@ namespace ChatBot.Web.Services
     /// </summary>
     public class ChatService : IChatService
     {
+        private const int maxSearchCount = 10;
         static string SessionId = string.Empty;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _configuration;
@@ -85,16 +89,16 @@ namespace ChatBot.Web.Services
         /// <param name="query"></param>
         /// <param name="maxResults"></param>
         /// <returns></returns>
-        public async Task<List<SearchResult>> PerformAdvancedSearch(string query, int maxResults = 4)
+        public async Task<List<SearchResult>> PerformAdvancedSearch(string query, int maxResults = 2)
         {
             var apiKey = Environment.GetEnvironmentVariable("GeminiKey");
-            
+
             var url = $"https://cdsjf.xyz/googleapis/customsearch/v1?" +
                       $"key={apiKey}&" +
                       $"cx=6443be91738ab4541&" +
                       $"hl=zh-CN&" +
                         $"safe=active&" +
-                        $"cr=countryCN&" +
+                        //$"cr=countryCN&" +
                         //$"gl=cn&" +
                         $"filter=1&" +
                       $"q={Uri.EscapeDataString(query)}&" +
@@ -138,7 +142,7 @@ namespace ChatBot.Web.Services
                 _logger.LogError(ex, "搜索失败");
                 return new List<SearchResult>();
             }
-            
+
         }
 
         private string GetPropertyValueOrDefault(JsonElement item, string propertyName)
@@ -218,11 +222,11 @@ namespace ChatBot.Web.Services
 
             var client = _httpClientFactory.CreateClient();
             client.Timeout = TimeSpan.FromMinutes(30);
-            
+
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             //client.DefaultRequestHeaders.Add("Accept", "text/event-stream");
             client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
-            client.DefaultRequestHeaders.Add("X-Return-Format", "text");
+            //client.DefaultRequestHeaders.Add("X-Return-Format", "text");
             var requestContent = new
             {
                 url = query
@@ -234,56 +238,122 @@ namespace ChatBot.Web.Services
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
             }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.OK)
+            {
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync(cancellationToken);
+            }
+            else
+            {
+                return await Task.FromResult(string.Empty);
+            }
         }
 
+        ///// <summary>
+        ///// 并行抓取
+        ///// </summary>
+        ///// <param name="searchResults"></param>
+        ///// <param name="cancellationToken"></param>
+        ///// <returns></returns>
+        //public async Task<string> SearchResults(List<SearchResult> searchResults, CancellationToken cancellationToken)
+        //{
+        //    const int maxResults = 20;
+        //    searchResults = searchResults.Take(maxResults).ToList();
+
+        //    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        //    cts.CancelAfter(TimeSpan.FromSeconds(30));
+
+        //    try
+        //    {
+        //        var tasks = searchResults.Select(item => ProcessSearchResult(item, cts.Token));
+        //        var results = await Task.WhenAll(tasks);
+        //        return string.Join("\n", results.Where(r => !string.IsNullOrEmpty(r)));
+        //        //string resultliat = string.Empty;
+        //        //foreach (var item in searchResults)
+        //        //{
+        //        //    var result = await ProcessSearchResult(item, cancellationToken);
+        //        //    if (!string.IsNullOrEmpty(result))
+        //        //    {
+        //        //        resultliat = string.Join(resultliat,"\n", result);
+        //        //    }
+        //        //}
+        //        //return resultliat;
+        //    }
+        //    catch (OperationCanceledException)
+        //    {
+
+        //        _logger.LogWarning("搜索结果处理超时或被取消");
+        //        return string.Empty;
+        //    }
+        //}
+
         /// <summary>
-        /// 并行抓取
+        /// 抓取并清洗数据
         /// </summary>
         /// <param name="searchResults"></param>
+        /// <param name="modelconfg"></param>
+        /// <param name="searchterm"></param>
+        /// <param name="outinfo"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        public async Task<string> SearchResults( List<SearchResult> searchResults, CancellationToken cancellationToken)
+        public async IAsyncEnumerable<string> SearchResults(List<SearchResult> searchResults, ChatModelConfig modelconfg, string searchterm, StringBuilder outinfo, CancellationToken cancellationToken)
         {
-            const int maxResults = 20;
-            searchResults = searchResults.Take(maxResults).ToList();
 
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(30));
+            string resultliat = string.Empty;
 
-            try
+            foreach (var item in searchResults)
             {
-                var tasks = searchResults.Select(item => ProcessSearchResult(item, cts.Token));
-                var results = await Task.WhenAll(tasks);
-                return string.Join("\n", results.Where(r => !string.IsNullOrEmpty(r)));
-                //string resultliat = string.Empty;
-                //foreach (var item in searchResults)
-                //{
-                //    var result = await ProcessSearchResult(item, cancellationToken);
-                //    if (!string.IsNullOrEmpty(result))
-                //    {
-                //        resultliat = string.Join(resultliat,"\n", result);
-                //    }
-                //}
-                //return resultliat;
+                string bh = (searchResults.IndexOf(item) + 1).ToString();
+                yield return "<details>";
+                yield return $"\n<summary>{bh} 读取分析：{item.Title}</summary>";
+                yield return $"\n\n链接： {item.Link}";
+                var result = await ProcessSearchResult(item, cancellationToken);
+                if (!string.IsNullOrEmpty(result))
+                {
+                    string info = string.Empty;
+                    switch (modelconfg.ChatModelType)
+                    {
+                        case ChatModelType.GeminiDeepResearch:
+                            {
+
+                                info = await GeminiExtractAsync(modelconfg, searchterm, result, cancellationToken);
+                                break;
+                            }
+                        default:
+                            {
+                                info = await OpenAIExtractAsync(modelconfg, searchterm, result, cancellationToken);
+                                break;
+                            }
+                    }
+
+                    if (!string.IsNullOrEmpty(info))
+                    {
+
+                        outinfo.Append('\n');
+                        outinfo.Append(JsonSerializer.Serialize(new
+                        {
+                            Title = item.Title,
+                            Link = item.Link,
+                            Snippet = item.Snippet,
+                            PublishedDate = item.PublishedDate,
+                            Content = info
+                        }, _jsonOptions));
+
+
+                        yield return $"\n\n内容摘要：\n\n{info}";
+
+                    }
+                }
+
+                yield return "\n</details>\n";
+
+
             }
-            catch (OperationCanceledException)
-            {
-                //try
-                //{
-                //    var tasks = searchResults.Select(async item => await OpenAIExtractAsync(modelconfg, searchterm, await ProcessSearchResult(item, cancellationToken), cancellationToken));
-                //    var results = await Task.WhenAll(tasks);
-                //    return string.Join("\n", results.Where(r => !string.IsNullOrEmpty(r)));
-                //}
-                //catch (OperationCanceledException)
-                //{
-                //    _logger.LogWarning("搜索结果处理超时或被取消");
-                //    return string.Empty;
-                //}
-                _logger.LogWarning("搜索结果处理超时或被取消");
-                return string.Empty;
-            }
+            yield return "\n";
+            yield return "\n";
+            yield return "---";
+            yield return "\n";
+            yield return "\n";
         }
 
         /// <summary>
@@ -477,7 +547,11 @@ namespace ChatBot.Web.Services
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
             }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -561,7 +635,11 @@ namespace ChatBot.Web.Services
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
-
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -645,6 +723,13 @@ namespace ChatBot.Web.Services
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
+
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
+            }
+
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -737,7 +822,12 @@ namespace ChatBot.Web.Services
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
             }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            ;
+
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -814,6 +904,11 @@ namespace ChatBot.Web.Services
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -849,7 +944,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        
+
         //OpenAI 
         public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -869,13 +964,7 @@ namespace ChatBot.Web.Services
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
             string Search = string.Empty;
-            //if (request.EnableSearch)
-            //{
-
-            //    var list = await PerformAdvancedSearch(request.History[request.History.Count - 1].Content);
-
-            //    Search = await SearchResults(list, cancellationToken);
-            //}
+            
 
             HttpResponseMessage response = null;
             if (modelconfg.Temperature >= 0)
@@ -910,6 +999,12 @@ namespace ChatBot.Web.Services
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
+
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -945,7 +1040,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        
+
         //Claude 
         public async IAsyncEnumerable<string> ClaudeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -1005,6 +1100,11 @@ namespace ChatBot.Web.Services
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
 
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
+            }
 
             response.EnsureSuccessStatusCode();
 
@@ -1108,7 +1208,11 @@ namespace ChatBot.Web.Services
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
-
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -1200,6 +1304,12 @@ namespace ChatBot.Web.Services
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
             }
             response.EnsureSuccessStatusCode();
 
@@ -1295,8 +1405,8 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        
-        # region 深度研究
+
+        #region 深度研究
         //OpenAI 获取聊天消息搜索词
         public async Task<string> OpenAISearchtermAsync(ChatModelConfig modelconfg, string searchterm, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -1323,9 +1433,11 @@ namespace ChatBot.Web.Services
             contents.Add(new
             {
                 role = "user",
-                content = (new StringBuilder()).Append("要回答问题：")
+                content = (new StringBuilder()).Append("要深度研究：")
+                        .Append('\n')
                         .Append(searchterm)
-                        .Append(" ，需要联网搜索， 要求只输出精准的搜索词\r\n以 JSON 的形式输出，输出的 JSON 需遵守以下的格式：\r\n\r\n{\r\n\tsearch_terms:[\r\n\t  <搜索关键词>,\r\n\t  <搜索关键词>,\r\n\t]\r\n}").ToString(),
+                        .Append('\n')
+                        .Append(" ，需要联网搜索权威可信的资料， 要求只输出精准的搜索词并按重要性排序\r\n以 JSON 的形式输出，输出的 JSON 需遵守以下的格式：\r\n\r\n{\r\n\tsearch_terms:[\r\n\t  <搜索关键词>,\r\n\t  <搜索关键词>,\r\n\t]\r\n}").ToString()
             });
             if (modelconfg.Temperature >= 0)
             {
@@ -1342,6 +1454,7 @@ namespace ChatBot.Web.Services
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                
             }
             else
             {
@@ -1358,6 +1471,12 @@ namespace ChatBot.Web.Services
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                
+            }
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
+
             }
             response.EnsureSuccessStatusCode();
 
@@ -1374,10 +1493,11 @@ namespace ChatBot.Web.Services
                 var content = chunk?.choices?.FirstOrDefault()?.message?.content;
                 if (!string.IsNullOrEmpty(content))
                 {
+
                     int beging = content.IndexOf("```json");
                     if (beging >= 0)
                     {
-                        int end = content.IndexOf("```", 7);
+                        int end = content.IndexOf("```", 7 + beging);
                         if (end > 0 && end > beging)
                         {
                             content = content.Substring(beging + 7, end - beging - 7);
@@ -1416,14 +1536,20 @@ namespace ChatBot.Web.Services
             contents.Add(new
             {
                 role = "user",
-                content = (new StringBuilder()).Append("要回答问题：")
-                        .Append(searchterm)
-                        .Append(" ，以下是联网搜索的信息：")
-                        .Append('\n')
-                        .Append(info)
-                        .Append('\n')
-                        .Append("要求只输出和 ").
-                        Append(searchterm).Append(" 相关信息。").ToString(),
+                content = ((new StringBuilder()).Append("请提取 ")
+                .Append('\n')
+                .Append('[')
+                .Append(info)
+                .Append(']')
+                .Append('\n')
+                .Append(" 中与 ")
+                .Append('\n')
+                .Append('[')
+                .Append(searchterm)
+                .Append(']')
+                 .Append('\n')
+                .Append("相关的关键信息，不做其他操作。")
+                .ToString())
             });
             if (modelconfg.Temperature >= 0)
             {
@@ -1440,6 +1566,7 @@ namespace ChatBot.Web.Services
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                
             }
             else
             {
@@ -1457,6 +1584,11 @@ namespace ChatBot.Web.Services
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
+
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -1472,16 +1604,7 @@ namespace ChatBot.Web.Services
                 var content = chunk?.choices?.FirstOrDefault()?.message?.content;
                 if (!string.IsNullOrEmpty(content))
                 {
-                    int beging = content.IndexOf("```json");
-                    if (beging >= 0)
-                    {
-                        int end = content.IndexOf("```", 7);
-                        if (end > 0 && end > beging)
-                        {
-                            content = content.Substring(beging + 7, end - beging - 7);
-                            //return await Task.FromResult(content);
-                        }
-                    }
+
                     return await Task.FromResult(content);
                 }
 
@@ -1523,7 +1646,7 @@ namespace ChatBot.Web.Services
             }
             else
             {
-                int num = 10 / Searchtermlist.SearchTerms.Count;
+                int num = maxSearchCount / Searchtermlist.SearchTerms.Count;
                 if (num == 0) num = 1;
                 for (int i = 0; i < Searchtermlist.SearchTerms.Count; i++)
                 {
@@ -1532,9 +1655,13 @@ namespace ChatBot.Web.Services
                     Searchlist.AddRange(list);
                 }
             }
+            StringBuilder sb = new StringBuilder();
 
-
-            Search = await SearchResults(Searchlist, cancellationToken);
+            await foreach (var item in SearchResults(Searchlist, modelconfg, request.History[request.History.Count - 1].Content, sb, cancellationToken))
+            {
+                yield return item;
+            }
+            Search = sb.ToString();
             Search = generateSystemPrompt(Search, request.History.Last().Content);
             int num1 = CalculateTokens(Search);
 
@@ -1561,6 +1688,7 @@ namespace ChatBot.Web.Services
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
             }
             else
             {
@@ -1581,7 +1709,7 @@ namespace ChatBot.Web.Services
 
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
             {
-                _logger.LogError("OpenAI 深度研究失败");
+                yield return "OpenAi 深度研究失败";
                 yield break;
             }
             response.EnsureSuccessStatusCode();
@@ -1619,7 +1747,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        
+
         //Gemini 获取聊天消息搜索词
         public async Task<string> GeminiSearchtermAsync(ChatModelConfig modelconfg, string searchterm, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -1644,9 +1772,11 @@ namespace ChatBot.Web.Services
             var contentlist = new List<object>();
             contentlist.Add(new
             {
-                text = (new StringBuilder()).Append("要回答问题：")
+                text = (new StringBuilder()).Append("要深度研究：")
+                        .Append('\n')
                         .Append(searchterm)
-                        .Append(" ，需要联网搜索， 要求只输出精准的搜索词\r\n以 JSON 的形式输出，输出的 JSON 需遵守以下的格式：\r\n\r\n{\r\n\tsearch_terms:[\r\n\t  <搜索关键词>,\r\n\t  <搜索关键词>,\r\n\t]\r\n}").ToString()
+                        .Append('\n')
+                        .Append(" ，需要联网搜索权威可信的资料， 要求只输出精准的搜索词并按重要性排序\r\n以 JSON 的形式输出，输出的 JSON 需遵守以下的格式：\r\n\r\n{\r\n\tsearch_terms:[\r\n\t  <搜索关键词>,\r\n\t  <搜索关键词>,\r\n\t]\r\n}").ToString()
             });
 
             contents.Add(new
@@ -1673,6 +1803,7 @@ namespace ChatBot.Web.Services
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                
             }
             else
             {
@@ -1690,8 +1821,14 @@ namespace ChatBot.Web.Services
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                
             }
 
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
+
+            }
             response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -1712,7 +1849,7 @@ namespace ChatBot.Web.Services
                     int beging = content.IndexOf("```json");
                     if (beging >= 0)
                     {
-                        int end = content.IndexOf("```", 7);
+                        int end = content.IndexOf("```", 7 + beging);
                         if (end > 0 && end > beging)
                         {
                             content = content.Substring(beging + 7, end - beging - 7);
@@ -1721,6 +1858,117 @@ namespace ChatBot.Web.Services
                     }
                     return await Task.FromResult(content);
 
+
+                }
+
+
+            }
+            return await Task.FromResult(string.Empty);
+        }
+        //Gemini 获取聊天消息搜索词
+        public async Task<string> GeminiExtractAsync(ChatModelConfig modelconfg, string searchterm, string info, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            // 验证配置
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
+            var apiEndpoint = modelconfg.ApiEndpoint;
+            apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
+
+
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            {
+                throw new InvalidOperationException("配置缺失");
+            }
+
+            apiEndpoint = apiEndpoint + $":generateContent?key={apiKey}";
+
+            // 创建HTTP客户端
+            var client = _httpClientFactory.CreateClient();
+
+            HttpResponseMessage response = null;
+            var contents = new List<object>();
+            var contentlist = new List<object>();
+            contentlist.Add(new
+            {
+                text = ((new StringBuilder()).Append("请提取 ")
+                .Append('\n')
+                .Append('[')
+                .Append(info)
+                .Append(']')
+                .Append('\n')
+                .Append(" 中与 ")
+                .Append('\n')
+                .Append('[')
+                .Append(searchterm)
+                .Append(']')
+                 .Append('\n')
+                .Append("相关的关键信息，不做其他操作。")
+                .ToString())
+            });
+
+            contents.Add(new
+            {
+                role = "user",
+                parts = contentlist
+            });
+
+            if (modelconfg.Temperature >= 0)
+            {
+
+                var requestContent = new
+                {
+                    system_instruction = new
+                    {
+                        parts = new { text = "" }
+                    },
+                    contents = contents,
+                    generationConfig = new { temperature = modelconfg.Temperature }
+
+                };
+                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            }
+            else
+            {
+                var requestContent = new
+                {
+                    system_instruction = new
+                    {
+                        parts = new { text = "" }
+                    },
+                    contents = contents,
+
+                };
+                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
+
+            }
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var reader = new StreamReader(stream);
+
+            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            {
+                var line = await reader.ReadToEndAsync(cancellationToken);
+                var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
+                var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
+
+                if (!string.IsNullOrEmpty(content))
+                {
+
+                    return await Task.FromResult(content);
 
                 }
 
@@ -1773,7 +2021,7 @@ namespace ChatBot.Web.Services
             }
             else
             {
-                int num = 10 / Searchtermlist.SearchTerms.Count;
+                int num = maxSearchCount / Searchtermlist.SearchTerms.Count;
                 if (num == 0) num = 1;
                 for (int i = 0; i < Searchtermlist.SearchTerms.Count; i++)
                 {
@@ -1782,11 +2030,16 @@ namespace ChatBot.Web.Services
                     Searchlist.AddRange(list);
                 }
             }
+            StringBuilder sb = new StringBuilder();
 
-
-            Search = await SearchResults(Searchlist, cancellationToken);
+            await foreach (var item in SearchResults(Searchlist, modelconfg, request.History[request.History.Count - 1].Content, sb, cancellationToken))
+            {
+                yield return item;
+            }
+            Search = sb.ToString();
             Search = generateSystemPrompt(Search, request.History.Last().Content);
-            int num1=CalculateTokens(Search);
+            int num1 = CalculateTokens(Search);
+
             // 创建HTTP客户端
             var client = _httpClientFactory.CreateClient();
             client.Timeout = TimeSpan.FromMinutes(30);
@@ -1811,6 +2064,7 @@ namespace ChatBot.Web.Services
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
             }
             else
             {
@@ -1834,10 +2088,10 @@ namespace ChatBot.Web.Services
             }
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
             {
-                _logger.LogError("Gemini 深度研究失败");
+                yield return "Gemini 深度研究失败";
                 yield break;
             }
-                response.EnsureSuccessStatusCode();
+            response.EnsureSuccessStatusCode();
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
@@ -1878,7 +2132,7 @@ namespace ChatBot.Web.Services
             }
         }
         #endregion
-        
+
         #region 组装消息
         private static List<object> ToMessagesllama32(ChatRequest request, ChatModelConfig modelconfg)
         {
@@ -2113,7 +2367,7 @@ namespace ChatBot.Web.Services
         }
         #endregion
 
-       
+
 
         #region 错误处理
         /// <summary>
@@ -2479,7 +2733,7 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
             }
         }
 
-        
+
         public async Task<byte[]> ExportMessageToPdf(string content)
         {
             try
