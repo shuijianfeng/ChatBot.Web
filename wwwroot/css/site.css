@@ -1580,3 +1580,330 @@ img.image-preview-img {
     overflow: hidden; /* 确保内部按钮不会超出圆角边框 */
     padding: 2px; /* 添加内边距，让按钮与边框有一定距离 */
 }
+
+.upload-image-container {
+    align-items: center;
+    display:flex;
+    gap: 20px; /* 移除间隙，让按钮连在一起 */
+    padding: 20px;
+}
+
+
+
+/* 消息内容中的图片样式 */
+.message-content img.message-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: 8px 0;
+    cursor: pointer;
+    transition: all 0.2s ease; /* 添加过渡效果 */
+}
+
+/* AI助手消息中的图片样式 */
+.assistant-message .message-content img.message-image {
+    max-width: 400px;
+    display: block;
+}
+
+/* 悬停效果 - 浅色模式 */
+.message-content img.message-image:hover {
+    opacity: 0.9;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+    transform: scale(1.01); /* 轻微放大效果 */
+}
+
+/* 悬停效果 - 深色模式 */
+[data-theme="dark"] .message-content img.message-image:hover,
+.dark-mode .message-content img.message-image:hover {
+    opacity: 0.9;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.2); /* 使用白色阴影 */
+    transform: scale(1.01);
+}
+
+/* 图片加载占位符 */
+.message-content img.message-image:not([src]),
+.message-content img.message-image[src=""] {
+    display: none;
+}
+
+/* 深色模式下的图片边框 */
+/*[data-theme="dark"] .message-content img.message-image,
+.dark-mode .message-content img.message-image {
+    border: 1px solid var(--color-border-default);
+}*/
+
+/* 深色模式下的图片滤镜 */
+@media (prefers-color-scheme: dark) {
+    .message-content img.message-image {
+        filter: brightness(0.9); /* 稍微降低亮度以适应深色模式 */
+    }
+
+        .message-content img.message-image:hover {
+            opacity: 0.9;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+            transform: scale(1.01);
+            filter: brightness(1); /* 悬停时恢复正常亮度 */
+        }
+}
+
+
+
+
+
+ /*链接预览容器增强*/ 
+.link-preview-container {
+    position: fixed;
+    z-index: 9999;
+    width: 320px;
+    max-width: 90vw;
+    background-color: var(--color-canvas-default, #ffffff);
+    border: 1px solid var(--color-border-default, #e1e4e8);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(149, 157, 165, 0.2);
+    padding: 0;
+    overflow: hidden;
+    font-size: 14px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: auto;
+}
+
+     /*当显示时的动画效果*/ 
+    .link-preview-container[style*="display: block"] {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+ /*深色模式下的预览容器*/ 
+[data-theme="dark"] .link-preview-container,
+.dark-mode .link-preview-container {
+    background-color: var(--color-canvas-overlay, #1c2128);
+    border-color: var(--color-border-default, #30363d);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+ /*链接预览加载状态优化*/ 
+.link-preview-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    color: var(--color-fg-muted, #6e7781);
+    min-height: 100px;
+}
+
+    .link-preview-loading .spinner {
+        width: 24px;
+        height: 24px;
+        border: 2px solid rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+        border-top-color: var(--color-accent-emphasis, #0969da);
+        animation: spin 1s linear infinite;
+        margin-bottom: 8px;
+    }
+
+ /*链接外观增强*/ 
+.external-link {
+    position: relative;
+    text-decoration: underline;
+    text-decoration-color: var(--color-accent-muted, #54aeff80);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    transition: text-decoration-color 0.2s ease;
+}
+
+    .external-link:hover {
+        text-decoration-color: var(--color-accent-emphasis, #0969da);
+    }
+
+.external-link-icon {
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+    margin-left: 3px;
+    vertical-align: text-top;
+}
+
+.external-link:hover .external-link-icon {
+    opacity: 1;
+}
+
+ /*优化预览图片*/ 
+.link-preview .preview-image {
+    width: 100%;
+    height: 160px;
+    overflow: hidden;
+    background-color: var(--color-canvas-subtle, #f6f8fa);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+    .link-preview .preview-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.3s ease;
+    }
+
+    .link-preview .preview-image:hover img {
+        transform: scale(1.05);
+    }
+
+ /*优化预览内容布局*/ 
+/*.link-preview .preview-content {
+    padding: 12px 16px;
+    border-top: 1px solid var(--color-border-muted, #d0d7de);
+}
+
+.link-preview .preview-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--color-fg-default, #24292f);
+    line-height: 1.4;
+}*/
+
+ /*确保预览加载平滑*/ 
+/*.link-preview, .link-preview-simple, .link-preview-image {
+    min-height: 80px;
+}*/
+
+
+
+
+
+/* 引用式链接样式 */
+.reference-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-accent-fg, #0969da);
+    text-decoration: underline;
+    padding-right: 2px;
+}
+
+    /* 引用链接编号样式 */
+    .reference-link [class^="ref-"] {
+        font-size: 0.8em;
+        vertical-align: super;
+        margin-right: 2px;
+        font-weight: 600;
+    }
+
+/* 确保引用式链接在预览时显示完整URL */
+.link-preview-container .preview-url {
+    word-break: break-all;
+    max-width: 100%;
+    white-space: normal;
+}
+
+
+/* 链接预览样式增强 */
+.link-preview-container {
+    position: fixed;
+    z-index: 9999;
+    width: 340px;
+    max-width: 90vw;
+    background-color: var(--color-canvas-default);
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(149, 157, 165, 0.2);
+    padding: 0;
+    overflow: hidden;
+    font-size: 14px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: auto;
+}
+
+    /* 显示时的动画效果 */
+    .link-preview-container[style*="display: block"] {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+/* 站点信息样式 */
+.preview-site-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.preview-favicon {
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    object-fit: contain;
+    background-color: var(--color-canvas-subtle);
+}
+
+.preview-site-name {
+    font-size: 12px;
+    color: var(--color-fg-muted);
+    font-weight: 500;
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 链接预览内容部分 */
+.link-preview .preview-content {
+    padding: 12px 16px;
+}
+
+.link-preview .preview-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--color-fg-default);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+}
+
+.link-preview .preview-description {
+    font-size: 12px;
+    /*color: var(--color-fg-muted);
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;*/
+}
+
+.link-preview .preview-url {
+    font-size: 12px;
+    color: var(--color-fg-muted);
+    word-break: break-all;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 简化版预览样式 */
+.link-preview-simple {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+    .link-preview-container {
+        background-color: var(--color-canvas-overlay);
+        border-color: var(--color-border-default);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .preview-favicon {
+        background-color: var(--color-canvas-subtle);
+        border: 1px solid var(--color-border-muted);
+    }
+}
