@@ -1362,16 +1362,17 @@ namespace ChatBot.Web.Services
                                 }
                                 else
                                 {
-                                    if (content.StartsWith ( "<think>") && !beging1 && !end1)
+                                    if (content.Contains ( "<think>") && !beging1 && !end1)
                                     {
-                                        yield return content.Substring(0, "<think>".Length) + "\n" + "\n" + "```Thoughts" + "\n" + "\n"+ content.Substring("<think>".Length);
+                                        yield return content.Replace("<think>", "<think>"+"\n" + "\n" + "```Thoughts" + "\n" + "\n");
                                         beging1 = true;
                                     }
                                     else
                                     {
-                                        if (content.StartsWith( "</think>") && beging1 && !end1)
+                                        if (content.Contains( "</think>") && beging1 && !end1)
                                         {
-                                            yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
+                                            
+                                            yield return content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
                                             end1 = true;
                                         }
                                         else
