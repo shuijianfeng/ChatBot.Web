@@ -2,8 +2,8 @@
 class ChatUI {
     constructor() {
 
-        //this.networkButton = document.getElementById('network-search-button');
-        //this.networkIcon = document.getElementById('network-icon');
+        this.networkButton = document.getElementById('network-search-button');
+        this.networkIcon = document.getElementById('network-icon');
         this.isNetworkEnabled = false; // 默认启用联网搜索
 
         this.MathJax = window.MathJax;
@@ -44,21 +44,21 @@ class ChatUI {
         // 设置模型选择事件监听
         this.modelSelect.addEventListener('change', () => this.toggleImageUploadButton());
         
-        //this.networkButton.addEventListener('click', () => {
-        //    this.isNetworkEnabled = !this.isNetworkEnabled;
-        //    if (this.isNetworkEnabled) {
-        //        this.networkIcon.classList.remove('bi-wifi-off');
-        //        this.networkIcon.classList.add('bi-globe2');
-        //        this.networkButton.title = "禁用联网搜索";
+        this.networkButton.addEventListener('click', () => {
+            this.isNetworkEnabled = !this.isNetworkEnabled;
+            if (this.isNetworkEnabled) {
+                this.networkIcon.classList.remove('bi-wifi-off');
+                this.networkIcon.classList.add('bi-globe2');
+                this.networkButton.title = "禁用联网搜索";
                
-        //    } else {
-        //        this.networkIcon.classList.remove('bi-globe2');
-        //        this.networkIcon.classList.add('bi-wifi-off');
-        //        this.networkButton.title = "启用联网搜索";
-        //        // 发送设置更新到后端
+            } else {
+                this.networkIcon.classList.remove('bi-globe2');
+                this.networkIcon.classList.add('bi-wifi-off');
+                this.networkButton.title = "启用联网搜索";
+                // 发送设置更新到后端
               
-        //    }
-        //});
+            }
+        });
 
         // 初始化图片上传按钮的可见性
         this.fetchChatModels();
@@ -162,11 +162,11 @@ class ChatUI {
         } else {
             this.uploadImageButton.style.display = 'none';
         }
-        //if (model && model.enableSearch) {
-        //    this.networkButton.style.display = 'flex'; // 或 'block'，根据您的CSS布局
-        //} else {
-        //    this.networkButton.style.display = 'none';
-        //}
+        if (model && model.enableSearch) {
+            this.networkButton.style.display = 'flex'; // 或 'block'，根据您的CSS布局
+        } else {
+            this.networkButton.style.display = 'none';
+        }
     }
 
     init() {
@@ -731,6 +731,16 @@ class ChatUI {
         else {
             try {
                 contentDiv.innerHTML = marked.parse(content);
+                // 为所有图片添加双击事件和样式
+                contentDiv.querySelectorAll('img').forEach(img => {
+                    // 添加样式类
+                    img.classList.add('message-image');
+                    // 添加双击事件
+                    img.addEventListener('dblclick', () => {
+                        this.showFullSizeImage(img.src);
+                    });
+                });
+
                 contentDiv.querySelectorAll('pre code').forEach((block) => {
                     hljs.highlightElement(block);
                 });
@@ -955,11 +965,359 @@ class ChatUI {
         return copyButton;
     }
 
-    setupMarked() {
+    // 优化链接预览功能
+    setupLinkPreviews() {
+        // 创建预览容器
+        const previewContainer = document.createElement('div');
+        previewContainer.className = 'link-preview-container';
+        previewContainer.style.display = 'none';
+        document.body.appendChild(previewContainer);
 
+        // 保存预览容器引用
+        this.linkPreviewContainer = previewContainer;
+
+        // 添加预览延迟控制变量
+        this.previewTimeout = null;
+        this.currentPreviewUrl = null;
+        this.previewCache = {}; // 用于缓存预览结果
+
+        // 使用委托事件处理以提高性能
+        document.addEventListener('mousemove', (e) => {
+            const target = e.target.closest('a.external-link');
+            if (target && target.dataset.preview) {
+                const url = target.dataset.preview;
+
+                // 防止频繁触发预览
+                if (this.currentPreviewUrl === url && this.linkPreviewContainer.style.display === 'block') {
+                    return;
+                }
+
+                // 清除之前的延时
+                clearTimeout(this.previewTimeout);
+
+                // 设置新的延时（150ms后显示预览，减少不必要的请求）
+                this.previewTimeout = setTimeout(() => {
+                    this.currentPreviewUrl = url;
+                    this.showLinkPreview(target, url);
+                }, 150);
+            } else if (!e.target.closest('.link-preview-container') &&
+                !e.target.closest('a.external-link')) {
+                // 如果鼠标不在链接或预览上，隐藏预览
+                clearTimeout(this.previewTimeout);
+                this.hideLinkPreview();
+            }
+        });
+
+        // 监听预览容器的悬停，以避免在预览内容上移动鼠标时隐藏预览
+        previewContainer.addEventListener('mouseenter', () => {
+            clearTimeout(this.hidePreviewTimeout);
+        });
+
+        previewContainer.addEventListener('mouseleave', () => {
+            this.hideLinkPreview();
+        });
+    }
+
+    // 显示链接预览 - 优化版本
+    async showLinkPreview(linkElement, url) {
+
+        // 如果是引用式链接，尝试从内容获取实际URL
+        if (url.startsWith('#') && linkElement.classList.contains('reference-link')) {
+            // 查找引用定义
+            const refId = url.substring(1).toLowerCase();
+            if (this.renderer && this.renderer.links && this.renderer.links[refId]) {
+                url = this.renderer.links[refId].href;
+            } else {
+                // 尝试从链接文本中提取URL
+                const match = linkElement.textContent.match(/\[\d+\]\s+(https?:\/\/\S+)/);
+                if (match) {
+                    url = match[1];
+                }
+            }
+        }
+
+
+        // 如果URL无效，不显示预览
+        if (!url || url === '#' || url.startsWith('javascript:')) {
+            return;
+        }
+
+        // 获取链接元素的位置
+        const rect = linkElement.getBoundingClientRect();
+
+        // 检查缓存中是否有预览内容
+        let previewHtml = this.previewCache[url];
+
+        // 显示加载状态
+        if (!previewHtml) {
+            this.linkPreviewContainer.innerHTML = `
+            <div class="link-preview-loading">
+                <div class="spinner"></div>
+                <div>加载预览...</div>
+            </div>
+        `;
+        } else {
+            // 直接使用缓存内容
+            this.linkPreviewContainer.innerHTML = previewHtml;
+        }
+
+        // 立即定位和显示容器，无论是否有缓存
+        this.positionPreviewContainer(rect);
+        this.linkPreviewContainer.style.display = 'block';
+
+        // 如果没有缓存，异步获取预览内容
+        if (!previewHtml) {
+            try {
+                // 创建一个可取消的请求
+                if (this.currentPreviewRequest) {
+                    this.currentPreviewRequest.abort();
+                }
+
+                // 获取预览内容
+                previewHtml = await this.fetchLinkPreview(url);
+
+                // 缓存结果
+                this.previewCache[url] = previewHtml;
+
+                // 如果当前预览的URL仍然是这个，则更新内容
+                if (this.currentPreviewUrl === url) {
+                    this.linkPreviewContainer.innerHTML = previewHtml;
+                    // 重新定位预览容器以适应新内容
+                    this.positionPreviewContainer(rect);
+                }
+            } catch (error) {
+                console.error('获取链接预览失败:', error);
+
+                // 更新为错误状态，但仅当当前URL匹配时
+                if (this.currentPreviewUrl === url) {
+                    this.linkPreviewContainer.innerHTML = `
+                    <div class="link-preview-error">
+                        <div>无法加载预览</div>
+                        <div class="link-url">${url}</div>
+                    </div>
+                `;
+                }
+            }
+        }
+    }
+
+    // 隐藏链接预览 - 优化版本
+    hideLinkPreview() {
+        // 使用延时避免鼠标在链接和预览之间移动时闪烁
+        clearTimeout(this.hidePreviewTimeout);
+        this.hidePreviewTimeout = setTimeout(() => {
+            // 检查鼠标是否在预览容器或链接上
+            if (!this.linkPreviewContainer.matches(':hover') &&
+                !document.querySelector('a.external-link:hover')) {
+                this.linkPreviewContainer.style.display = 'none';
+                this.currentPreviewUrl = null;
+            }
+        }, 200);
+    }
+
+    // 定位预览容器 - 优化版本
+    positionPreviewContainer(linkRect) {
+        const container = this.linkPreviewContainer;
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+
+        // 默认显示在链接下方
+        let top = linkRect.bottom + 10;
+        let left = linkRect.left;
+
+        // 获取容器大小（即使内容还没加载完）
+        const containerRect = container.getBoundingClientRect();
+        const containerWidth = containerRect.width || 320; // 默认宽度
+        const containerHeight = containerRect.height || 200; // 默认高度
+
+        // 如果预览超出右侧边界，向左调整
+        if (left + containerWidth > windowWidth - 20) {
+            left = Math.max(20, windowWidth - containerWidth - 20);
+        }
+
+        // 如果预览超出底部边界，显示在链接上方
+        if (top + containerHeight > windowHeight - 20) {
+            top = Math.max(20, linkRect.top - containerHeight - 10);
+        }
+
+        // 使用transform属性进行平滑过渡
+        container.style.left = `${left}px`;
+        container.style.top = `${top}px`;
+    }
+
+    // 更新 fetchLinkPreview 方法以显示网站图标和站点名称
+    async fetchLinkPreview(url) {
+        // 检查URL是否为图片
+        if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)) {
+            return `
+        <div class="link-preview-image">
+            <img src="${url}" alt="图片预览" loading="lazy" />
+            <div class="link-url">${url}</div>
+        </div>
+    `;
+        }
+
+        // 创建一个可取消的请求
+        const abortController = new AbortController();
+        this.currentPreviewRequest = abortController;
+
+        try {
+            // 添加超时处理
+            const timeoutId = setTimeout(() => abortController.abort(), 12000); // 8秒超时
+
+            // 调用后端API获取链接预览
+            const response = await fetch('/api/chat/link-preview', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url }),
+                signal: abortController.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error('获取链接预览失败');
+            }
+
+            const data = await response.json();
+
+            // 构建优化的预览HTML，突出显示网站图标和网站名称
+            return `
+        <div class="link-preview">
+           
+            <div class="preview-content">
+                <div class="preview-site-info">
+                    ${data.favicon ? `<img src="${data.favicon}" class="preview-favicon" alt="${data.siteName || '网站'}" />` : ''}
+                    <span class="preview-site-name">${data.siteName || new URL(data.url).hostname}</span>
+                </div>
+                 ${data.image ? `<div class="preview-image"><img src="${data.image}" alt="网站预览" loading="lazy" /></div>` : ''}
+                <div class="preview-title">${data.title || '无标题'}</div>
+                ${data.description ? `<div class="preview-description">${data.description}</div>` : ''}
+                <div class="preview-url">${data.url}</div>
+            </div>
+        </div>
+    `;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('链接预览请求已取消');
+            } else {
+                console.error('获取链接预览失败:', error);
+            }
+
+            // 简化的错误预览，包含基本的域名信息
+            try {
+                const domain = new URL(url).hostname;
+                const favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+
+                return `
+            <div class="link-preview-simple">
+                <div class="preview-site-info">
+                    <img src="${favicon}" class="preview-favicon" alt="${domain}" onerror="this.style.display='none'" />
+                    <span class="preview-site-name">${domain}</span>
+                </div>
+                <div class="preview-content">
+                    <div class="preview-url">${url}</div>
+                </div>
+            </div>
+        `;
+            } catch (e) {
+                // 如果URL解析失败，返回最简单的预览
+                return `
+            <div class="link-preview-simple">
+                <div class="preview-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="preview-content">
+                    <div class="preview-url">${url}</div>
+                </div>
+            </div>
+        `;
+            }
+        }
+    }
+
+    //// 获取链接预览 - 优化版本 
+    //async fetchLinkPreview(url) {
+    //    // 检查URL是否为图片
+    //    if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)) {
+    //        return `
+    //        <div class="link-preview-image">
+    //            <img src="${url}" alt="图片预览" loading="lazy" />
+    //            <div class="link-url">${url}</div>
+    //        </div>
+    //    `;
+    //    }
+
+    //    // 创建一个可取消的请求
+    //    const abortController = new AbortController();
+    //    this.currentPreviewRequest = abortController;
+
+    //    try {
+    //        // 添加超时处理
+    //        const timeoutId = setTimeout(() => abortController.abort(), 8000); // 6秒超时
+
+    //        // 调用后端API获取链接预览
+    //        const response = await fetch('/api/chat/link-preview', {
+    //            method: 'POST',
+    //            headers: {
+    //                'Content-Type': 'application/json'
+    //            },
+    //            body: JSON.stringify({ url }),
+    //            signal: abortController.signal
+    //        });
+
+    //        clearTimeout(timeoutId);
+
+    //        if (!response.ok) {
+    //            throw new Error('获取链接预览失败');
+    //        }
+
+    //        const data = await response.json();
+
+    //        // 构建预览HTML
+    //        return `
+    //        <div class="link-preview">
+    //            ${data.image ? `<div class="preview-image"><img src="${data.image}" alt="网站预览" loading="lazy" /></div>` : ''}
+    //            <div class="preview-content">
+    //                <div class="preview-title">${data.title || '无标题'}</div>
+    //                ${data.description ? `<div class="preview-description">${data.description}</div>` : ''}
+    //                <div class="preview-url">${data.url}</div>
+    //            </div>
+    //        </div>
+    //    `;
+    //    } catch (error) {
+    //        if (error.name === 'AbortError') {
+    //            console.log('链接预览请求已取消');
+    //        } else {
+    //            console.error('获取链接预览失败:', error);
+    //        }
+
+    //        // 返回简单的链接预览
+    //        return `
+    //        <div class="link-preview-simple">
+    //            <div class="preview-icon">
+    //                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    //                    <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    //                </svg>
+    //            </div>
+    //            <div class="preview-content">
+    //                <div class="preview-url">${url}</div>
+    //            </div>
+    //        </div>
+    //    `;
+    //    }
+    //}
+
+    // 修改 setupMarked 方法中的链接渲染器部分
+    setupMarked() {
         const renderer = new marked.Renderer();
         const originalCode = renderer.code.bind(renderer);
-        // 修改链接渲染器
+
+        // 修改链接渲染器，增加对引用式链接的支持
         renderer.link = (href, title, text) => {
             // 处理 href 为对象的情况
             let safeHref = '#';
@@ -974,31 +1332,26 @@ class ChatUI {
                 safeHref = encodeURI(safeHref.toString());
             }
 
-            // 处理文本内容
-            const safeText = text || (typeof href === 'string' ? href : href.text);
+            // 处理文本内容 - 防止引用式链接只显示数字
+            let safeText;
+            if (text && text.match(/^\[\d+\]$/)) {
+                // 如果文本是引用格式 [数字]，则显示更有意义的内容
+                safeText = `${text} ${href}`;
+            } else {
+                safeText = text || (typeof href === 'string' ? href : href.text);
+            }
+
             const titleAttr = title ? ` title="${title.replace(/"/g, '&quot;')}"` : '';
 
-            // 返回安全的链接 HTML
-            return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="external-link"${titleAttr}>${safeText}<svg class="external-link-icon" width="12" height="12" viewBox="0 0 12 12">
+            // 返回安全的链接 HTML，添加 data-preview 属性
+            return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="external-link" 
+            data-preview="${safeHref}"${titleAttr}>${safeText}<svg class="external-link-icon" width="12" height="12" viewBox="0 0 12 12">
             <path fill="currentColor" d="M3.75 3v-1h6.5v6.5h-1V4.31L3.81 9.69l-.71-.71L8.69 3.5H3.75z"/>
         </svg></a>`;
         };
 
-        // 修改图片渲染器
-        renderer.image = (href, title, text) => {
-            // 确保所有参数都有效
-            const safeHref = href || '';
-            const safeAlt = text ? ` alt="${text.replace(/"/g, '&quot;')}"` : '';
-            const titleAttr = title ? ` title="${title.replace(/"/g, '&quot;')}"` : '';
-
-            // 如果没有有效的图片地址,返回替代文本
-            if (!safeHref) {
-                return text || '';
-            }
-
-            // 返回安全的图片HTML
-            return `<img src="${safeHref}"${safeAlt}${titleAttr} class="message-image" ondblclick="window.chatUI.showFullSizeImage('${safeHref}')">`;
-        };
+       
+       
 
         renderer.code = (code, language) => {
             if (language === 'mermaid') {
@@ -1021,18 +1374,9 @@ class ChatUI {
             }
             return originalCode(code, language);
         };
-
-        //// 配置 marked
-        //marked.setOptions({
-        //    renderer: renderer,
-        //    gfm: true,
-        //    tables: true,
-        //    breaks: true,
-        //    pedantic: false,
-        //    smartLists: true,
-        //    smartypants: false,
-        //    sanitize: false
-        //});
+        // 初始化链接预览功能
+        this.setupLinkPreviews();
+        
         // 设置 marked 选项
         marked.setOptions({
             renderer: renderer,
@@ -1055,6 +1399,9 @@ class ChatUI {
 
         // 导出renderMath方法供外部使用
         this.renderMath = renderMath;
+
+
+       
     }
     async renderMessage(message) {
         // 渲染消息内容
@@ -1239,7 +1586,15 @@ class ChatUI {
                 try {
 
                     contentDiv.innerHTML = marked.parse(contentDiv.dataset.rawContent);
-
+                    // 为所有图片添加双击事件和样式
+                    contentDiv.querySelectorAll('img').forEach(img => {
+                        // 添加样式类
+                        img.classList.add('message-image');
+                        // 添加双击事件
+                        img.addEventListener('dblclick', () => {
+                            this.showFullSizeImage(img.src);
+                        });
+                    });
                     // 处理所有代码块
                     contentDiv.querySelectorAll('pre code').forEach((block) => {
                         // 添加语言类标识
@@ -1258,9 +1613,25 @@ class ChatUI {
                         hljs.highlightElement(block);
                     });
 
-                    /// 在内容更新后触发 MathJax 渲染
-                    //if (contentDiv) {
-                    //    renderMath(contentDiv);
+                    //// 在内容更新后触发 MathJax 渲染
+                    //if (contentDiv && window.MathJax) {
+                    //    try {
+                    //        // MathJax 3.x 使用 typesetPromise
+                    //        if (window.MathJax.typesetPromise) {
+                    //            window.MathJax.typesetPromise([contentDiv])
+                    //                .catch(err => console.error('MathJax 渲染错误:', err));
+                    //        }
+                    //        // 兼容其他版本
+                    //        else if (window.MathJax.typeset) {
+                    //            window.MathJax.typeset([contentDiv]);
+                    //        }
+                    //        // MathJax 2.x 兼容处理
+                    //        else if (window.MathJax.Hub && window.MathJax.Hub.Queue) {
+                    //            window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub, contentDiv]);
+                    //        }
+                    //    } catch (mathJaxError) {
+                    //        console.error('MathJax 调用失败:', mathJaxError);
+                    //    }
                     //}
                 } catch (e) {
                     console.error('Markdown 渲染错误:', e);
@@ -1288,7 +1659,15 @@ class ChatUI {
             try {
 
                 contentDiv.innerHTML = marked.parse(contentDiv.dataset.rawContent);
-
+                // 为所有图片添加双击事件和样式
+                contentDiv.querySelectorAll('img').forEach(img => {
+                    // 添加样式类
+                    img.classList.add('message-image');
+                    // 添加双击事件
+                    img.addEventListener('dblclick', () => {
+                        this.showFullSizeImage(img.src);
+                    });
+                });
                 // 处理所有代码块
                 contentDiv.querySelectorAll('pre code').forEach((block) => {
                     // 添加语言类标识

@@ -1,4 +1,5 @@
 ﻿
+using ChatBot.Web.Services;
 using System.Text.Json.Serialization;
 namespace ChatBot.Models
 {
@@ -240,22 +241,40 @@ namespace ChatBot.Models
     public class OpenAIChunkResponse
     {
         public choice[] choices { get; set; }
-        
+        public string[] citations { get; set; }
         public class choice
         {
             public delta delta { get; set; }
             public int index { get; set; }
-
+            public string finish_reason { get; set; } = string.Empty;
         }
        
         public class delta
         {
-            public string content { get; set; }
-            public string reasoning_content { get; set; }
-            public string role { get; set; }
-        }
-    }
+            public string content { get; set; }= string.Empty;
+            public string reasoning_content { get; set; } = string.Empty;
+            public string role { get; set; } = string.Empty;
+            public tool_call[] function_call { get; set; }
+            public tool_call[] tool_calls { get; set; }
+            
 
+        }
+        
+    }
+    public class tool_call
+    {
+        public int index { get; set; }
+        public string id { get; set; }
+        public string type { get; set; } = string.Empty;
+        public string name { get; set; } = string.Empty;
+        public Function function { get; set; }
+        public class Function
+        {
+            public string name { get; set; } = string.Empty;
+            public string arguments { get; set; } = string.Empty;
+        }
+
+    }
     // 响应类型
     public class GeminiChunkResponse
     {
@@ -286,24 +305,32 @@ namespace ChatBot.Models
     {
         public string type { get; set; }
         public int index { get; set; }
-        [JsonPropertyName("delta")]
-        public delta deltaitem { get; set; }
-        public class delta
+        
+        public Delta content_block { get; set; }
+        
+        public Delta delta { get; set; }
+        public class Delta
         {
-            public string type { get; set; }
-            public string text { get; set; }
+            public string id { get; set; } = string.Empty;
+            public string type { get; set; } = string.Empty;
+            public string name { get; set; } = string.Empty;
+            public string text { get; set; } = string.Empty;
+            public string partial_json { get; set; } = string.Empty;
+            public string stop_reason { get; set; } = string.Empty;
+            
         }
-    }
+       
+            }
 
     // 响应类型
     public class OpenAIResponse
     {
         public choice[] choices { get; set; }
-
+        public string[] citations { get; set; }
         public class choice
         {
             public message message { get; set; }
-            public int index { get; set; }
+            public int choices { get; set; }
 
         }
 
@@ -312,7 +339,8 @@ namespace ChatBot.Models
             public string reasoning_content { get; set; }
             public string content { get; set; }
             public string role { get; set; }
-            
+            public tool_call[] function_call { get; set; }
+            public tool_call[] tool_calls { get; set; }
         }
     }
     // 响应类型
@@ -403,5 +431,112 @@ namespace ChatBot.Models
             return timeDecay * clickWeight;
         }
     }
-    
+    public class JinaSearchResult
+    {
+        [JsonPropertyName("code")]
+        public int Code { get; set; }
+        [JsonPropertyName("status")]
+        public int Status { get; set; }
+        [JsonPropertyName("data")]
+        public List<JinaSearchResultData> Data { get; set; }= new List<JinaSearchResultData>();
+
+        
+    }
+    public class JinaReaderResult
+    {
+        [JsonPropertyName("code")]
+        public int Code { get; set; }
+        [JsonPropertyName("status")]
+        public int Status { get; set; }
+        [JsonPropertyName("data")]
+        public JinaSearchResultData Data { get; set; } = new JinaSearchResultData();
+
+
+    }
+    public class JinaSearchResultData
+    {
+        [JsonPropertyName("title")]
+        public string Title { get; set; } = string.Empty;
+        [JsonPropertyName("description")]
+        public string Description { get; set; } = string.Empty;
+        [JsonPropertyName("url")]
+        public string Url { get; set; } = string.Empty;
+        [JsonPropertyName("content")]
+        public string Content { get; set; } = string.Empty;
+        [JsonPropertyName("usage")]
+        public JinaSearchResultDataUsage Usage { get; set; } = new();
+        public int index { get; set; }
+
+        
+    }
+    public class JinaSearchResultDataUsage
+    {
+        [JsonPropertyName("tokens")]
+        public int tokens { get; set; }
+       
+    }
+
+    public class JinaRerankResult
+    {
+        [JsonPropertyName("model")]
+        public string Model { get; set; }= string.Empty;
+        [JsonPropertyName("results")]
+        public List< JinaRerankResultData> Results { get; set; }= new List<JinaRerankResultData>();
+
+    }
+    public class JinaRerankResultData
+    {
+        [JsonPropertyName("index")]
+        public int Index { get; set; }
+        [JsonPropertyName("document")]
+        public JinaRerankResultDataDocument Document { get; set; }= new JinaRerankResultDataDocument();
+       
+    }
+    public class JinaRerankResultDataDocument
+    {
+        [JsonPropertyName("text")]
+        public string Text { get; set; }= string.Empty;
+
+    }
+
+    // 添加Dify响应的数据类
+    public class DifyChunkResponse
+    {
+        public string event_id { get; set; }
+        [JsonPropertyName("event")]
+        public string Event { get; set; }
+        public DifyMessageData data { get; set; }
+        public string answer { get; set; }
+        public class DifyMessageData
+        {
+            public string answer { get; set; }
+            public string error { get; set; }
+            public List<DifyMessageSource> sources { get; set; }
+            public string conversation_id { get; set; }
+
+            public class DifyMessageSource
+            {
+                public string id { get; set; }
+                public string name { get; set; }
+                public string content { get; set; }
+                public string url { get; set; }
+            }
+        }
+    }
+
+    public class DifyBlockingResponse
+    {
+        public string answer { get; set; }
+        public string error { get; set; }
+        public string conversation_id { get; set; }
+        public List<DifyMessageSource> sources { get; set; }
+
+        public class DifyMessageSource
+        {
+            public string id { get; set; }
+            public string name { get; set; }
+            public string content { get; set; }
+            public string url { get; set; }
+        }
+    }
 }

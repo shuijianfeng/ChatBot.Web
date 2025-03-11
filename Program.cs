@@ -1,3 +1,4 @@
+using ChatBot.Controllers;
 using ChatBot.Models;
 using ChatBot.Web.Services;
 using Microsoft.AspNetCore.DataProtection;
@@ -11,8 +12,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<ChatModelSettings>(builder.Configuration.GetSection("ChatModels"));
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
+builder.Services.AddScoped<ChatModelConfig>();
+
 builder.Services.AddScoped<IChatService,ChatService> ();
 builder.Services.AddScoped<CustomFontResolver>();
+builder.Services.AddScoped<OpenAIService>();
+builder.Services.AddScoped<JinaSearch>();
+builder.Services.AddScoped<OpenWeather>();
 
 var app = builder.Build();
 

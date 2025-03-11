@@ -21,6 +21,7 @@ namespace ChatBot.Models
         Deepbricks,
         OpenAiDeepResearch,
         GeminiDeepResearch,
+        Dify  // 新增的 Dify 类型
     }
 
     public class ChatModelConfig
@@ -45,5 +46,13 @@ namespace ChatBot.Models
     public class ChatModelSettings: List<ChatModelConfig> 
     {
         
+    }
+
+    public class ErrorViewModel
+    {
+        public string ErrorCode { get; set; }
+        public string Message { get; set; }
+        public string RequestId { get; set; }
+        public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
     }
 }
