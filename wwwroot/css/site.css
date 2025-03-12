@@ -362,7 +362,7 @@ body {
     right: 0;
     background: var(--color-canvas-default);
     border-top: 1px solid var(--color-border-default);
-    padding: 32px;
+    padding: 24px;
     z-index: 100;
 }
 /* 停止按钮样式 */
@@ -927,7 +927,7 @@ body {
     }
 
     .chat-input-area {
-        padding: 32px;
+        padding: 24px;
     }
 
     .input-container {
@@ -1584,8 +1584,8 @@ img.image-preview-img {
 .upload-image-container {
     align-items: center;
     display:flex;
-    gap: 20px; /* 移除间隙，让按钮连在一起 */
-    padding: 20px;
+    gap: 16px; /* 移除间隙，让按钮连在一起 */
+    padding: 4px 2px 2px 10px;
 }
 
 
