@@ -21,7 +21,8 @@ namespace ChatBot.Models
         Deepbricks,
         OpenAiDeepResearch,
         GeminiDeepResearch,
-        Dify  // 新增的 Dify 类型
+        Dify,  // 新增的 Dify 类型
+        OpenAiResponses
     }
 
     public class ChatModelConfig

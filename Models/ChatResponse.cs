@@ -156,7 +156,7 @@ namespace ChatBot.Models
         /// 用户输入的消息
         /// </summary>
         [JsonPropertyName("session_id")]
-        public string SessionId { get; set; }= string.Empty;
+        public string SessionId { get; set; } = string.Empty;
         /// <summary>
         /// 图片链接
         /// </summary>
@@ -248,18 +248,18 @@ namespace ChatBot.Models
             public int index { get; set; }
             public string finish_reason { get; set; } = string.Empty;
         }
-       
+
         public class delta
         {
-            public string content { get; set; }= string.Empty;
+            public string content { get; set; } = string.Empty;
             public string reasoning_content { get; set; } = string.Empty;
             public string role { get; set; } = string.Empty;
             public tool_call[] function_call { get; set; }
             public tool_call[] tool_calls { get; set; }
-            
+
 
         }
-        
+
     }
     public class tool_call
     {
@@ -273,6 +273,16 @@ namespace ChatBot.Models
             public string name { get; set; } = string.Empty;
             public string arguments { get; set; } = string.Empty;
         }
+
+    }
+    public class tool_callnew
+    {
+        
+        public string id { get; set; } = string.Empty;
+        public string call_id { get; set; } = string.Empty;
+        public string type { get; set; } = string.Empty;
+        public string name { get; set; } = string.Empty;
+        public string arguments { get; set; } = string.Empty;
 
     }
     // 响应类型
@@ -289,14 +299,14 @@ namespace ChatBot.Models
         public class content
         {
             public parts[] parts { get; set; }
-           
+
 
         }
 
         public class parts
         {
             public string text { get; set; }
-           
+
         }
     }
 
@@ -305,9 +315,9 @@ namespace ChatBot.Models
     {
         public string type { get; set; }
         public int index { get; set; }
-        
+
         public Delta content_block { get; set; }
-        
+
         public Delta delta { get; set; }
         public class Delta
         {
@@ -317,10 +327,10 @@ namespace ChatBot.Models
             public string text { get; set; } = string.Empty;
             public string partial_json { get; set; } = string.Empty;
             public string stop_reason { get; set; } = string.Empty;
-            
+
         }
-       
-            }
+
+    }
 
     // 响应类型
     public class OpenAIResponse
@@ -342,6 +352,67 @@ namespace ChatBot.Models
             public tool_call[] function_call { get; set; }
             public tool_call[] tool_calls { get; set; }
         }
+    }
+    // 响应类型
+    public class OpenAIResponsenew
+    {
+        public string id { get; set; } = string.Empty;
+        [JsonPropertyName("object")]
+        public string openaiobject { get; set; } = string.Empty;
+        
+        public string status { get; set; } = string.Empty;
+
+        public string model { get; set; } = string.Empty;
+        public OpenAioutput[] output { get; set; }
+
+        public class OpenAioutput
+        {
+
+
+            public string type { get; set; } = string.Empty;
+            public string id { get; set; } = string.Empty;
+            public string status { get; set; } = string.Empty;
+
+            public string call_id { get; set; } = string.Empty;
+            public string name { get; set; } = string.Empty;
+            public string arguments { get; set; } = string.Empty;
+
+            public string role { get; set; } = string.Empty;
+            public Content[] content { get; set; }
+
+
+        }
+
+        public class Content
+        {
+            public string type { get; set; } = string.Empty;
+            public string text { get; set; } = string.Empty;
+
+
+        }
+
+        public class usage
+        {
+            public int input_tokens { get; set; }
+            public int output_tokens { get; set; }
+            public int total_tokens { get; set; }
+        }
+    }
+
+    // 响应类型
+    public class OpenAIChunkResponsenew
+    {
+        public string type { get; set; } = string.Empty;
+        public int output_index { get; set; }
+        public string response_id { get; set; } = string.Empty;
+        
+        public tool_callnew item { get; set; } = new tool_callnew();
+        public string delta { get; set; } = string.Empty;
+       
+
+       
+
+
     }
     // 响应类型
     public class llama32ChunkResponse
@@ -374,7 +445,7 @@ namespace ChatBot.Models
     public class DashScopeChunkResponse
     {
         [JsonPropertyName("output")]
-        public Output output { get;set;}
+        public Output output { get; set; }
         public class Output
         {
             [JsonPropertyName("text")]
@@ -438,9 +509,9 @@ namespace ChatBot.Models
         [JsonPropertyName("status")]
         public int Status { get; set; }
         [JsonPropertyName("data")]
-        public List<JinaSearchResultData> Data { get; set; }= new List<JinaSearchResultData>();
+        public List<JinaSearchResultData> Data { get; set; } = new List<JinaSearchResultData>();
 
-        
+
     }
     public class JinaReaderResult
     {
@@ -467,21 +538,21 @@ namespace ChatBot.Models
         public JinaSearchResultDataUsage Usage { get; set; } = new();
         public int index { get; set; }
 
-        
+
     }
     public class JinaSearchResultDataUsage
     {
         [JsonPropertyName("tokens")]
         public int tokens { get; set; }
-       
+
     }
 
     public class JinaRerankResult
     {
         [JsonPropertyName("model")]
-        public string Model { get; set; }= string.Empty;
+        public string Model { get; set; } = string.Empty;
         [JsonPropertyName("results")]
-        public List< JinaRerankResultData> Results { get; set; }= new List<JinaRerankResultData>();
+        public List<JinaRerankResultData> Results { get; set; } = new List<JinaRerankResultData>();
 
     }
     public class JinaRerankResultData
@@ -489,13 +560,13 @@ namespace ChatBot.Models
         [JsonPropertyName("index")]
         public int Index { get; set; }
         [JsonPropertyName("document")]
-        public JinaRerankResultDataDocument Document { get; set; }= new JinaRerankResultDataDocument();
-       
+        public JinaRerankResultDataDocument Document { get; set; } = new JinaRerankResultDataDocument();
+
     }
     public class JinaRerankResultDataDocument
     {
         [JsonPropertyName("text")]
-        public string Text { get; set; }= string.Empty;
+        public string Text { get; set; } = string.Empty;
 
     }
 
