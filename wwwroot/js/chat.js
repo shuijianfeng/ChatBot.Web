@@ -2,15 +2,16 @@
 class ChatUI {
     constructor() {
 
+        this.messages = []; // 存储聊天记录
+        this.session_id = '';
+        this.messageBuffer = '';
+        this.controller = null; // 用于中断请求的 AbortController
         this.networkButton = document.getElementById('network-search-button');
         this.networkIcon = document.getElementById('network-icon');
         this.isNetworkEnabled = false; // 默认启用联网搜索
 
         this.MathJax = window.MathJax;
-        this.messages = []; // 存储聊天记录
-        this.session_id = '';
-        this.messageBuffer = '';
-        this.controller = null; // 用于中断请求的 AbortController
+        
         this.setupEventListeners();
         // 初始化DOM元素引用
         this.messagesContainer = document.getElementById('messages-container');
@@ -43,20 +44,20 @@ class ChatUI {
 
         // 设置模型选择事件监听
         this.modelSelect.addEventListener('change', () => this.toggleImageUploadButton());
-        
+
         this.networkButton.addEventListener('click', () => {
             this.isNetworkEnabled = !this.isNetworkEnabled;
             if (this.isNetworkEnabled) {
                 this.networkIcon.classList.remove('bi-wifi-off');
                 this.networkIcon.classList.add('bi-globe2');
                 this.networkButton.title = "禁用联网搜索";
-               
+
             } else {
                 this.networkIcon.classList.remove('bi-globe2');
                 this.networkIcon.classList.add('bi-wifi-off');
                 this.networkButton.title = "启用联网搜索";
                 // 发送设置更新到后端
-              
+
             }
         });
 
@@ -197,15 +198,15 @@ class ChatUI {
         this.imagePreview.style.display = 'none';
         this.previewImg.src = '';
         this.imageInput.value = '';
-        
+
     }
     // 移除所有图片预览
     removeAllImages() {
         this.previewContainer.innerHTML = '';
         this.imageInput.value = '';
         this.uploadedImageUrls = [];
-        this.previewContainer.style.display = "display: none;"
-        
+        this.previewContainer.style.display = "none";
+
     }
     // 修改 handleImageUpload 方法，添加单个图片移除功能
     async handleImageUpload(event) {
@@ -260,9 +261,9 @@ class ChatUI {
                 imgElement.className = 'uploaded-image-preview';
                 // 添加消息容器的点击事件委托
                 imgElement.addEventListener('dblclick', (e) => {
-                    
-                        this.showFullSizeImage(imgElement.src);
-                    
+
+                    this.showFullSizeImage(imgElement.src);
+
                 });
                 // 创建移除按钮
                 const removeButton = document.createElement('button');
@@ -364,7 +365,7 @@ class ChatUI {
     }
 
 
-    
+
     removeLastUserMessage() {
         if (this.messages.length > 0) {
             const lastMessage = this.messages.pop();
@@ -424,7 +425,7 @@ class ChatUI {
 
     updateSendButtonState() {
         const isEmpty = !this.messageInput.value.trim();
-        this.sendButton.disabled = isEmpty && this.uploadedImageUrls.length==0 || this.isProcessing;
+        this.sendButton.disabled = isEmpty && this.uploadedImageUrls.length == 0 || this.isProcessing;
     }
 
     setLoadingState(loading) {
@@ -460,7 +461,7 @@ class ChatUI {
         // 获取语言
         let language = this.detectLanguage(code);
         //if (language === 'Thoughts') {
-            
+
         //    setTimeout(() => {
 
         //        const currentTime = new Date().toLocaleTimeString();
@@ -469,12 +470,12 @@ class ChatUI {
         //}
         // 创建标题栏
         const header = this.createCodeHeader(language, originalCode);
-        
+
         // 重新组织结构
         pre.parentNode.insertBefore(wrapper, pre);
         wrapper.appendChild(header);
         //包装包装用mermaid-chartmermaid
-        if (language === 'mermaid') {
+        if (language.toLowerCase() === 'mermaid') {
             const chartId = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
             const chart = document.createElement('div');
             chart.className = 'mermaid-chart';
@@ -482,10 +483,9 @@ class ChatUI {
             chart.appendChild(pre);
             wrapper.appendChild(chart);
         }
-        else
-        {
+        else {
             //包装包装用mermaid-chartmermaid
-            if (language === 'jsmind') {
+            if (language.toLowerCase() === 'jsmind') {
                 const chartId = `jsmind-${Math.random().toString(36).slice(2, 11)}`;
                 const chart = document.createElement('div');
                 chart.className = 'jsmind-chart';
@@ -494,17 +494,18 @@ class ChatUI {
                 wrapper.appendChild(chart);
             }
             else {
-                if (language === 'Thoughts') {
-                    
+
+                if (language.toLowerCase() === 'thoughts') {
+
                     header.style.maxWidth = '700px'
                     wrapper.style.maxWidth = '700px'
-                   
+
                     pre.style.maxWidth = '700px'
 
                     header.style.width = '100%'; // 添加这行代码，设置宽度为100%
 
                     wrapper.style.width = '100%'; // 添加这行代码，设置宽度为100%
-                    wrapper.style.height ='auto'
+                    wrapper.style.height = 'auto'
 
                     pre.style.width = '100%';          // 代码块宽度100%
                     pre.style.height = 'auto';         // 代码块高度自动
@@ -514,7 +515,7 @@ class ChatUI {
                     pre.style.overflowwrap = 'break-word';      // 防止长内容不换行
                     pre.style.wordWrap = 'break-word';      // 防止长内容不换行
                     code.style.width = '100%';          // 代码块宽度100%
-                    code.style.height = 'auto'; 
+                    code.style.height = 'auto';
                     code.style.overflow = 'hidden';     // 隐藏滚动条
                     code.style.whiteSpace = 'pre-wrap'; // 允许内容自动换行
                     code.style.overflowwrap = 'break-word';      // 防止长内容不换行
@@ -525,15 +526,16 @@ class ChatUI {
                     details.appendChild(summary);
                     details.appendChild(pre);
                     wrapper.appendChild(details);
-                    
-                    
+
+
                 }
                 else {
                     wrapper.appendChild(pre);
+
                 }
             }
         }
-          
+
     }
 
     detectLanguage(codeElement) {
@@ -551,8 +553,173 @@ class ChatUI {
         langLabel.className = 'code-language';
         langLabel.textContent = language;
         header.appendChild(langLabel);
+        // 在 createCodeHeader 方法中修改 HTML 预览功能
+        if (language.toLowerCase() === 'html') {
+            const runButton = document.createElement('button');
+            runButton.className = 'run-html-button';
+            runButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill-rule="evenodd" d="M5 3.25a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5A.75.75 0 015 3.25zm0 5a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5A.75.75 0 015 8.25zm0 5a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5a.75.75 0 01-.75-.75zM.924 5.31a.75.75 0 011.226-.86l2.25 3.25a.75.75 0 010 .87l-2.25 3.25a.75.75 0 01-1.226-.86l1.95-2.82-1.95-2.82z"></path></svg> 运行';
+            runButton.title = '在安全环境中运行此HTML代码';
+            header.appendChild(runButton);
 
-        // 添加复制按钮
+            // 运行HTML代码
+            runButton.addEventListener('click', () => {
+                // 创建遮罩层
+                const overlay = document.createElement('div');
+                overlay.className = 'run-html';
+
+                // 添加关闭提示
+                const closeHint = document.createElement('div');
+                closeHint.className = 'close-hint';
+                closeHint.textContent = '点击任意位置关闭';
+
+                const contentWrapper = document.createElement('div');
+                contentWrapper.className = 'html-content-wrapper';
+
+                // 设置内容包装器样式，使其更宽
+                contentWrapper.style.cssText = `
+            width: 80%;
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        `;
+
+                // 创建安全的iframe元素
+                const sandbox = document.createElement('iframe');
+                sandbox.className = 'html-sandbox';
+
+                // 改进的iframe样式设置
+                sandbox.style.cssText = `
+            width: 100%;
+            min-height: 200px;
+            border: none;
+            background: white;
+            margin: 0;
+            padding: 0;
+        `;
+
+                // 创建HTML内容blob
+                const htmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <style>
+                    body {
+                        margin: 0;
+                        padding: 16px;
+                        font-family: system-ui, -apple-system, sans-serif;
+                        line-height: 1.5;
+                    }
+                    img { 
+                        max-width: 100%; 
+                        height: auto;
+                    }
+                    * { box-sizing: border-box; }
+                </style>
+            </head>
+            <body>${code}</body>
+            </html>
+        `;
+
+                // 使用 Blob 创建安全的 URL
+                const blob = new Blob([htmlContent], { type: 'text/html' });
+                const blobUrl = URL.createObjectURL(blob);
+
+                // 设置 iframe src
+                sandbox.src = blobUrl;
+
+                // 添加到DOM
+                contentWrapper.appendChild(sandbox);
+                overlay.appendChild(contentWrapper);
+                overlay.appendChild(closeHint);
+                document.body.appendChild(overlay);
+
+                // 监听 iframe 加载完成
+                sandbox.addEventListener('load', () => {
+                    try {
+                        // 调整 iframe 高度
+                        const height = sandbox.contentDocument.documentElement.scrollHeight;
+                        sandbox.style.height = `${Math.max(height + 32, 200)}px`;
+                    } catch (error) {
+                        console.warn('无法调整iframe高度', error);
+                        sandbox.style.height = '400px';
+                    }
+
+                    // 清理 blob URL
+                    URL.revokeObjectURL(blobUrl);
+                });
+
+                // 点击关闭
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay || e.target === closeHint) {
+                        document.body.removeChild(overlay);
+                    }
+                });
+            });
+        }
+
+
+
+        //if (language.toLowerCase() === 'html') {
+
+        //    const runButton = document.createElement('button');
+        //    runButton.className = 'run-html-button';
+        //    runButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill-rule="evenodd" d="M5 3.25a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5A.75.75 0 015 3.25zm0 5a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5A.75.75 0 015 8.25zm0 5a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5a.75.75 0 01-.75-.75zM.924 5.31a.75.75 0 011.226-.86l2.25 3.25a.75.75 0 010 .87l-2.25 3.25a.75.75 0 01-1.226-.86l1.95-2.82-1.95-2.82z"></path></svg> 运行';
+        //    runButton.title = '运行此HTML代码';
+        //    header.appendChild(runButton);
+            
+        //    // 运行HTML代码
+        //    runButton.addEventListener('click', () => {
+
+        //        // 创建遮罩层
+        //        const overlay = document.createElement('div');
+        //        overlay.className = 'run-html';
+
+        //        // 添加关闭提示
+        //        const closeHint = document.createElement('div');
+        //        closeHint.className = 'close-hint';
+        //        closeHint.textContent = '点击任意位置关闭';
+
+        //        const contentWrapper = document.createElement('div');
+        //        contentWrapper.className = 'html-content-wrapper';
+        //        const htmlCode = code;
+        //        const sandbox = document.createElement('iframe');
+        //        sandbox.className = 'html-sandbox';
+        //        sandbox.setAttribute('sandbox', 'allow-scripts');
+        //        contentWrapper.innerHTML = '';
+        //        contentWrapper.appendChild(sandbox);
+
+        //        // 组装元素
+        //        overlay.appendChild(contentWrapper);
+        //        overlay.appendChild(closeHint);
+        //        document.body.appendChild(overlay);
+
+        //        // 点击关闭
+        //        overlay.addEventListener('click', () => {
+        //            document.body.removeChild(overlay);
+        //        });
+
+        //        // 设置iframe内容
+        //        setTimeout(() => {
+        //            const doc = sandbox.contentDocument || sandbox.contentWindow.document;
+        //            doc.open();
+        //            doc.write(htmlCode);
+        //            doc.close();
+
+        //            // 调整iframe高度以适应内容
+        //            setTimeout(() => {
+        //                const height = doc.body.scrollHeight;
+        //                sandbox.style.height = (height + 30) + 'px';
+        //            }, 100);
+        //        }, 0);
+
+
+        //    });
+        //}
+        //添加复制按钮
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-button';
         copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
@@ -657,32 +824,32 @@ class ChatUI {
         exportGroup.className = 'export-group';
 
         // DOCX 导出按钮
-    const exportDocxBtn = document.createElement('button');
-    exportDocxBtn.className = 'export-button';
-    exportDocxBtn.title = '导出为Word文档';
-    exportDocxBtn.innerHTML = `
+        const exportDocxBtn = document.createElement('button');
+        exportDocxBtn.className = 'export-button';
+        exportDocxBtn.title = '导出为Word文档';
+        exportDocxBtn.innerHTML = `
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M19 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V5C21 3.89543 20.1046 3 19 3Z" 
               stroke="currentColor" stroke-width="2" fill="none"/>
         <text x="7" y="17" font-family="Arial" font-size="12" font-weight="bold" fill="currentColor">W</text>
     </svg>`;
-    /*exportDocxBtn.onclick = () => this.exportMessageToDocx(content);*/
+        /*exportDocxBtn.onclick = () => this.exportMessageToDocx(content);*/
 
-    // PDF 导出按钮
-    const exportPdfBtn = document.createElement('button');
-    exportPdfBtn.className = 'export-button';
-    exportPdfBtn.title = '导出为PDF文档';
-    exportPdfBtn.innerHTML = `
+        // PDF 导出按钮
+        const exportPdfBtn = document.createElement('button');
+        exportPdfBtn.className = 'export-button';
+        exportPdfBtn.title = '导出为PDF文档';
+        exportPdfBtn.innerHTML = `
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">  
         <path d="M19 3H5C3.89543 3 3 3.89543 3 5V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V5C21 3.89543 20.1046 3 19 3Z" 
               stroke="currentColor" stroke-width="2" fill="none"/>
         <text x="5.5" y="17" font-family="Arial" font-size="10" font-weight="bold" fill="currentColor">PDF</text>
     </svg>`;
-    //exportPdfBtn.onclick = () => this.exportMessageToPdf(content);
+        //exportPdfBtn.onclick = () => this.exportMessageToPdf(content);
 
         exportGroup.appendChild(exportDocxBtn);
         exportGroup.appendChild(exportPdfBtn);
-        
+
         // 创建删除按钮
         const deleteButton = document.createElement('button');
         deleteButton.className = 'delete-button';
@@ -700,7 +867,7 @@ class ChatUI {
             this.deleteMessage(messageDiv);
         });
 
-        
+
 
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content markdown-body';
@@ -709,7 +876,7 @@ class ChatUI {
             let imagesHtml = '';
             this.uploadedImageUrls.forEach(url => {
 
-                
+
                 imagesHtml += `<img src="${url}" alt="上传的图片" class="uploaded-image-preview" />\n`;
             });
             contentDiv.innerHTML = imagesHtml + marked.parse(content);
@@ -834,35 +1001,7 @@ class ChatUI {
             alert('导出DOCX失败,请重试');
         }
     }
-    //async exportMessageToDocx(content) {
-    //    try {
-    //        const response = await fetch('/api/chat/export-message-docx', {
-    //            method: 'POST',
-    //            headers: {
-    //                'Content-Type': 'application/json'
-    //            },
-    //            body: JSON.stringify({
-    //                content: content
-    //            })
-    //        });
-
-    //        if (!response.ok) {
-    //            throw new Error('导出失败');
-    //        }
-
-    //        const data = await response.json();
-    //        // 创建下载链接
-    //        const downloadLink = document.createElement('a');
-    //        downloadLink.href = data.url;
-    //        downloadLink.download = data.url.split('/').pop(); // 获取文件名
-    //        document.body.appendChild(downloadLink);
-    //        downloadLink.click();
-    //        document.body.removeChild(downloadLink);
-    //    } catch (error) {
-    //        console.error('导出DOCX失败:', error);
-    //        alert('导出DOCX失败,请重试');
-    //    }
-    //}
+   
     async exportMessageToPdf(content) {
         try {
             const response = await fetch('/api/chat/export-message-pdf', {
@@ -894,7 +1033,7 @@ class ChatUI {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = '聊天消息'+filename;
+            a.download = '聊天消息' + filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1240,78 +1379,7 @@ class ChatUI {
         }
     }
 
-    //// 获取链接预览 - 优化版本 
-    //async fetchLinkPreview(url) {
-    //    // 检查URL是否为图片
-    //    if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url)) {
-    //        return `
-    //        <div class="link-preview-image">
-    //            <img src="${url}" alt="图片预览" loading="lazy" />
-    //            <div class="link-url">${url}</div>
-    //        </div>
-    //    `;
-    //    }
-
-    //    // 创建一个可取消的请求
-    //    const abortController = new AbortController();
-    //    this.currentPreviewRequest = abortController;
-
-    //    try {
-    //        // 添加超时处理
-    //        const timeoutId = setTimeout(() => abortController.abort(), 8000); // 6秒超时
-
-    //        // 调用后端API获取链接预览
-    //        const response = await fetch('/api/chat/link-preview', {
-    //            method: 'POST',
-    //            headers: {
-    //                'Content-Type': 'application/json'
-    //            },
-    //            body: JSON.stringify({ url }),
-    //            signal: abortController.signal
-    //        });
-
-    //        clearTimeout(timeoutId);
-
-    //        if (!response.ok) {
-    //            throw new Error('获取链接预览失败');
-    //        }
-
-    //        const data = await response.json();
-
-    //        // 构建预览HTML
-    //        return `
-    //        <div class="link-preview">
-    //            ${data.image ? `<div class="preview-image"><img src="${data.image}" alt="网站预览" loading="lazy" /></div>` : ''}
-    //            <div class="preview-content">
-    //                <div class="preview-title">${data.title || '无标题'}</div>
-    //                ${data.description ? `<div class="preview-description">${data.description}</div>` : ''}
-    //                <div class="preview-url">${data.url}</div>
-    //            </div>
-    //        </div>
-    //    `;
-    //    } catch (error) {
-    //        if (error.name === 'AbortError') {
-    //            console.log('链接预览请求已取消');
-    //        } else {
-    //            console.error('获取链接预览失败:', error);
-    //        }
-
-    //        // 返回简单的链接预览
-    //        return `
-    //        <div class="link-preview-simple">
-    //            <div class="preview-icon">
-    //                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    //                    <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    //                </svg>
-    //            </div>
-    //            <div class="preview-content">
-    //                <div class="preview-url">${url}</div>
-    //            </div>
-    //        </div>
-    //    `;
-    //    }
-    //}
-
+   
     // 修改 setupMarked 方法中的链接渲染器部分
     setupMarked() {
         const renderer = new marked.Renderer();
@@ -1350,8 +1418,8 @@ class ChatUI {
         </svg></a>`;
         };
 
-       
-       
+
+
 
         renderer.code = (code, language) => {
             if (language === 'mermaid') {
@@ -1376,7 +1444,7 @@ class ChatUI {
         };
         // 初始化链接预览功能
         this.setupLinkPreviews();
-        
+
         // 设置 marked 选项
         marked.setOptions({
             renderer: renderer,
@@ -1389,10 +1457,9 @@ class ChatUI {
         });
         // 6. 在内容更新后触发渲染
         const renderMath = (element) => {
-            if (MathJax && MathJax.typesetPromise) {
-                MathJax.typesetPromise()
+            if (this.MathJax && this.MathJax.typesetPromise) {
+                this.MathJax.typesetPromise()
                     .catch(err => console.error('MathJax 渲染错误:', err));
-
             }
 
         };
@@ -1401,7 +1468,7 @@ class ChatUI {
         this.renderMath = renderMath;
 
 
-       
+
     }
     async renderMessage(message) {
         // 渲染消息内容
@@ -1451,9 +1518,14 @@ class ChatUI {
             container.classList.add('mermaid');
 
             // 渲染图表
-            await mermaid.run({
-                querySelector: `#${containerId}`
-            });
+            //await mermaid.run({
+            //    querySelector: `#${containerId}`
+            //});
+
+            await mermaid.renderAsync(
+                { id: containerId },
+                code
+            );
 
         } catch (error) {
             console.error('Mermaid 渲染错误:', error);
@@ -1471,7 +1543,7 @@ class ChatUI {
     // 接收消息处理
     async handleReceivedMessage(message) {
         try {
-            await this.appendMessage(message);
+            await this.appendMessage1(message);
         } catch (error) {
             console.error('Error handling received message:', error);
             this.showNotification('消息渲染失败', 'error');
@@ -1535,7 +1607,7 @@ class ChatUI {
         }
     }
 
-    async appendMessage(message) {
+    async appendMessage1(message) {
         const messagesContainer = this.container.querySelector('.chat-messages');
         const rendered = await this.renderMessage(message);
 
@@ -1560,11 +1632,10 @@ class ChatUI {
             const { messageDiv, contentDiv } = this.createMessageElement(role, content);
             this.messagesContainer.appendChild(messageDiv);
 
-            if (isStreaming || role==="user") {
+            if (isStreaming || role === "user") {
                 this.currentMessageElement = messageDiv;
             }
-            else
-            {
+            else {
                 this.currentMessageElement = messageDiv;
                 // 更新现有消息的内容
                 const contentDiv = this.currentMessageElement.querySelector('.message-content');
@@ -1733,7 +1804,7 @@ class ChatUI {
             }
         }
     }
-   
+
     // 转换聊天记录为API格式
     convertToApiMessages() {
         // 添加系统消息
@@ -1742,7 +1813,7 @@ class ChatUI {
         // 添加历史消息
         this.messages.forEach(msg => {
             // 确保消息格式正确
-            if (msg.role && (msg.content || msg.images.length>0)) {
+            if (msg.role && (msg.content || msg.images.length > 0)) {
                 apiMessages.push({
                     role: msg.role,
                     content: msg.content,
@@ -1772,7 +1843,7 @@ class ChatUI {
         const message = this.messageInput.value.trim();
         const imageUrls = this.uploadedImageUrls.slice(); // 复制数组
 
-        if (!message && imageUrls.length==0 || this.isProcessing) return;
+        if (!message && imageUrls.length == 0 || this.isProcessing) return;
 
         this.setLoadingState(true);
         this.appendMessage('user', message);
@@ -1794,8 +1865,8 @@ class ChatUI {
                     history: history,
                     model: this.modelSelect.value,
                     timestamp: new Date().toISOString(),
-                    EnableSearch:this.isNetworkEnabled
-                    
+                    EnableSearch: this.isNetworkEnabled
+
                 }),
                 signal: this.controller.signal
 
@@ -1883,14 +1954,17 @@ class ChatUI {
                 if (jsmindCharts.length > 0) {
                     for (const chart of jsmindCharts) {
                         try {
-                           
+
                             var options = {
                                 container: chart.id, // [必选] 容器的ID
                                 editable: false,                // [可选] 是否启用编辑
                                 theme: 'orange'                // [可选] 主题
                             };
-                            var jm = new jsMind(options);
-                            jm.show();
+                            if (window.jsMind) {
+                                var jm = new jsMind(options);
+                                jm.show();
+                            }
+
                         } catch (error) {
                             console.error('Error rendering chart:', error);
                             chart.innerHTML = `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
