@@ -578,51 +578,65 @@ class ChatUI {
                 // 设置内容包装器样式，使其更宽
                 contentWrapper.style.cssText = `
             width: 80%;
-            max-width: 1000px;
+            height: 90%;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
             overflow: hidden;
+            width: 80%;
         `;
 
                 // 创建安全的iframe元素
                 const sandbox = document.createElement('iframe');
                 sandbox.className = 'html-sandbox';
 
-                // 改进的iframe样式设置
+                // 改进的iframe样式设置 - 处理滚动和自适应问题
                 sandbox.style.cssText = `
-            width: 100%;
-            min-height: 200px;
-            border: none;
-            background: white;
-            margin: 0;
-            padding: 0;
-        `;
+    width: 100%;
+    min-height: 300px;
+    height: 80vh;
+    border: none;
+    background: white;
+    margin: 0;
+    padding: 0;
+    overflow: auto;
+    box-sizing: border-box;
+    display: block;
+`;
 
                 // 创建HTML内容blob
                 const htmlContent = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <style>
-                    body {
-                        margin: 0;
-                        padding: 16px;
-                        font-family: system-ui, -apple-system, sans-serif;
-                        line-height: 1.5;
-                    }
-                    img { 
-                        max-width: 100%; 
-                        height: auto;
-                    }
-                    * { box-sizing: border-box; }
-                </style>
-            </head>
-            <body>${code}</body>
-            </html>
-        `;
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {
+                margin: 0;
+                padding: 16px;
+                font-family: system-ui, -apple-system, sans-serif;
+                line-height: 1.5;
+                overflow-x: hidden; /* 防止水平滚动 */
+                word-wrap: break-word; /* 确保长文本换行 */
+            }
+            img { 
+                max-width: 100%; 
+                height: auto;
+            }
+            * { box-sizing: border-box; }
+            
+            /* 添加响应式布局支持 */
+            @media (max-width: 768px) {
+                body {
+                    padding: 8px;
+                }
+            }
+        </style>
+    </head>
+    <body>${code}</body>
+    </html>
+`;
 
                 // 使用 Blob 创建安全的 URL
                 const blob = new Blob([htmlContent], { type: 'text/html' });
@@ -640,24 +654,61 @@ class ChatUI {
                 // 监听 iframe 加载完成
                 sandbox.addEventListener('load', () => {
                     try {
-                        // 调整 iframe 高度
-                        const height = sandbox.contentDocument.documentElement.scrollHeight;
-                        sandbox.style.height = `${Math.max(height + 32, 200)}px`;
+                        // 改进的动态高度调整
+                        const resizeIframe = () => {
+                            try {
+                                // 获取内容高度
+                                const doc = sandbox.contentDocument || sandbox.contentWindow.document;
+                                const docHeight = doc.body.scrollHeight;
+                                const docWidth = doc.body.scrollWidth;
+                                const viewportHeight = window.innerHeight * 0.8;
+
+                                // 设置最大高度为视口的80%，但不小于内容实际高度
+                                sandbox.style.height = `${Math.min(docHeight + 40, viewportHeight)}px`;
+
+                                // 如果内容宽度超过iframe宽度，添加滚动条
+                                if (docWidth > sandbox.clientWidth) {
+                                    sandbox.style.overflowX = 'auto';
+                                }
+
+                                // 设置内容可滚动
+                                doc.body.style.overflow = 'auto';
+                            } catch (err) {
+                                console.warn('动态调整iframe高度失败:', err);
+                            }
+                        };
+
+                        // 立即调整高度
+                        resizeIframe();
+
+                        // 添加窗口大小变化事件监听
+                        const resizeObserver = new ResizeObserver(() => {
+                            resizeIframe();
+                        });
+
+                        // 观察容器大小变化
+                        resizeObserver.observe(contentWrapper);
+
+                        // 当iframe卸载时清理观察器
+                        overlay.addEventListener('remove', () => {
+                            resizeObserver.disconnect();
+                        }, { once: true });
+
+                        // 清理 blob URL
+                        URL.revokeObjectURL(blobUrl);
                     } catch (error) {
                         console.warn('无法调整iframe高度', error);
-                        sandbox.style.height = '400px';
+                        sandbox.style.height = '80vh'; // 默认回退高度
                     }
-
-                    // 清理 blob URL
-                    URL.revokeObjectURL(blobUrl);
                 });
 
-                // 点击关闭
+                // 改进的点击关闭处理
                 overlay.addEventListener('click', (e) => {
                     if (e.target === overlay || e.target === closeHint) {
                         document.body.removeChild(overlay);
                     }
                 });
+
             });
         }
 
