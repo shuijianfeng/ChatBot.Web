@@ -42,6 +42,7 @@ namespace ChatBot.Models
         public string Promptid { get; set; } = string.Empty;
         public bool EnableImageUpload { get; set; }
         public bool Incremental_output { get; set; }
+        public int ThinkingTokens { get; set; }
     }
 
     public class ChatModelSettings: List<ChatModelConfig> 

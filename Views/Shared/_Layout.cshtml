@@ -101,13 +101,11 @@
     <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.css" />
     <link rel="stylesheet" href="~/lib/primer/octicons/build/build.css" />
     <link rel="stylesheet" href="~/lib/highlight.js/styles/github.css" />
-    <link rel="stylesheet" href="~/lib/highlight.js/styles/github-dark.css media=" (prefers-color-scheme: dark) />
-    @* <link rel="stylesheet" href="~/lib/octicons/build.css" /> *@
+    <link rel="stylesheet" href="~/lib/highlight.js/styles/github-dark.css" media=" (prefers-color-scheme: dark)" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-
-
     @* 网站图标 *@
-    <link rel="icon" type="image/png" href="~/favicon.png" />
+    <link rel="icon" type="image/x-icon" href="~/favicon.ico" />
+
 </head>
 <body class="bg-light">
     <div class="app-container" id="app-container">
@@ -223,17 +221,8 @@
     <script src="~/lib/highlight.js/languages/json.min.js"></script>
     <script src="~/lib/highlight.js/languages/css.min.js"></script>
 
-    <script src="~/js/site.js" asp-append-version="true"></script>
-    <script src="~/js/chartRenderer.js" asp-append-version="true"></script>
+    <script src="~/js/chat.js" asp-append-version="true"></script>
 
-    <script src="~/js/chat.js"></script>
-    
-    @* <script src="~/js/codeBlock.js" asp-append-version="true"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            new CodeBlockHandler();
-        });
-    </script> *@
 
     @* 页面特定脚本 *@
     @await RenderSectionAsync("Scripts", required: false)

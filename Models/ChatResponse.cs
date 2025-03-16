@@ -325,13 +325,54 @@ namespace ChatBot.Models
             public string type { get; set; } = string.Empty;
             public string name { get; set; } = string.Empty;
             public string text { get; set; } = string.Empty;
+            public string thinking { get; set; } = string.Empty;
+            public string signature { get; set; } = string.Empty;
             public string partial_json { get; set; } = string.Empty;
             public string stop_reason { get; set; } = string.Empty;
 
         }
 
     }
+    // Claude响应类型
+    public class ClaudeResponse
+    {
+        public string id { get; set; } = string.Empty;
+        public string type { get; set; } = string.Empty;
+        public string model { get; set; } = string.Empty;
+        public string role { get; set; } = string.Empty;
+        public string stop_reason { get; set; } = string.Empty;
+        public long created_at { get; set; }
 
+        [JsonPropertyName("content")]
+        public List<ClaudeResponseContent> Content { get; set; } = new List<ClaudeResponseContent>();
+
+        [JsonPropertyName("usage")]
+        public ClaudeResponseUsage Usage { get; set; } = new ClaudeResponseUsage();
+
+        public class ClaudeResponseContent
+        {
+            public string type { get; set; } = string.Empty;
+
+            public string text { get; set; } = string.Empty;
+
+            public string id { get; set; } = string.Empty;
+            public object input { get; set; } 
+            public string name { get; set; } = string.Empty;
+
+            public string signature { get; set; } = string.Empty;
+            public string thinking { get; set; } = string.Empty;
+
+        }
+
+        public class ClaudeResponseUsage
+        {
+            [JsonPropertyName("input_tokens")]
+            public int InputTokens { get; set; }
+
+            [JsonPropertyName("output_tokens")]
+            public int OutputTokens { get; set; }
+        }
+    }
     // 响应类型
     public class OpenAIResponse
     {

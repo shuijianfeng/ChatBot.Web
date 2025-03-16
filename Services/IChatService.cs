@@ -23,6 +23,7 @@ using System.Text.RegularExpressions;
 
 using Npgsql;
 using System.Threading;
+using System.Security.Cryptography.Xml;
 
 
 
@@ -1144,7 +1145,7 @@ namespace ChatBot.Web.Services
             new
             {
                 type = "function",
-                
+
                     name = nameof(JinaAiSearch),
                     description = "执行网页搜索并返回结果",
                     parameters = new
@@ -1160,12 +1161,12 @@ namespace ChatBot.Web.Services
                         },
                         required = new[] { "query" }
                     }
-                
+
             },
             new
             {
                 type = "function",
-                
+
                     name = nameof(GetWeather),
                     description = "获取天气预报并返回结果",
                     parameters = new
@@ -1181,7 +1182,7 @@ namespace ChatBot.Web.Services
                         },
                         required = new[] { "city" }
                     }
-                
+
             },
         }
         : null;
@@ -1197,7 +1198,7 @@ namespace ChatBot.Web.Services
 
                 tools = tools,
             };
-            
+
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
@@ -1233,11 +1234,11 @@ namespace ChatBot.Web.Services
                         if (line.StartsWith("data: "))
                         {
                             line = line.Substring(6);
-                          
+
 
                             var chunk = JsonSerializer.Deserialize<OpenAIChunkResponsenew>(line);
 
-                            
+
                             switch (chunk?.type)
                             {
                                 case "response.output_text.delta":
@@ -1289,12 +1290,12 @@ namespace ChatBot.Web.Services
                                             if (chunk?.item != null)
                                             {
                                                 tool_calls.Add(chunk.item);
-                                                
-                                               
+
+
                                             }
                                         }
                                         break;
-                                        
+
                                     }
                                 case "response.function_call_arguments.delta":
                                     {
@@ -1308,10 +1309,10 @@ namespace ChatBot.Web.Services
                                     {
                                         if (chunk?.output_index < tool_calls.Count)
                                         {
-                                           
-                                            if (tool_calls.Count > 0 )
+
+                                            if (tool_calls.Count > 0)
                                             {
-                                                
+
 
                                                 foreach (var pair in tool_calls)
                                                 {
@@ -1382,7 +1383,7 @@ namespace ChatBot.Web.Services
                         var line = await reader.ReadToEndAsync(cancellationToken);
                         if (string.IsNullOrEmpty(line)) continue;
                         var chunk = JsonSerializer.Deserialize<OpenAIResponsenew>(line);
-                        
+
                         var output = chunk?.output;
                         if (output == null || output.Length == 0) continue;
                         foreach (var item in output)
@@ -1430,7 +1431,7 @@ namespace ChatBot.Web.Services
                                             break;
                                         }
                                 }
-                               
+
                                 toolsmessages.Add(new
                                 {
                                     arguments = item.arguments,
@@ -1446,7 +1447,7 @@ namespace ChatBot.Web.Services
                                     output = toolResult
                                 });
                             }
-                            else 
+                            else
                             {
                                 var content1 = item?.content?.FirstOrDefault()?.text;
                                 if (!string.IsNullOrWhiteSpace(content1))
@@ -1474,7 +1475,7 @@ namespace ChatBot.Web.Services
                         }
                     }
                 }
-               
+
             }
         }
         public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
@@ -1500,7 +1501,7 @@ namespace ChatBot.Web.Services
             var messages = ToMessagesOpenAi(request, modelconfg);
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
-
+            toolsmessages.Clear();
             List<object> tools = request.EnableSearch
         ? new List<object>
         {
@@ -1737,16 +1738,16 @@ namespace ChatBot.Web.Services
                                 }
                                 else
                                 {
-                                    if (content.Contains ( "<think>") && !beging1 && !end1)
+                                    if (content.Contains("<think>") && !beging1 && !end1)
                                     {
-                                        yield return content.Replace("<think>", "<think>"+"\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
                                         beging1 = true;
                                     }
                                     else
                                     {
-                                        if (content.Contains( "</think>") && beging1 && !end1)
+                                        if (content.Contains("</think>") && beging1 && !end1)
                                         {
-                                            
+
                                             yield return content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
                                             end1 = true;
                                         }
@@ -1921,7 +1922,7 @@ namespace ChatBot.Web.Services
             var messages = ToMessagesClaude(request, modelconfg);
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
-
+            toolsmessages.Clear();
             List<object> tools = request.EnableSearch
         ? new List<object>
         {
@@ -1984,6 +1985,8 @@ namespace ChatBot.Web.Services
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 max_tokens = modelconfg.MaxTokens,
+                thinking = modelconfg.ThinkingTokens > 1024 && modelconfg.ThinkingTokens < modelconfg.MaxTokens ?
+                            new { type = "enabled", budget_tokens = modelconfg.ThinkingTokens } : null,
                 tools = tools,
 
             };
@@ -2006,6 +2009,10 @@ namespace ChatBot.Web.Services
                 int index = 0;
                 List<ClaudeChunkResponse.Delta> tool_calls = new List<ClaudeChunkResponse.Delta>();
                 string text = string.Empty;
+                string textthinking = string.Empty;
+                string textsignature= string.Empty;
+                bool beging = false;
+                bool end = false;
                 while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
                 {
                     var line = await reader.ReadLineAsync(cancellationToken);
@@ -2028,6 +2035,12 @@ namespace ChatBot.Web.Services
                                     if (chunk.content_block.type == "tool_use")
                                     {
                                         tool_calls.Add(chunk.content_block);
+                                        tool_calls[tool_calls.Count - 1].text = text;
+                                        tool_calls[tool_calls.Count - 1].thinking = textthinking;
+                                        tool_calls[tool_calls.Count - 1].signature = textsignature;
+                                        text = string.Empty;
+                                        textsignature = string.Empty;
+                                        textthinking = string.Empty;
                                     }
                                     break;
 
@@ -2041,12 +2054,40 @@ namespace ChatBot.Web.Services
                                 {
                                     if (chunk.delta.type == "text_delta")
                                     {
-                                        text += chunk.delta.text;
-                                        yield return chunk.delta.text;
+                                        text +=  chunk.delta.text;
+                                        if (beging && !end)
+                                        {
+                                            yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + chunk.delta.text;
+                                            end = true;
+                                        }
+                                        else
+                                        {
+                                            yield return chunk.delta.text;
+                                        }
+                                    }
+                                    if (chunk.delta.type == "thinking_delta")
+                                    {
+                                        textthinking +=  chunk.delta.thinking ;
+                                        if (!beging)
+                                        {
+                                            yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + chunk.delta.thinking;
+                                            beging = true;
+                                        }
+                                        else
+                                        {
+
+                                            yield return chunk.delta.thinking;
+                                        }
+                                    }
+                                    if (chunk.delta.type == "signature_delta")
+                                    {
+                                        textsignature += chunk.delta.signature;
+                                        
                                     }
                                     if (chunk.delta.type == "input_json_delta")
                                     {
                                         tool_calls[tool_calls.Count - 1].partial_json += chunk.delta.partial_json;
+                                       
                                         continue;
                                     }
                                     break;
@@ -2065,7 +2106,27 @@ namespace ChatBot.Web.Services
                                         //text = string.Empty;
                                         foreach (var pair in tool_calls)
                                         {
+                                            object ob = null;
+                                            if (string.IsNullOrWhiteSpace(pair.thinking))
+                                            {
+                                                ob = new
+                                                {
+                                                    type = "text",
+                                                    text = pair.text,
+                                                    
+                                                };
+                                            }
+                                            else
+                                            {
+                                                ob = new
+                                                {
+                                                    type = "thinking",
+                                                    signature = pair.signature,
+                                                    thinking = pair.thinking
 
+                                                };
+                                            }
+                                            
                                             string toolResult = string.Empty;
                                             switch (pair.name)
                                             {
@@ -2073,7 +2134,7 @@ namespace ChatBot.Web.Services
                                                     {
                                                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
                                                         bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
+                                                        //JsonSerializer.Deserialize(argumentsJson;
 
                                                         if (!query)
                                                         {
@@ -2084,11 +2145,7 @@ namespace ChatBot.Web.Services
                                                             role = "assistant",
                                                             content = new List<object>
                                                                         {
-                                                                            new
-                                                                            {
-                                                                                type= "text",
-                                                                                text= text
-                                                                            },
+                                                                            ob,
                                                                              new
                                                                             {
                                                                                 type= "tool_use",
@@ -2100,7 +2157,7 @@ namespace ChatBot.Web.Services
 
 
                                                         });
-                                                        text = string.Empty;
+                                                       
                                                         toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
                                                         break;
                                                     }
@@ -2109,7 +2166,7 @@ namespace ChatBot.Web.Services
                                                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
                                                         bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
 
-
+                                                       
                                                         if (!query)
                                                         {
                                                             throw new ArgumentNullException(nameof(query), "The location argument is required.");
@@ -2119,11 +2176,7 @@ namespace ChatBot.Web.Services
                                                             role = "assistant",
                                                             content = new List<object>
                                                                         {
-                                                                            new
-                                                                            {
-                                                                                type= "text",
-                                                                                text= text
-                                                                            },
+                                                                           ob,
                                                                              new
                                                                             {
                                                                                 type= "tool_use",
@@ -2135,7 +2188,7 @@ namespace ChatBot.Web.Services
 
 
                                                         });
-                                                        text = string.Empty;
+                                                       
                                                         toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "city cannot be null."));
                                                         break;
                                                     }
@@ -2186,12 +2239,178 @@ namespace ChatBot.Web.Services
                     }
                     else
                     {
-                        var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                        var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                        if (!string.IsNullOrEmpty(content))
+                       
+
+                        var chunk = JsonSerializer.Deserialize<ClaudeResponse>(line);
+                        var content = chunk?.Content;
+                        var tool_calls1 = new List<ClaudeResponse.ClaudeResponseContent>();
+                        if (content != null)
                         {
-                            yield return content;
+                            foreach (var item in content)
+                            {
+                                switch (item.type)
+                                {
+                                    case "thinking":
+                                        {
+                                            textthinking = item.thinking??string.Empty;
+                                            textsignature = item.signature?? string.Empty;
+
+                                           var textthinking1 = "<think>" + textthinking + "</think>";
+                                            textthinking1 = textthinking1.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                                            textthinking1 = textthinking1.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                                            yield return textthinking1;
+
+                                            break;
+                                        }
+                                    case "tool_use":
+                                        {
+                                            tool_calls1.Add(item);
+                                            tool_calls1[tool_calls1.Count - 1].text = text;
+                                            tool_calls1[tool_calls1.Count - 1].thinking = textthinking;
+                                            tool_calls1[tool_calls1.Count - 1].signature = textsignature;
+
+                                            text = string.Empty;
+                                            textsignature = string.Empty;
+                                            textthinking = string.Empty;
+                                            break;
+                                        }
+                                    default:
+                                        {
+                                            yield return item.text ?? string.Empty;
+                                            text += item.text?? string.Empty;
+                                            break;
+                                        }
+                                }
+
+                            }
+                            foreach (var pair in tool_calls1)
+                            {
+                                object ob = null;
+                                if (string.IsNullOrWhiteSpace(pair.thinking))
+                                {
+                                    ob = new
+                                    {
+                                        type = "text",
+                                        text = pair.text,
+
+                                    };
+                                }
+                                else
+                                {
+                                    ob = new
+                                    {
+                                        type = "thinking",
+                                        signature = pair.signature,
+                                        thinking = pair.thinking
+
+                                    };
+                                }
+                                string toolResult = string.Empty;
+                                switch (pair.name)
+                                {
+                                    case nameof(JinaAiSearch):
+                                        {
+                                            using JsonDocument argumentsJson = JsonDocument.Parse(pair.input.ToString());
+                                            bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
+
+
+                                            if (!query)
+                                            {
+                                                throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                            }
+                                            toolsmessages.Add(new
+                                            {
+                                                role = "assistant",
+                                                content = new List<object>
+                                                                        {
+                                                                             ob,
+                                                                             new
+                                                                            {
+                                                                                type= "tool_use",
+                                                                                id= pair.id,
+                                                                                name= pair.name,
+                                                                                input = pair.input
+                                                                            }
+                                                                        }
+
+
+                                            });
+                                            text = string.Empty;
+                                            toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+                                            break;
+                                        }
+                                    case nameof(GetWeather):
+                                        {
+                                            using JsonDocument argumentsJson = JsonDocument.Parse(pair.input.ToString());
+                                            bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
+
+
+                                            if (!query)
+                                            {
+                                                throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                            }
+                                            toolsmessages.Add(new
+                                            {
+                                                role = "assistant",
+                                                content = new List<object>
+                                                                        {
+                                                                            ob,
+                                                                             new
+                                                                            {
+                                                                                type= "tool_use",
+                                                                                id= pair.id,
+                                                                                name= pair.name,
+                                                                                input = pair.input
+                                                                            }
+                                                                        }
+
+
+                                            });
+                                            text = string.Empty;
+                                            toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "city cannot be null."));
+                                            break;
+                                        }
+                                    default:
+                                        {
+                                            yield return "未知工具调用";
+                                            break;
+                                        }
+                                }
+
+                                toolsmessages.Add(new
+                                {
+                                    role = "user",
+                                    content = new List<object>
+                                                            {
+                                                                new
+                                                                    {
+                                                                    type= "tool_result",
+                                                                    tool_use_id= pair.id,
+                                                                    content = toolResult
+                                                                    }
+
+                                                                }
+                                });
+
+
+
+
+                            }
+                            if (tool_calls1.Count > 0)
+                            {
+
+
+                                tool_calls1.Clear();
+                                response.Content.Dispose();
+                                await foreach (var item in ClaudeAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                                {
+
+                                    yield return item;
+                                }
+                            }
+                            
                         }
+
                     }
                 }
             }
@@ -2920,7 +3139,8 @@ namespace ChatBot.Web.Services
                         };
                         content1 = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json");
                     }
-                };
+                }
+                ;
 
 
                 using (response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
@@ -4259,14 +4479,14 @@ namespace ChatBot.Web.Services
                 {
 
                     var contentlist = new List<object>();
-                   
-                    
+
+
                     contentlist.Add(new { type = "input_text", text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
-                    
+
                     foreach (var image in msg.Images)
                     {
 
-                        contentlist.Add(new { type = "input_image", image_url  = $"data:image/jpeg;base64,{ConvertUrlToBase64(image)}" } );
+                        contentlist.Add(new { type = "input_image", image_url = $"data:image/jpeg;base64,{ConvertUrlToBase64(image)}" });
 
 
                     }
@@ -4279,14 +4499,14 @@ namespace ChatBot.Web.Services
                 else
                 {
 
-                    
-                    
-                        messages.Add(new
-                        {
-                            role = msg.Role,
-                            content = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content)
-                        });
-                    
+
+
+                    messages.Add(new
+                    {
+                        role = msg.Role,
+                        content = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content)
+                    });
+
                 }
             }
 
