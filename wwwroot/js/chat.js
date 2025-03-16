@@ -577,13 +577,13 @@ class ChatUI {
 
                 // 设置内容包装器样式，使其更宽
                 contentWrapper.style.cssText = `
-            width: 80%;
+            width: 90%;
             height: 90%;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
             overflow: hidden;
-            width: 80%;
+           
         `;
 
                 // 创建安全的iframe元素
