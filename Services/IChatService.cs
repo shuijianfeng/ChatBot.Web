@@ -1457,7 +1457,13 @@ namespace ChatBot.Web.Services
                                 }
                             }
                         }
-
+                        var content = contentBuilder.ToString();
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                            content = content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                            yield return content;
+                        }
                         if (toolsmessages.Count > 0)
                         {
                             await foreach (var item in OpenAIResponsesAsync(modelconfg, request, cancellationToken, client, toolsmessages))
@@ -1466,13 +1472,7 @@ namespace ChatBot.Web.Services
                             }
                             break;
                         }
-                        var content = contentBuilder.ToString();
-                        if (!string.IsNullOrEmpty(content))
-                        {
-                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                            content = content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                            yield return content;
-                        }
+                       
                     }
                 }
 
@@ -1645,6 +1645,52 @@ namespace ChatBot.Web.Services
                                 }
                                 //continue;
                             }
+                            if (!string.IsNullOrEmpty(reasoning_content))
+                            {
+                                if (!beging)
+                                {
+                                    yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
+                                    beging = true;
+                                }
+                                else
+                                {
+                                    yield return reasoning_content;
+
+                                }
+
+                            }
+                            if (!string.IsNullOrEmpty(content))
+                            {
+                                if (beging && !end)
+                                {
+                                    yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                                    end = true;
+                                }
+                                else
+                                {
+                                    if (content.Contains("<think>") && !beging1 && !end1)
+                                    {
+                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                                        beging1 = true;
+                                    }
+                                    else
+                                    {
+                                        if (content.Contains("</think>") && beging1 && !end1)
+                                        {
+
+                                            yield return content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                                            end1 = true;
+                                        }
+                                        else
+                                        {
+                                            yield return content;
+                                        }
+
+                                    }
+
+                                }
+
+                            }
                             if (tool_calls.Count > 0 && (chunk?.choices?.FirstOrDefault()?.finish_reason == "tool_calls" || chunk?.choices?.FirstOrDefault()?.finish_reason == "stop"))
                             {
                                 List<object> tool_calls1 = new List<object>();
@@ -1715,52 +1761,7 @@ namespace ChatBot.Web.Services
                                 break;
                             }
 
-                            if (!string.IsNullOrEmpty(reasoning_content))
-                            {
-                                if (!beging)
-                                {
-                                    yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
-                                    beging = true;
-                                }
-                                else
-                                {
-                                    yield return reasoning_content;
-
-                                }
-
-                            }
-                            if (!string.IsNullOrEmpty(content))
-                            {
-                                if (beging && !end)
-                                {
-                                    yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                                    end = true;
-                                }
-                                else
-                                {
-                                    if (content.Contains("<think>") && !beging1 && !end1)
-                                    {
-                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                                        beging1 = true;
-                                    }
-                                    else
-                                    {
-                                        if (content.Contains("</think>") && beging1 && !end1)
-                                        {
-
-                                            yield return content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                                            end1 = true;
-                                        }
-                                        else
-                                        {
-                                            yield return content;
-                                        }
-
-                                    }
-
-                                }
-
-                            }
+                           
 
                         }
                     }

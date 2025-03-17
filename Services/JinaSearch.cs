@@ -163,8 +163,8 @@ namespace ChatBot.Web.Services
 
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             client.DefaultRequestHeaders.Add("Accept", "application/json");
-            client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
-            client.DefaultRequestHeaders.Add("X-Respond-With", "favicon");
+            //client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
+            client.DefaultRequestHeaders.Add("X-Respond-With", "no-content");
             if (isdirect)
             {
                 client.DefaultRequestHeaders.Add("X-Engine", "direct");
@@ -181,6 +181,7 @@ namespace ChatBot.Web.Services
             {
                 q = search + query,
                 count = searchCount,
+               
                 //loc = new string[] { "visas lang:zh", "visas lang:en" },
                 //site = new string[] { "goggles site:brave.com" }
             };
