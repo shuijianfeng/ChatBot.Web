@@ -11,7 +11,7 @@
     <meta name="user-login" content="@User.Identity.Name">
     <title>@ViewData["Title"] - AI助手</title>
 
-    
+
     <script src="~/lib/mathjax/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
     <script>
         MathJax = {
@@ -19,7 +19,7 @@
                 inlineMath: [['$', '$'], ['\( ', ' \)']],
                 displayMath: [['$$', '$$'],['\[','\]']],
                 processEscapes: true,
-                
+
             },
             svg: {
                 fontCache: 'global'
@@ -35,14 +35,14 @@
           if (math.inputData.originalText) {
             // Remove [数字] and (数字) patterns
             math.inputData.originalText = math.inputData.originalText
-              .replace(/\[(\d+)\]/g, '')    // Remove bracketed numbers
+             .replace(/\[(\^?\d+)\]/g, '')
               .replace(/\((\d+)\)/g, '');    // Remove parenthetical numbers
           }
         });
-                   
-                   
 
-                    
+
+
+
                     MathJax.startup.promise.then(() => {
                         console.log('MathJax initial typesetting complete');
                     });
@@ -54,46 +54,7 @@
             }
         };
 
-        // document.addEventListener('DOMContentLoaded', () => {
-        //     // 禁用 MathJax 处理代码块
-        //     document.querySelectorAll('pre, code').forEach(element => {
-        //         element.classList.add('tex2jax_ignore');
-        //     });
-
-        //     // 监控动态内容中的数学公式
-        //     const observer = new MutationObserver((mutations) => {
-        //         let typeset = false;
-        //         mutations.forEach((mutation) => {
-        //             if (mutation.addedNodes.length) {
-        //                 const mathNodes = Array.from(mutation.addedNodes)
-        //                     .filter(node => node.nodeType === 1)
-        //                     .filter(node => {
-        //                         const content = node.textContent || '';
-        //                         return (content.includes('$') && !node.closest('pre, code')) ||
-        //                                (content.includes('$$') && !node.closest('pre, code'));
-        //                     });
-
-        //                 if (mathNodes.length) {
-        //                     typeset = true;
-        //                     mathNodes.forEach(node => {
-        //                         node.querySelectorAll('pre, code').forEach(element => {
-        //                             element.classList.add('tex2jax_ignore');
-        //                         });
-        //                     });
-        //                 }
-        //             }
-        //         });
-
-        //         if (typeset && window.MathJax) {
-        //             //MathJax.typeset();
-        //         }
-        //     });
-
-        //     observer.observe(document.body, {
-        //         childList: true,
-        //         subtree: true
-        //     });
-        // });
+        
     </script>
 
     <link rel="stylesheet" href="~/lib/jsmind/style/jsmind.css" />
@@ -236,14 +197,14 @@
         @if (ViewBag.DefaultTheme != null)
         {
             <text>
-                    // 接收控制器设置的主题
-                        const initialTheme = '@ViewBag.DefaultTheme';
+                        // 接收控制器设置的主题
+                            const initialTheme = '@ViewBag.DefaultTheme';
 
-                    localStorage.setItem('theme', initialTheme);
+                        localStorage.setItem('theme', initialTheme);
 
             </text>
         }
-         
+
 
                     const themeToggle = document.getElementById('theme-toggle');
                     const body = document.body;

@@ -578,7 +578,7 @@ namespace ChatBot.Models
         [JsonPropertyName("usage")]
         public JinaSearchResultDataUsage Usage { get; set; } = new();
         public int index { get; set; }
-
+        public float Score { get; set; }
 
     }
     public class JinaSearchResultDataUsage
@@ -602,6 +602,7 @@ namespace ChatBot.Models
         public int Index { get; set; }
         [JsonPropertyName("document")]
         public JinaRerankResultDataDocument Document { get; set; } = new JinaRerankResultDataDocument();
+        public float Score { get; set; }
 
     }
     public class JinaRerankResultDataDocument
@@ -649,6 +650,37 @@ namespace ChatBot.Models
             public string name { get; set; }
             public string content { get; set; }
             public string url { get; set; }
+        }
+    }
+
+    // 定义嵌入API响应的类
+    public class JinaEmbeddingResponse
+    {
+        [JsonPropertyName("model")]
+        public string Model { get; set; }
+
+        [JsonPropertyName("data")]
+        public List<JinaEmbeddingData> Data { get; set; } = new List<JinaEmbeddingData>();
+
+        [JsonPropertyName("usage")]
+        public JinaEmbeddingUsage Usage { get; set; }
+
+        public class JinaEmbeddingData
+        {
+            [JsonPropertyName("embedding")]
+            public float[] Embedding { get; set; }
+
+            [JsonPropertyName("index")]
+            public int Index { get; set; }
+        }
+
+        public class JinaEmbeddingUsage
+        {
+            [JsonPropertyName("prompt_tokens")]
+            public int PromptTokens { get; set; }
+
+            [JsonPropertyName("total_tokens")]
+            public int TotalTokens { get; set; }
         }
     }
 }

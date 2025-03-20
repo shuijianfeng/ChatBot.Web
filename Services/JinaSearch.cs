@@ -6,6 +6,8 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using static ChatBot.Models.GeminiChunkResponse;
 using AngleSharp.Dom;
+using DocumentFormat.OpenXml.EMMA;
+using DocumentFormat.OpenXml.Vml;
 
 namespace ChatBot.Web.Services
 {
@@ -85,17 +87,35 @@ namespace ChatBot.Web.Services
         public async Task<JinaSearchResult?> JinaAiSearch(string query, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
         {
             JinaSearchResult result = new JinaSearchResult();
-            var google = await JinaAiSearch("Google Search: ", query, searchCount, isNoCache, isdirect);
-            var Wikipedia = await JinaAiSearch("Wikipedia Search: ", query, searchCount, isNoCache, isdirect);
+            var google = await JinaAiSearch("", query, searchCount, isNoCache, isdirect);
+            var bing = await JinaAiSearch("site:bing.com ", query, searchCount, isNoCache, isdirect);
+            var sg = await JinaAiSearch("site:sogou.com ", query, searchCount, isNoCache, isdirect);
+            var Wikipedia = await JinaAiSearch("site:wikipedia.org ", query, searchCount, isNoCache, isdirect);
+
+            var dzdp = await JinaAiSearch("site:dianping.com ", query, searchCount, isNoCache, isdirect);
+            
+           
             if (google?.Data != null)
             {
                 result.Data.AddRange(google.Data);
+            }
+            if (sg?.Data != null)
+            {
+                result.Data.AddRange(sg.Data);
+            }
+            if (bing?.Data != null)
+            {
+                result.Data.AddRange(bing.Data);
             }
             if (Wikipedia?.Data != null)
             {
                 result.Data.AddRange(Wikipedia.Data);
             }
-            await JinaAiRerank(query, result);
+            if (dzdp?.Data != null)
+            {
+                result.Data.AddRange(dzdp.Data);
+            }
+            await JinaAiRerank1(query, result);
             return await Task.FromResult<JinaSearchResult?>(result);
 
 
@@ -338,7 +358,109 @@ namespace ChatBot.Web.Services
 
         }
 
-       
+        public async Task JinaAiRerank1(string query, JinaSearchResult jinaSearchResult)
+        {
+
+            for (int i = jinaSearchResult.Data.Count - 1; i >= 0; i--)
+            {
+                if (string.IsNullOrWhiteSpace(jinaSearchResult.Data[i].Content))
+                {
+                    jinaSearchResult.Data.RemoveAt(i);
+                }
+                else
+                {
+                    for (int k = i - 1; k >= 0; k--)
+                    {
+                        if (jinaSearchResult.Data[i].Content == jinaSearchResult.Data[k].Content|| jinaSearchResult.Data[i].Url.Equals( jinaSearchResult.Data[k].Url,StringComparison.Ordinal))
+                        {
+                            jinaSearchResult.Data.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            var apiKey = Environment.GetEnvironmentVariable("OpenAiKey");
+            var apiEndpoint = $"https://cdsjf.xyz/openai/v1/chat/completions";
+
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromMinutes(30);
+
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+            
+
+            var tasks = jinaSearchResult.Data.Select(async item =>
+
+            {
+
+                if (string.IsNullOrWhiteSpace(item.Content)) return;
+
+                var contents = new List<object>();
+                contents.Add(new
+                {
+                    role = "user",
+                    content = ((new StringBuilder()).Append("在<info></info>中请提取和")
+                     .Append(query)
+                    .Append("相关的关键信息，不做其他操作。")
+                    .Append('\n')
+                    .Append('\n')
+                    .Append("<info>")
+                     .Append('\n')
+                     .Append(item.Content)
+                    .Append('\n')
+                    .Append("</info>")
+
+                    .ToString())
+                });
+
+                var requestContent = new
+                {
+                    model = "gpt-4o-mini",
+                    messages = contents,
+                    temperature = 0.2,
+
+                };
+                item.Content = string.Empty;
+                try
+                {
+                    using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                    {
+                        Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                    }, HttpCompletionOption.ResponseHeadersRead))
+                    {
+                        if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                        {
+                            response.EnsureSuccessStatusCode();
+                            string rsteing = await response.Content.ReadAsStringAsync();
+                           
+                            
+                            var jinaRerankResult = JsonSerializer.Deserialize<OpenAIResponse>(rsteing, _jsonOptions);
+                            if (jinaRerankResult != null)
+                            {
+                                var content = jinaRerankResult?.choices?.FirstOrDefault()?.message?.content;
+                               
+                                item.Content = content??string.Empty;
+                            }
+
+                        }
+
+                    }
+                }
+
+
+                catch (Exception ex)
+                {
+
+                }
+
+
+            });
+
+            await Task.WhenAll(tasks);
+            jinaSearchResult.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
+
+        }
 
     }
     public class TextSplitter

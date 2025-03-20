@@ -1246,7 +1246,7 @@ namespace ChatBot.Web.Services
                                         var content = chunk?.delta;
                                         if (!string.IsNullOrWhiteSpace(content))
                                         {
-                                            content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                            content = Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                             contentBuilder.Append(content);
                                         }
                                         if (!string.IsNullOrEmpty(content))
@@ -1393,7 +1393,7 @@ namespace ChatBot.Web.Services
                                 var content1 = item?.content?.FirstOrDefault()?.text;
                                 if (!string.IsNullOrWhiteSpace(content1))
                                 {
-                                    content1 = Regex.Replace(content1, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                    content1 = Regex.Replace(content1, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                     contentBuilder.Append(content1);
                                 }
                                 string toolResult = string.Empty;
@@ -1452,7 +1452,7 @@ namespace ChatBot.Web.Services
                                 var content1 = item?.content?.FirstOrDefault()?.text;
                                 if (!string.IsNullOrWhiteSpace(content1))
                                 {
-                                    content1 = Regex.Replace(content1, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                    content1 = Regex.Replace(content1, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                     contentBuilder.Append(content1);
                                 }
                             }
@@ -1501,7 +1501,7 @@ namespace ChatBot.Web.Services
             var messages = ToMessagesOpenAi(request, modelconfg);
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
-            toolsmessages.Clear();
+            //toolsmessages.Clear();
             List<object> tools = request.EnableSearch
         ? new List<object>
         {
@@ -1622,12 +1622,13 @@ namespace ChatBot.Web.Services
                             var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
                             if (!string.IsNullOrWhiteSpace(content))
                             {
-                                content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                content = Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+
                                 contentBuilder.Append(content);
                             }
                             if (!string.IsNullOrWhiteSpace(reasoning_content))
                             {
-                                reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                reasoning_content = Regex.Replace(reasoning_content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                             }
 
                             if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
@@ -1789,12 +1790,12 @@ namespace ChatBot.Web.Services
                         var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
                         if (!string.IsNullOrWhiteSpace(content))
                         {
-                            content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                            content = Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                             contentBuilder.Append(content);
                         }
                         if (!string.IsNullOrWhiteSpace(reasoning_content))
                         {
-                            reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                            reasoning_content = Regex.Replace(reasoning_content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                         }
 
                         if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
@@ -1923,7 +1924,7 @@ namespace ChatBot.Web.Services
             var messages = ToMessagesClaude(request, modelconfg);
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
-            toolsmessages.Clear();
+            //toolsmessages.Clear();
             List<object> tools = request.EnableSearch
         ? new List<object>
         {
@@ -2055,15 +2056,16 @@ namespace ChatBot.Web.Services
                                 {
                                     if (chunk.delta.type == "text_delta")
                                     {
-                                        text +=  chunk.delta.text;
+                                        
+                                        text += Regex.Replace(chunk.delta.text, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                         if (beging && !end)
                                         {
-                                            yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + chunk.delta.text;
+                                            yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + Regex.Replace(chunk.delta.text, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                             end = true;
                                         }
                                         else
                                         {
-                                            yield return chunk.delta.text;
+                                            yield return Regex.Replace(chunk.delta.text, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                         }
                                     }
                                     if (chunk.delta.type == "thinking_delta")
@@ -2110,12 +2112,15 @@ namespace ChatBot.Web.Services
                                             object ob = null;
                                             if (string.IsNullOrWhiteSpace(pair.thinking))
                                             {
-                                                ob = new
+                                                if (!string.IsNullOrWhiteSpace(pair.text))
                                                 {
-                                                    type = "text",
-                                                    text = pair.text,
-                                                    
-                                                };
+                                                    ob = new
+                                                    {
+                                                        type = "text",
+                                                        text = pair.text,
+
+                                                    };
+                                                }
                                             }
                                             else
                                             {
@@ -2127,7 +2132,8 @@ namespace ChatBot.Web.Services
 
                                                 };
                                             }
-                                            
+                                            var content = new List<object>();
+                                            if (ob != null) content.Add(ob);
                                             string toolResult = string.Empty;
                                             switch (pair.name)
                                             {
@@ -2141,20 +2147,17 @@ namespace ChatBot.Web.Services
                                                         {
                                                             throw new ArgumentNullException(nameof(query), "The location argument is required.");
                                                         }
+                                                        content.Add(new
+                                                        {
+                                                            type = "tool_use",
+                                                            id = pair.id,
+                                                            name = pair.name,
+                                                            input = new { query = outquery.GetString() }
+                                                        });
                                                         toolsmessages.Add(new
                                                         {
                                                             role = "assistant",
-                                                            content = new List<object>
-                                                                        {
-                                                                            ob,
-                                                                             new
-                                                                            {
-                                                                                type= "tool_use",
-                                                                                id= pair.id,
-                                                                                name= pair.name,
-                                                                                input = new { query=outquery.GetString()}
-                                                                            }
-                                                                        }
+                                                            content = content
 
 
                                                         });
@@ -2172,20 +2175,17 @@ namespace ChatBot.Web.Services
                                                         {
                                                             throw new ArgumentNullException(nameof(query), "The location argument is required.");
                                                         }
+                                                        content.Add(new
+                                                        {
+                                                            type = "tool_use",
+                                                            id = pair.id,
+                                                            name = pair.name,
+                                                            input = new { city = outquery.GetString() }
+                                                        });
                                                         toolsmessages.Add(new
                                                         {
                                                             role = "assistant",
-                                                            content = new List<object>
-                                                                        {
-                                                                           ob,
-                                                                             new
-                                                                            {
-                                                                                type= "tool_use",
-                                                                                id= pair.id,
-                                                                                name= pair.name,
-                                                                                input = new { city=outquery.GetString()}
-                                                                            }
-                                                                        }
+                                                            content = content
 
 
                                                         });
@@ -2307,6 +2307,8 @@ namespace ChatBot.Web.Services
                                     };
                                 }
                                 string toolResult = string.Empty;
+                                var content1 = new List<object>();
+                                if (ob != null) content1.Add(ob);
                                 switch (pair.name)
                                 {
                                     case nameof(JinaAiSearch):
@@ -2319,20 +2321,17 @@ namespace ChatBot.Web.Services
                                             {
                                                 throw new ArgumentNullException(nameof(query), "The location argument is required.");
                                             }
+                                            content1.Add(new
+                                            {
+                                                type = "tool_use",
+                                                id = pair.id,
+                                                name = pair.name,
+                                                input = pair.input
+                                            });
                                             toolsmessages.Add(new
                                             {
                                                 role = "assistant",
-                                                content = new List<object>
-                                                                        {
-                                                                             ob,
-                                                                             new
-                                                                            {
-                                                                                type= "tool_use",
-                                                                                id= pair.id,
-                                                                                name= pair.name,
-                                                                                input = pair.input
-                                                                            }
-                                                                        }
+                                                content = content1
 
 
                                             });
@@ -2350,20 +2349,17 @@ namespace ChatBot.Web.Services
                                             {
                                                 throw new ArgumentNullException(nameof(query), "The location argument is required.");
                                             }
+                                            content1.Add(new
+                                            {
+                                                type = "tool_use",
+                                                id = pair.id,
+                                                name = pair.name,
+                                                input = pair.input
+                                            });
                                             toolsmessages.Add(new
                                             {
                                                 role = "assistant",
-                                                content = new List<object>
-                                                                        {
-                                                                            ob,
-                                                                             new
-                                                                            {
-                                                                                type= "tool_use",
-                                                                                id= pair.id,
-                                                                                name= pair.name,
-                                                                                input = pair.input
-                                                                            }
-                                                                        }
+                                                content = content1
 
 
                                             });
