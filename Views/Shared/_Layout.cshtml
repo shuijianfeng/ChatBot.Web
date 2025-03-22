@@ -35,7 +35,7 @@
           if (math.inputData.originalText) {
             // Remove [数字] and (数字) patterns
             math.inputData.originalText = math.inputData.originalText
-             .replace(/\[(\^?\d+)\]/g, '')
+             .replace(/\[(\d+)\]/g, '')
               .replace(/\((\d+)\)/g, '');    // Remove parenthetical numbers
           }
         });

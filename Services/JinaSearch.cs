@@ -15,9 +15,13 @@ namespace ChatBot.Web.Services
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly JsonSerializerOptions _jsonOptions;
+        private readonly JinaSearchResult _result;
+
+        public JinaSearchResult Result => _result;
 
         public JinaSearch(IHttpClientFactory httpClientFactory)
         {
+            _result = new JinaSearchResult();
             _httpClientFactory = httpClientFactory;
             _jsonOptions = new JsonSerializerOptions
             {
@@ -86,39 +90,72 @@ namespace ChatBot.Web.Services
 
         public async Task<JinaSearchResult?> JinaAiSearch(string query, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
         {
-            JinaSearchResult result = new JinaSearchResult();
-            var google = await JinaAiSearch("", query, searchCount, isNoCache, isdirect);
-            var bing = await JinaAiSearch("site:bing.com ", query, searchCount, isNoCache, isdirect);
-            var sg = await JinaAiSearch("site:sogou.com ", query, searchCount, isNoCache, isdirect);
-            var Wikipedia = await JinaAiSearch("site:wikipedia.org ", query, searchCount, isNoCache, isdirect);
+            _result.Data.Clear();
+            var google = await JinaAiSearch(query, "", searchCount, isNoCache, isdirect);
+            //var bing = await JinaAiSearch(query, "bing.com ", searchCount, isNoCache, isdirect);
+            var badu = await JinaAiSearch(query, "baidu.com ", searchCount, isNoCache, isdirect);
+            //var sg = await JinaAiSearch(query, "sogou.com ", searchCount, isNoCache, isdirect);
+            //var tencent = await JinaAiSearch(query, "qq.com ", searchCount, isNoCache, isdirect);
+            //var zhihu = await JinaAiSearch(query, "zhihu.com ", searchCount, isNoCache, isdirect);
+            //var weibo = await JinaAiSearch(query, "weibo.com ", searchCount, isNoCache, isdirect);
+            var dzdp = await JinaAiSearch(query, "dianping.com ", searchCount, isNoCache, isdirect);
+            //var douban = await JinaAiSearch(query, "douban.com ", searchCount, isNoCache, isdirect);
+            //var reddit = await JinaAiSearch(query, "reddit.com ", searchCount, isNoCache, isdirect);
+            //var Wikipedia = await JinaAiSearch(query, "wikipedia.org ", searchCount, isNoCache, isdirect);
 
-            var dzdp = await JinaAiSearch("site:dianping.com ", query, searchCount, isNoCache, isdirect);
+            
             
            
             if (google?.Data != null)
             {
-                result.Data.AddRange(google.Data);
+                _result.Data.AddRange(google.Data);
             }
-            if (sg?.Data != null)
+            //if (bing?.Data != null)
+            //{
+            //    _result.Data.AddRange(bing.Data);
+            //}
+            if (badu?.Data != null)
             {
-                result.Data.AddRange(sg.Data);
+                _result.Data.AddRange(badu.Data);
             }
-            if (bing?.Data != null)
-            {
-                result.Data.AddRange(bing.Data);
-            }
-            if (Wikipedia?.Data != null)
-            {
-                result.Data.AddRange(Wikipedia.Data);
-            }
+            //if (tencent?.Data != null)
+            //{
+            //    _result.Data.AddRange(tencent.Data);
+            //}
+            //if (zhihu?.Data != null)
+            //{
+            //    _result.Data.AddRange(zhihu.Data);
+            //}
+            //if (weibo?.Data != null)
+            //{
+            //    _result.Data.AddRange(weibo.Data);
+            //}
+            //if (douban?.Data != null)
+            //{
+            //    _result.Data.AddRange(douban.Data);
+            //}
+            //if (reddit?.Data != null)
+            //{
+            //    _result.Data.AddRange(reddit.Data);
+            //}
+
+            //if (sg?.Data != null)
+            //{
+            //    _result.Data.AddRange(sg.Data);
+            //}
+            
+            //if (Wikipedia?.Data != null)
+            //{
+            //    _result.Data.AddRange(Wikipedia.Data);
+            //}
             if (dzdp?.Data != null)
             {
-                result.Data.AddRange(dzdp.Data);
+                _result.Data.AddRange(dzdp.Data);
             }
-            await JinaAiRerank1(query, result);
-            return await Task.FromResult<JinaSearchResult?>(result);
+            await JinaAiRerank2(query);
 
 
+           return await Task.FromResult<JinaSearchResult?>(_result);
         }
         //public async Task JinaAireader(JinaSearchResult jinaSearchResult, bool isNoCache = false, bool isdirect = true)
         //{
@@ -173,7 +210,7 @@ namespace ChatBot.Web.Services
         //        }
         //    }
         //}
-        public async Task<JinaSearchResult?> JinaAiSearch(string search, string query, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
+        public async Task<JinaSearchResult?> JinaAiSearch( string query, string site, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
         {
             var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
             var apiEndpoint = $"https://s.jina.ai";
@@ -183,8 +220,14 @@ namespace ChatBot.Web.Services
 
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             client.DefaultRequestHeaders.Add("Accept", "application/json");
-            //client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
+            
             client.DefaultRequestHeaders.Add("X-Respond-With", "no-content");
+            //client.DefaultRequestHeaders.Add("X-Locale", "zh-CN");
+            //client.DefaultRequestHeaders.Add("X-Proxy", "auto");
+            if (!string.IsNullOrWhiteSpace(site))
+            {
+                client.DefaultRequestHeaders.Add("X-Site", site);
+            }
             if (isdirect)
             {
                 client.DefaultRequestHeaders.Add("X-Engine", "direct");
@@ -199,7 +242,7 @@ namespace ChatBot.Web.Services
             var requestContent = new
 
             {
-                q = search + query,
+                q =   query,
                 count = searchCount,
                
                 //loc = new string[] { "visas lang:zh", "visas lang:en" },
@@ -223,8 +266,42 @@ namespace ChatBot.Web.Services
                         {
                             item.Url = Uri.UnescapeDataString(item.Url);
                         }
-                        //jinaSearchResult.Data.Select(x => x.Url=Uri.UnescapeDataString(x.Url));
-                       
+
+                        for (int i = jinaSearchResult.Data.Count - 1; i >= 0; i--)
+                        {
+
+                            
+                                for (int k = i - 1; k >= 0; k--)
+                                {
+                                    if (jinaSearchResult.Data[i].Url.Equals(jinaSearchResult.Data[k].Url, StringComparison.Ordinal))
+                                    {
+                                        jinaSearchResult.Data.RemoveAt(i);
+                                        break;
+                                    }
+                                }
+                            
+                        }
+                        for (int i = jinaSearchResult.Data.Count - 1; i >= 0; i--)
+                        {
+
+                            bool isRemove = false;
+                            for (int k = 0; k <_result.Data.Count; k++)
+                            {
+                                if (_result.Data[k].Url.Equals(jinaSearchResult.Data[i].Url, StringComparison.Ordinal))
+                                {
+                                    isRemove=true;
+                                    break;
+                                }
+                            }
+                            if(isRemove)
+                            {
+                                jinaSearchResult.Data.RemoveAt(i);
+                            }
+                        }
+                        if(jinaSearchResult.Data.Count==0)
+                        {
+                            return await Task.FromResult<JinaSearchResult?>(jinaSearchResult);
+                        }
 
                         await JinaAireader(jinaSearchResult, isNoCache, isdirect);
                         
@@ -253,7 +330,8 @@ namespace ChatBot.Web.Services
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             client.DefaultRequestHeaders.Add("Accept", "application/json");
             client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
-           
+            //client.DefaultRequestHeaders.Add("X-Locale", "zh-CN");
+            //client.DefaultRequestHeaders.Add("X-Proxy", "auto");
             if (isdirect)
             {
                 client.DefaultRequestHeaders.Add("X-Engine", "direct");
@@ -291,9 +369,26 @@ namespace ChatBot.Web.Services
 
             await Task.WhenAll(tasks);
         }
-        public async Task JinaAiRerank(string query, JinaSearchResult jinaSearchResult, int rerankCount = 3)
+        public async Task JinaAiRerank(string query, int rerankCount = 3)
         {
-
+            for (int i = _result.Data.Count - 1; i >= 0; i--)
+            {
+                if (string.IsNullOrWhiteSpace(_result.Data[i].Content))
+                {
+                    _result.Data.RemoveAt(i);
+                }
+                else
+                {
+                    for (int k = i - 1; k >= 0; k--)
+                    {
+                        if (_result.Data[i].Content == _result.Data[k].Content || _result.Data[i].Url.Equals(_result.Data[k].Url, StringComparison.Ordinal))
+                        {
+                            _result.Data.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
+            }
 
             var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
             var apiEndpoint = $"https://api.jina.ai/v1/rerank";
@@ -302,7 +397,7 @@ namespace ChatBot.Web.Services
             client.Timeout = TimeSpan.FromMinutes(30);
 
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-            var tasks = jinaSearchResult.Data.Select(async item =>
+            var tasks = _result.Data.Select(async item =>
            
             {
 
@@ -317,6 +412,7 @@ namespace ChatBot.Web.Services
 
                 };
                 item.Content = string.Empty;
+                item.Description = string.Empty;
                 try
                 {
                     using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
@@ -354,26 +450,26 @@ namespace ChatBot.Web.Services
             });
 
             await Task.WhenAll(tasks);
-            jinaSearchResult.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
+            _result.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
 
         }
 
-        public async Task JinaAiRerank1(string query, JinaSearchResult jinaSearchResult)
+        public async Task JinaAiRerank1(string query)
         {
 
-            for (int i = jinaSearchResult.Data.Count - 1; i >= 0; i--)
+            for (int i = _result.Data.Count - 1; i >= 0; i--)
             {
-                if (string.IsNullOrWhiteSpace(jinaSearchResult.Data[i].Content))
+                if (string.IsNullOrWhiteSpace(_result.Data[i].Content))
                 {
-                    jinaSearchResult.Data.RemoveAt(i);
+                    _result.Data.RemoveAt(i);
                 }
                 else
                 {
                     for (int k = i - 1; k >= 0; k--)
                     {
-                        if (jinaSearchResult.Data[i].Content == jinaSearchResult.Data[k].Content|| jinaSearchResult.Data[i].Url.Equals( jinaSearchResult.Data[k].Url,StringComparison.Ordinal))
+                        if (_result.Data[i].Content == _result.Data[k].Content|| _result.Data[i].Url.Equals(_result.Data[k].Url,StringComparison.Ordinal))
                         {
-                            jinaSearchResult.Data.RemoveAt(i);
+                            _result.Data.RemoveAt(i);
                             break;
                         }
                     }
@@ -390,19 +486,20 @@ namespace ChatBot.Web.Services
 
             
 
-            var tasks = jinaSearchResult.Data.Select(async item =>
+            var tasks = _result.Data.Select(async item =>
 
             {
 
                 if (string.IsNullOrWhiteSpace(item.Content)) return;
 
                 var contents = new List<object>();
+                contents.Add(new { role = "system", content = "你是一个优秀的资料整理专家。" });
                 contents.Add(new
                 {
                     role = "user",
                     content = ((new StringBuilder()).Append("在<info></info>中请提取和")
                      .Append(query)
-                    .Append("相关的关键信息，不做其他操作。")
+                    .Append("相关的原始信息，如果不能提取原始信息则回答:[NOT]")
                     .Append('\n')
                     .Append('\n')
                     .Append("<info>")
@@ -418,10 +515,11 @@ namespace ChatBot.Web.Services
                 {
                     model = "gpt-4o-mini",
                     messages = contents,
-                    temperature = 0.2,
+                    temperature = 0.1,
 
                 };
                 item.Content = string.Empty;
+                item.Description = string.Empty;
                 try
                 {
                     using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
@@ -439,8 +537,12 @@ namespace ChatBot.Web.Services
                             if (jinaRerankResult != null)
                             {
                                 var content = jinaRerankResult?.choices?.FirstOrDefault()?.message?.content;
-                               
-                                item.Content = content??string.Empty;
+
+                                
+                                if (!string.IsNullOrWhiteSpace(content) && !content.Contains("[NOT]"))
+                                {
+                                    item.Content = content ?? string.Empty;
+                                }
                             }
 
                         }
@@ -458,10 +560,116 @@ namespace ChatBot.Web.Services
             });
 
             await Task.WhenAll(tasks);
-            jinaSearchResult.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
+            _result.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
 
         }
+        public async Task JinaAiRerank2(string query)
+        {
 
+            for (int i = _result.Data.Count - 1; i >= 0; i--)
+            {
+                if (string.IsNullOrWhiteSpace(_result.Data[i].Content))
+                {
+                    _result.Data.RemoveAt(i);
+                }
+                else
+                {
+                    for (int k = i - 1; k >= 0; k--)
+                    {
+                        if (_result.Data[i].Content == _result.Data[k].Content || _result.Data[i].Url.Equals(_result.Data[k].Url, StringComparison.Ordinal))
+                        {
+                            _result.Data.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            var apiKey = Environment.GetEnvironmentVariable("GeminiKey");
+            var apiEndpoint = $"https://cdsjf.xyz/gemini/v1beta/openai/chat/completions";
+
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromMinutes(30);
+
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+
+
+            var tasks = _result.Data.Select(async item =>
+
+            {
+
+                if (string.IsNullOrWhiteSpace(item.Content)) return;
+
+                var contents = new List<object>();
+                contents.Add(new { role = "system", content= "你是一个优秀的资料整理专家" });
+                contents.Add(new
+                {
+                    role = "user",
+                    content = ((new StringBuilder()).Append("在<info></info>中请提取和")
+                     .Append(query)
+                    .Append("相关的原始信息，如果不能提取原始信息则回答:[NOT]")
+                    .Append('\n')
+                    .Append('\n')
+                    .Append("<info>")
+                     .Append('\n')
+                     .Append(item.Content)
+                    .Append('\n')
+                    .Append("</info>")
+
+                    .ToString())
+                });
+
+                var requestContent = new
+                {
+                    model = "gemini-2.0-flash-lite",
+                    messages = contents,
+                    temperature = 0.1,
+
+                };
+                item.Content = string.Empty;
+                item.Description = string.Empty;
+                try
+                {
+                    using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                    {
+                        Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                    }, HttpCompletionOption.ResponseHeadersRead))
+                    {
+                        if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                        {
+                            response.EnsureSuccessStatusCode();
+                            string rsteing = await response.Content.ReadAsStringAsync();
+
+
+                            var jinaRerankResult = JsonSerializer.Deserialize<OpenAIResponse>(rsteing, _jsonOptions);
+                            if (jinaRerankResult != null)
+                            {
+                                var content = jinaRerankResult?.choices?.FirstOrDefault()?.message?.content;
+                                if (!string.IsNullOrWhiteSpace(content) && !content.Contains("[NOT]"))
+                                {
+                                    item.Content = content ?? string.Empty;
+                                }
+                            }
+
+                        }
+
+                    }
+                }
+
+
+                catch (Exception ex)
+                {
+
+                }
+
+
+            });
+
+            await Task.WhenAll(tasks);
+            _result.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
+
+        }
     }
     public class TextSplitter
     {

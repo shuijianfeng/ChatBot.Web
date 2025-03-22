@@ -445,58 +445,58 @@ namespace ChatBot.Web.Services
         /// <param name="outinfo"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        public async IAsyncEnumerable<string> SearchResults(List<JinaSearchResult> searchResults, ChatModelConfig modelconfg, string searchterm, StringBuilder outinfo, CancellationToken cancellationToken)
-        {
+        //public async IAsyncEnumerable<string> SearchResults(List<JinaSearchResult> searchResults, ChatModelConfig modelconfg, string searchterm, StringBuilder outinfo, CancellationToken cancellationToken)
+        //{
 
-            string resultliat = string.Empty;
-            JinaSearch js = new JinaSearch(_httpClientFactory);
-            foreach (var item in searchResults)
-            {
-                js.JinaAiRerank(searchterm, item);
-                foreach (var dataitem in item.Data)
-                {
-                    {
-                        string bh = (searchResults.IndexOf(item) + 1).ToString();
-                        yield return "<details>";
-                        yield return $"\n<summary>{bh} 读取分析：{dataitem.Title}</summary>";
-                        yield return $"\n\n链接： {dataitem.Url}";
+        //    string resultliat = string.Empty;
+        //    JinaSearch js = new JinaSearch(_httpClientFactory);
+        //    foreach (var item in searchResults)
+        //    {
+        //        js.JinaAiRerank(searchterm, item);
+        //        foreach (var dataitem in item.Data)
+        //        {
+        //            {
+        //                string bh = (searchResults.IndexOf(item) + 1).ToString();
+        //                yield return "<details>";
+        //                yield return $"\n<summary>{bh} 读取分析：{dataitem.Title}</summary>";
+        //                yield return $"\n\n链接： {dataitem.Url}";
 
-                        if (!string.IsNullOrEmpty(dataitem.Content))
-                        {
-                            string info = string.Empty;
-
-
-
-                            if (!string.IsNullOrEmpty(info))
-                            {
-
-                                outinfo.Append('\n');
-                                outinfo.Append(JsonSerializer.Serialize(new
-                                {
-                                    Title = dataitem.Title,
-                                    Url = dataitem.Url,
-                                    Description = dataitem.Description,
-
-                                    Content = info
-                                }, _jsonOptions));
+        //                if (!string.IsNullOrEmpty(dataitem.Content))
+        //                {
+        //                    string info = string.Empty;
 
 
-                                yield return $"\n\n内容摘要：\n\n{info}";
 
-                            }
-                        }
-                    }
-                    yield return "\n</details>\n";
+        //                    if (!string.IsNullOrEmpty(info))
+        //                    {
+
+        //                        outinfo.Append('\n');
+        //                        outinfo.Append(JsonSerializer.Serialize(new
+        //                        {
+        //                            Title = dataitem.Title,
+        //                            Url = dataitem.Url,
+        //                            Description = dataitem.Description,
+
+        //                            Content = info
+        //                        }, _jsonOptions));
 
 
-                }
-                yield return "\n";
-                yield return "\n";
-                yield return "---";
-                yield return "\n";
-                yield return "\n";
-            }
-        }
+        //                        yield return $"\n\n内容摘要：\n\n{info}";
+
+        //                    }
+        //                }
+        //            }
+        //            yield return "\n</details>\n";
+
+
+        //        }
+        //        yield return "\n";
+        //        yield return "\n";
+        //        yield return "---";
+        //        yield return "\n";
+        //        yield return "\n";
+        //    }
+        //}
 
         /// <summary>
         /// 抓取方法
@@ -1138,7 +1138,7 @@ namespace ChatBot.Web.Services
             var messages = ToMessagesResponsesOpenAi(request, modelconfg);
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
-            toolsmessages.Clear();
+            //toolsmessages.Clear();
             List<object> tools = request.EnableSearch
         ? new List<object>
         {
@@ -1244,7 +1244,7 @@ namespace ChatBot.Web.Services
                                 case "response.output_text.delta":
                                     {
                                         var content = chunk?.delta;
-                                        if (!string.IsNullOrWhiteSpace(content))
+                                        if (!string.IsNullOrEmpty(content))
                                         {
                                             content = Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                             contentBuilder.Append(content);
@@ -1307,7 +1307,13 @@ namespace ChatBot.Web.Services
                                     }
                                 case "response.function_call_arguments.done":
                                     {
-                                        if (chunk?.output_index < tool_calls.Count)
+                                       
+                                        break;
+                                    }
+
+                                case "response.output_item.done":
+                                    {
+                                        //if (chunk?.output_index < tool_calls.Count)
                                         {
 
                                             if (tool_calls.Count > 0)
@@ -1391,7 +1397,7 @@ namespace ChatBot.Web.Services
                             if (item.type == "function_call")
                             {
                                 var content1 = item?.content?.FirstOrDefault()?.text;
-                                if (!string.IsNullOrWhiteSpace(content1))
+                                if (!string.IsNullOrEmpty(content1))
                                 {
                                     content1 = Regex.Replace(content1, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                     contentBuilder.Append(content1);
@@ -1450,7 +1456,7 @@ namespace ChatBot.Web.Services
                             else
                             {
                                 var content1 = item?.content?.FirstOrDefault()?.text;
-                                if (!string.IsNullOrWhiteSpace(content1))
+                                if (!string.IsNullOrEmpty(content1))
                                 {
                                     content1 = Regex.Replace(content1, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                     contentBuilder.Append(content1);
@@ -1620,15 +1626,15 @@ namespace ChatBot.Web.Services
                             }
                             var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
                             var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
-                            if (!string.IsNullOrWhiteSpace(content))
+                            if (!string.IsNullOrEmpty(content))
                             {
-                                content = Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                                content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
 
                                 contentBuilder.Append(content);
                             }
-                            if (!string.IsNullOrWhiteSpace(reasoning_content))
+                            if (!string.IsNullOrEmpty(reasoning_content))
                             {
-                                reasoning_content = Regex.Replace(reasoning_content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                                reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                             }
 
                             if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
@@ -1788,14 +1794,14 @@ namespace ChatBot.Web.Services
                         }
                         var content = chunk?.choices?.FirstOrDefault()?.message?.content;
                         var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
-                        if (!string.IsNullOrWhiteSpace(content))
+                        if (!string.IsNullOrEmpty(content))
                         {
-                            content = Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                            content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                             contentBuilder.Append(content);
                         }
-                        if (!string.IsNullOrWhiteSpace(reasoning_content))
+                        if (!string.IsNullOrEmpty(reasoning_content))
                         {
-                            reasoning_content = Regex.Replace(reasoning_content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                            reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                         }
 
                         if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
@@ -1893,7 +1899,7 @@ namespace ChatBot.Web.Services
                         }
                     }
                 }
-                if (!string.IsNullOrWhiteSpace(citationsstring))
+                if (!string.IsNullOrEmpty(citationsstring))
                 {
                     yield return "\n\n" + citationsstring;
                 }
@@ -2057,7 +2063,7 @@ namespace ChatBot.Web.Services
                                     if (chunk.delta.type == "text_delta")
                                     {
                                         
-                                        text += Regex.Replace(chunk.delta.text, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                                        text += Regex.Replace(chunk.delta.text, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                                         if (beging && !end)
                                         {
                                             yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + Regex.Replace(chunk.delta.text, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
@@ -2065,7 +2071,7 @@ namespace ChatBot.Web.Services
                                         }
                                         else
                                         {
-                                            yield return Regex.Replace(chunk.delta.text, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                                            yield return Regex.Replace(chunk.delta.text, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                                         }
                                     }
                                     if (chunk.delta.type == "thinking_delta")
@@ -2110,9 +2116,9 @@ namespace ChatBot.Web.Services
                                         foreach (var pair in tool_calls)
                                         {
                                             object ob = null;
-                                            if (string.IsNullOrWhiteSpace(pair.thinking))
+                                            if (string.IsNullOrEmpty(pair.thinking))
                                             {
-                                                if (!string.IsNullOrWhiteSpace(pair.text))
+                                                if (!string.IsNullOrEmpty(pair.text))
                                                 {
                                                     ob = new
                                                     {
@@ -2287,14 +2293,17 @@ namespace ChatBot.Web.Services
                             foreach (var pair in tool_calls1)
                             {
                                 object ob = null;
-                                if (string.IsNullOrWhiteSpace(pair.thinking))
+                                if (string.IsNullOrEmpty(pair.thinking))
                                 {
-                                    ob = new
+                                    if (!string.IsNullOrEmpty(pair.text))
                                     {
-                                        type = "text",
-                                        text = pair.text,
+                                        ob = new
+                                        {
+                                            type = "text",
+                                            text = pair.text,
 
-                                    };
+                                        };
+                                    }
                                 }
                                 else
                                 {
@@ -3814,22 +3823,22 @@ namespace ChatBot.Web.Services
             string Search = string.Empty;
             List<JinaSearchResult> Searchlist = new List<JinaSearchResult>();
             JinaSearch js = new JinaSearch(_httpClientFactory);
-            if (Searchtermlist == null || Searchtermlist.SearchTerms.Count == 0)
-            {
-                var list = await js.JinaAiSearch(request.History[request.History.Count - 1].Content);
+            //if (Searchtermlist == null || Searchtermlist.SearchTerms.Count == 0)
+            //{
+            //    var list = await js.JinaAiSearch(request.History[request.History.Count - 1].Content);
 
-                Searchlist.Add(list);
-            }
-            else
-            {
+            //    Searchlist.Add(list);
+            //}
+            //else
+            //{
 
-                for (int i = 0; i < Searchtermlist.SearchTerms.Count; i++)
-                {
-                    var list = await js.JinaAiSearch(Searchtermlist.SearchTerms[i]);
+            //    for (int i = 0; i < Searchtermlist.SearchTerms.Count; i++)
+            //    {
+            //        var list = await js.JinaAiSearch(Searchtermlist.SearchTerms[i]);
 
-                    Searchlist.Add(list);
-                }
-            }
+            //        Searchlist.Add(list);
+            //    }
+            //}
 
             Search = JsonSerializer.Serialize<List<JinaSearchResult>>(Searchlist, new JsonSerializerOptions
             {
@@ -4290,28 +4299,28 @@ namespace ChatBot.Web.Services
             string Search = string.Empty;
             List<JinaSearchResult> Searchlist = new List<JinaSearchResult>();
             JinaSearch js = new JinaSearch(_httpClientFactory);
-            if (Searchtermlist == null || Searchtermlist.SearchTerms.Count == 0)
-            {
-                var list = await js.JinaAiSearch(request.History[request.History.Count - 1].Content);
+            //if (Searchtermlist == null || Searchtermlist.SearchTerms.Count == 0)
+            //{
+            //    var list = await js.JinaAiSearch(request.History[request.History.Count - 1].Content);
 
-                Searchlist.Add(list);
-            }
-            else
-            {
+            //    Searchlist.Add(list);
+            //}
+            //else
+            //{
 
-                for (int i = 0; i < Searchtermlist.SearchTerms.Count; i++)
-                {
-                    var list = await js.JinaAiSearch(Searchtermlist.SearchTerms[i]);
+            //    for (int i = 0; i < Searchtermlist.SearchTerms.Count; i++)
+            //    {
+            //        var list = await js.JinaAiSearch(Searchtermlist.SearchTerms[i]);
 
-                    Searchlist.Add(list);
-                }
-            }
+            //        Searchlist.Add(list);
+            //    }
+            //}
             StringBuilder sb = new StringBuilder();
 
-            await foreach (var item in SearchResults(Searchlist, modelconfg, request.History[request.History.Count - 1].Content, sb, cancellationToken))
-            {
-                yield return item;
-            }
+            //await foreach (var item in SearchResults(Searchlist, modelconfg, request.History[request.History.Count - 1].Content, sb, cancellationToken))
+            //{
+            //    yield return item;
+            //}
             Search = sb.ToString();
             Search = generateSystemPrompt(Search, request.History.Last().Content);
             int num1 = CalculateTokens(Search);
