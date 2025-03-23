@@ -812,8 +812,8 @@ namespace ChatBot.Web.Services
 
         private async Task<string>? JinaAiSearch(string query)
         {
-            var result = await   _jinaSearch.JinaAiSearch(query);
-            return await Task.FromResult( JsonSerializer.Serialize(result, _jsonOptions));
+            var result = await   _jinaSearch.Search(query);
+            return await Task.FromResult(result);
         }
        
 

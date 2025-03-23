@@ -24,6 +24,7 @@ using System.Text.RegularExpressions;
 using Npgsql;
 using System.Threading;
 using System.Security.Cryptography.Xml;
+using DocumentFormat.OpenXml.Bibliography;
 
 
 
@@ -1184,6 +1185,43 @@ namespace ChatBot.Web.Services
                     }
 
             },
+            new
+            {
+                type = "function",
+
+                    name = nameof(GetWeather),
+                    description = "获取天气预报并返回结果",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            city = new
+                            {
+                                type = "string",
+                                description = "城市(用英文表示)"
+                            }
+                        },
+                        required = new[] { "city" }
+                    }
+
+            },
+            new
+            {
+                type = "function",
+
+                    name = nameof(GetCurrentDataTime),
+                    description = "获取当前日期和时间并返回结果",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            
+                        }
+                    }
+
+            },
         }
         : null;
 
@@ -1325,6 +1363,13 @@ namespace ChatBot.Web.Services
                                                     string toolResult = string.Empty;
                                                     switch (pair.name)
                                                     {
+                                                        case nameof(GetCurrentDataTime):
+                                                            {
+                                                                
+                                                               
+                                                                toolResult = await GetCurrentDataTime();
+                                                                break;
+                                                            }
                                                         case nameof(JinaAiSearch):
                                                             {
                                                                 using JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments);
@@ -1405,6 +1450,12 @@ namespace ChatBot.Web.Services
                                 string toolResult = string.Empty;
                                 switch (item.name)
                                 {
+                                    case nameof(GetCurrentDataTime):
+                                        {
+                                            
+                                            toolResult = await GetCurrentDataTime();
+                                            break;
+                                        }
                                     case nameof(JinaAiSearch):
                                         {
                                             using JsonDocument argumentsJson = JsonDocument.Parse(item.arguments);
@@ -1554,6 +1605,22 @@ namespace ChatBot.Web.Services
                         required = new[] { "city" }
                     }
                 }
+            },
+            new
+            {
+                type = "function",
+
+                    name = nameof(GetCurrentDataTime),
+                    description = "获取当前日期和时间并返回结果",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+
+                        }
+                    }
+
             },
         }
         : null;
@@ -1715,6 +1782,13 @@ namespace ChatBot.Web.Services
                                     string toolResult = string.Empty;
                                     switch (pair.function.name)
                                     {
+                                        case nameof(GetCurrentDataTime):
+                                            {
+
+
+                                                toolResult = await GetCurrentDataTime();
+                                                break;
+                                            }
                                         case nameof(JinaAiSearch):
                                             {
                                                 using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
@@ -1830,6 +1904,13 @@ namespace ChatBot.Web.Services
                                     string toolResult = string.Empty;
                                     switch (pair.function.name)
                                     {
+                                        case nameof(GetCurrentDataTime):
+                                            {
+
+
+                                                toolResult = await GetCurrentDataTime();
+                                                break;
+                                            }
                                         case nameof(JinaAiSearch):
                                             {
                                                 using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
@@ -1977,7 +2058,22 @@ namespace ChatBot.Web.Services
                         required = new[] { "city" }
                     }
 
-                }
+                },
+             new
+            {
+               
+                    name = nameof(GetCurrentDataTime),
+                    description = "获取当前日期和时间并返回结果",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+
+                        }
+                    }
+
+            },
         } : null;
 
 
@@ -2143,6 +2239,27 @@ namespace ChatBot.Web.Services
                                             string toolResult = string.Empty;
                                             switch (pair.name)
                                             {
+                                                case nameof(GetCurrentDataTime):
+                                                    {
+                                                        
+                                                        content.Add(new
+                                                        {
+                                                            type = "tool_use",
+                                                            id = pair.id,
+                                                            name = pair.name,
+                                                            input = new { }
+                                                        });
+                                                        toolsmessages.Add(new
+                                                        {
+                                                            role = "assistant",
+                                                            content = content
+
+
+                                                        });
+
+                                                        toolResult = await GetCurrentDataTime();
+                                                        break;
+                                                    }
                                                 case nameof(JinaAiSearch):
                                                     {
                                                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
@@ -2320,6 +2437,27 @@ namespace ChatBot.Web.Services
                                 if (ob != null) content1.Add(ob);
                                 switch (pair.name)
                                 {
+                                    case nameof(GetCurrentDataTime):
+                                        {
+
+                                            content1.Add(new
+                                            {
+                                                type = "tool_use",
+                                                id = pair.id,
+                                                name = pair.name,
+                                                input = new { }
+                                            });
+                                            toolsmessages.Add(new
+                                            {
+                                                role = "assistant",
+                                                content = content
+
+
+                                            });
+                                            text = string.Empty;
+                                            toolResult = await GetCurrentDataTime();
+                                            break;
+                                        }
                                     case nameof(JinaAiSearch):
                                         {
                                             using JsonDocument argumentsJson = JsonDocument.Parse(pair.input.ToString());
@@ -4771,8 +4909,8 @@ namespace ChatBot.Web.Services
         #region tools
         private async Task<string>? JinaAiSearch(string query)
         {
-            var result = await _jinaSearch.JinaAiSearch(query);
-            return await Task.FromResult(JsonSerializer.Serialize(result, _jsonOptions));
+            var result = await _jinaSearch.Search(query);
+            return await Task.FromResult(result);
         }
 
         private async Task<string>? GetWeather(string query)
@@ -4781,6 +4919,13 @@ namespace ChatBot.Web.Services
             return await Task.FromResult(result);
         }
 
+        private async Task<string>? GetCurrentDataTime()
+        {
+            
+            var result= DateTime.Now.ToString(" 日期: yyyy年M月dd日 dddd 时间：HH:mm:ss ");
+            
+            return await Task.FromResult(result);
+        }
         #endregion
         #region 图片处理
         // Helper method to determine image media type

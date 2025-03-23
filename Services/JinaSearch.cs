@@ -8,6 +8,7 @@ using static ChatBot.Models.GeminiChunkResponse;
 using AngleSharp.Dom;
 using DocumentFormat.OpenXml.EMMA;
 using DocumentFormat.OpenXml.Vml;
+using System.Linq;
 
 namespace ChatBot.Web.Services
 {
@@ -32,80 +33,25 @@ namespace ChatBot.Web.Services
             };
         }
 
-        //public async Task<JinaSearchResult?> JinaAiSearch(string query, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
-        //{
-        //    var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
-        //    var apiEndpoint = $"https://s.jina.ai";
 
-        //    var client = _httpClientFactory.CreateClient();
-        //    client.Timeout = TimeSpan.FromMinutes(30);
-
-        //    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-        //    client.DefaultRequestHeaders.Add("Accept", "application/json");
-        //    client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
-        //    //client.DefaultRequestHeaders.Add("X-Return-Format", "text");
-        //    if (isdirect)
-        //    {
-        //        client.DefaultRequestHeaders.Add("X-Engine", "direct");
-        //    }
-        //    if (isNoCache)
-        //    {
-        //        client.DefaultRequestHeaders.Add("X-No-Cache", "true");
-        //    }
-
-
-
-        //    var requestContent = new
-
-        //    {
-        //        q = query,
-        //        count = searchCount,
-        //        loc = new string[] { "visas lang:zh", "visas lang:en" },
-        //        //site = new string[] { "goggles site:brave.com" }
-        //    };
-
-        //    using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-        //    {
-        //        Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-        //    }, HttpCompletionOption.ResponseHeadersRead))
-        //    {
-        //        if (response.StatusCode == System.Net.HttpStatusCode.OK)
-        //        {
-        //            response.EnsureSuccessStatusCode();
-        //            string rsteing = await response.Content.ReadAsStringAsync();
-        //            var jinaSearchResult = JsonSerializer.Deserialize<JinaSearchResult>(rsteing);
-
-        //            if (jinaSearchResult != null)
-        //            {
-        //                await JinaAiRerank(query, jinaSearchResult);
-        //            }
-        //            return await Task.FromResult<JinaSearchResult?>(jinaSearchResult);
-        //        }
-        //        else
-        //        {
-        //            return await Task.FromResult<JinaSearchResult?>(null);
-        //        }
-        //    }
-        //}
-
-        public async Task<JinaSearchResult?> JinaAiSearch(string query, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
+        public async Task<string?> Search(string query, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
         {
             _result.Data.Clear();
-            var google = await JinaAiSearch(query, "", searchCount, isNoCache, isdirect);
+            var google = await Search(query, "", searchCount, isNoCache, isdirect);
             //var bing = await JinaAiSearch(query, "bing.com ", searchCount, isNoCache, isdirect);
-            var badu = await JinaAiSearch(query, "baidu.com ", searchCount, isNoCache, isdirect);
+            var badu = await Search(query, "baidu.com ", searchCount, isNoCache, isdirect);
             //var sg = await JinaAiSearch(query, "sogou.com ", searchCount, isNoCache, isdirect);
             //var tencent = await JinaAiSearch(query, "qq.com ", searchCount, isNoCache, isdirect);
             //var zhihu = await JinaAiSearch(query, "zhihu.com ", searchCount, isNoCache, isdirect);
             //var weibo = await JinaAiSearch(query, "weibo.com ", searchCount, isNoCache, isdirect);
-            var dzdp = await JinaAiSearch(query, "dianping.com ", searchCount, isNoCache, isdirect);
+            var dzdp = await Search(query, "dianping.com ", searchCount, isNoCache, isdirect);
             //var douban = await JinaAiSearch(query, "douban.com ", searchCount, isNoCache, isdirect);
             //var reddit = await JinaAiSearch(query, "reddit.com ", searchCount, isNoCache, isdirect);
             //var Wikipedia = await JinaAiSearch(query, "wikipedia.org ", searchCount, isNoCache, isdirect);
 
-            
-            
-           
+
+
+
             if (google?.Data != null)
             {
                 _result.Data.AddRange(google.Data);
@@ -143,7 +89,7 @@ namespace ChatBot.Web.Services
             //{
             //    _result.Data.AddRange(sg.Data);
             //}
-            
+
             //if (Wikipedia?.Data != null)
             //{
             //    _result.Data.AddRange(Wikipedia.Data);
@@ -152,65 +98,13 @@ namespace ChatBot.Web.Services
             {
                 _result.Data.AddRange(dzdp.Data);
             }
-            await JinaAiRerank2(query);
-
-
-           return await Task.FromResult<JinaSearchResult?>(_result);
+            await GetInfoFromGemini(query);
+            await Rerank(query);
+            var str = await MergeInfo();
+            return await Task.FromResult(str);
         }
-        //public async Task JinaAireader(JinaSearchResult jinaSearchResult, bool isNoCache = false, bool isdirect = true)
-        //{
-        //    var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
-        //    var apiEndpoint = $"https://r.jina.ai";
-
-        //    var client = _httpClientFactory.CreateClient();
-        //    client.Timeout = TimeSpan.FromMinutes(30);
-
-        //    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-        //    client.DefaultRequestHeaders.Add("Accept", "application/json");
-        //    client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
-        //    //client.DefaultRequestHeaders.Add("X-Return-Format", "text");
-        //    if (isdirect)
-        //    {
-        //        client.DefaultRequestHeaders.Add("X-Engine", "direct");
-        //    }
-        //    if (isNoCache)
-        //    {
-        //        client.DefaultRequestHeaders.Add("X-No-Cache", "true");
-        //    }
-
-        //    foreach (var item in jinaSearchResult.Data)
-        //    {
-
-        //        var requestContent = new
-
-        //        {
-        //            url = item.Url,
-
-
-        //        };
-
-        //        using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-        //        {
-        //            Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-        //        }, HttpCompletionOption.ResponseHeadersRead))
-        //        {
-        //            if (response.StatusCode == System.Net.HttpStatusCode.OK)
-        //            {
-        //                response.EnsureSuccessStatusCode();
-        //                string rsteing = await response.Content.ReadAsStringAsync();
-        //                var jinaSearchResult1 = JsonSerializer.Deserialize<JinaReaderResult>(rsteing);
-
-        //                if (jinaSearchResult != null)
-        //                {
-        //                    item.Content = jinaSearchResult1.Data.Content;
-        //                }
-
-        //            }
-
-        //        }
-        //    }
-        //}
-        public async Task<JinaSearchResult?> JinaAiSearch( string query, string site, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
+        
+        public async Task<JinaSearchResult?> Search(string query, string site, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
         {
             var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
             var apiEndpoint = $"https://s.jina.ai";
@@ -220,7 +114,7 @@ namespace ChatBot.Web.Services
 
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             client.DefaultRequestHeaders.Add("Accept", "application/json");
-            
+
             client.DefaultRequestHeaders.Add("X-Respond-With", "no-content");
             //client.DefaultRequestHeaders.Add("X-Locale", "zh-CN");
             //client.DefaultRequestHeaders.Add("X-Proxy", "auto");
@@ -242,9 +136,9 @@ namespace ChatBot.Web.Services
             var requestContent = new
 
             {
-                q =   query,
+                q = query,
                 count = searchCount,
-               
+
                 //loc = new string[] { "visas lang:zh", "visas lang:en" },
                 //site = new string[] { "goggles site:brave.com" }
             };
@@ -258,7 +152,7 @@ namespace ChatBot.Web.Services
                 {
                     response.EnsureSuccessStatusCode();
                     string rsteing = await response.Content.ReadAsStringAsync();
-                    var jinaSearchResult = JsonSerializer.Deserialize<JinaSearchResult>(rsteing,_jsonOptions);
+                    var jinaSearchResult = JsonSerializer.Deserialize<JinaSearchResult>(rsteing, _jsonOptions);
 
                     if (jinaSearchResult != null)
                     {
@@ -270,41 +164,41 @@ namespace ChatBot.Web.Services
                         for (int i = jinaSearchResult.Data.Count - 1; i >= 0; i--)
                         {
 
-                            
-                                for (int k = i - 1; k >= 0; k--)
+
+                            for (int k = i - 1; k >= 0; k--)
+                            {
+                                if (jinaSearchResult.Data[i].Url.Equals(jinaSearchResult.Data[k].Url, StringComparison.Ordinal))
                                 {
-                                    if (jinaSearchResult.Data[i].Url.Equals(jinaSearchResult.Data[k].Url, StringComparison.Ordinal))
-                                    {
-                                        jinaSearchResult.Data.RemoveAt(i);
-                                        break;
-                                    }
+                                    jinaSearchResult.Data.RemoveAt(i);
+                                    break;
                                 }
-                            
+                            }
+
                         }
                         for (int i = jinaSearchResult.Data.Count - 1; i >= 0; i--)
                         {
 
                             bool isRemove = false;
-                            for (int k = 0; k <_result.Data.Count; k++)
+                            for (int k = 0; k < _result.Data.Count; k++)
                             {
                                 if (_result.Data[k].Url.Equals(jinaSearchResult.Data[i].Url, StringComparison.Ordinal))
                                 {
-                                    isRemove=true;
+                                    isRemove = true;
                                     break;
                                 }
                             }
-                            if(isRemove)
+                            if (isRemove)
                             {
                                 jinaSearchResult.Data.RemoveAt(i);
                             }
                         }
-                        if(jinaSearchResult.Data.Count==0)
+                        if (jinaSearchResult.Data.Count == 0)
                         {
                             return await Task.FromResult<JinaSearchResult?>(jinaSearchResult);
                         }
 
-                        await JinaAireader(jinaSearchResult, isNoCache, isdirect);
-                        
+                        await Reader(jinaSearchResult, isNoCache, isdirect);
+
                         return await Task.FromResult<JinaSearchResult?>(jinaSearchResult);
                     }
                     else
@@ -319,7 +213,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        public async Task JinaAireader(JinaSearchResult jinaSearchResult, bool isNoCache = false, bool isdirect = true)
+        public async Task Reader(JinaSearchResult jinaSearchResult, bool isNoCache = false, bool isdirect = true)
         {
             var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
             var apiEndpoint = $"https://r.jina.ai";
@@ -357,7 +251,7 @@ namespace ChatBot.Web.Services
                     {
                         response.EnsureSuccessStatusCode();
                         string rsteing = await response.Content.ReadAsStringAsync();
-                        var jinaSearchResult1 = JsonSerializer.Deserialize<JinaReaderResult>(rsteing,_jsonOptions);
+                        var jinaSearchResult1 = JsonSerializer.Deserialize<JinaReaderResult>(rsteing, _jsonOptions);
 
                         if (jinaSearchResult1 != null)
                         {
@@ -369,7 +263,7 @@ namespace ChatBot.Web.Services
 
             await Task.WhenAll(tasks);
         }
-        public async Task JinaAiRerank(string query, int rerankCount = 3)
+        public async Task Rerank1(string query, int rerankCount = 3)
         {
             for (int i = _result.Data.Count - 1; i >= 0; i--)
             {
@@ -398,7 +292,7 @@ namespace ChatBot.Web.Services
 
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             var tasks = _result.Data.Select(async item =>
-           
+
             {
 
                 if (string.IsNullOrWhiteSpace(item.Content)) return;
@@ -436,7 +330,7 @@ namespace ChatBot.Web.Services
                             }
 
                         }
-                       
+
                     }
                 }
 
@@ -453,8 +347,97 @@ namespace ChatBot.Web.Services
             _result.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
 
         }
+        public async Task Rerank(string query, int rerankCount = 5)
+        {
+            for (int i = _result.Data.Count - 1; i >= 0; i--)
+            {
+                if (string.IsNullOrWhiteSpace(_result.Data[i].Content))
+                {
+                    _result.Data.RemoveAt(i);
+                }
+                else
+                {
+                    for (int k = i - 1; k >= 0; k--)
+                    {
+                        if (_result.Data[i].Content == _result.Data[k].Content || _result.Data[i].Url.Equals(_result.Data[k].Url, StringComparison.Ordinal))
+                        {
+                            _result.Data.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
+            }
 
-        public async Task JinaAiRerank1(string query)
+            var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
+            var apiEndpoint = $"https://api.jina.ai/v1/rerank";
+
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromMinutes(30);
+
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+
+
+
+
+
+            var requestContent = new
+            {
+                model = "jina-reranker-v2-base-multilingual",
+                query = query,
+                top_n = rerankCount,
+                documents = _result.Data.Select(x => x.Content).ToList()
+
+            };
+
+            try
+            {
+                using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead))
+                {
+                    if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                    {
+                        response.EnsureSuccessStatusCode();
+                        string rsteing = await response.Content.ReadAsStringAsync();
+                        var jinaRerankResult = JsonSerializer.Deserialize<JinaRerankResult>(rsteing, _jsonOptions);
+                        if (jinaRerankResult != null)
+                        {
+
+                            for (int i = _result.Data.Count - 1; i >= 0; i--)
+                            {
+                                bool flag = false;
+                                for (int k = 0; k < System.Math.Min(jinaRerankResult.Results.Count, rerankCount); k++)
+                                {
+                                    if (i == jinaRerankResult.Results[k].Index)
+                                    {
+                                        flag = true;
+                                    }
+                                }
+                                if (!flag)
+                                {
+                                    _result.Data.RemoveAt(i);
+                                }
+                            }
+
+
+                        }
+
+                    }
+
+                }
+            }
+
+
+            catch (Exception ex)
+            {
+
+            }
+
+
+        }
+        public async Task GetInfoFromOpenai(string query)
         {
 
             for (int i = _result.Data.Count - 1; i >= 0; i--)
@@ -467,7 +450,7 @@ namespace ChatBot.Web.Services
                 {
                     for (int k = i - 1; k >= 0; k--)
                     {
-                        if (_result.Data[i].Content == _result.Data[k].Content|| _result.Data[i].Url.Equals(_result.Data[k].Url,StringComparison.Ordinal))
+                        if (_result.Data[i].Content == _result.Data[k].Content || _result.Data[i].Url.Equals(_result.Data[k].Url, StringComparison.Ordinal))
                         {
                             _result.Data.RemoveAt(i);
                             break;
@@ -484,7 +467,7 @@ namespace ChatBot.Web.Services
 
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
-            
+
 
             var tasks = _result.Data.Select(async item =>
 
@@ -531,14 +514,14 @@ namespace ChatBot.Web.Services
                         {
                             response.EnsureSuccessStatusCode();
                             string rsteing = await response.Content.ReadAsStringAsync();
-                           
-                            
+
+
                             var jinaRerankResult = JsonSerializer.Deserialize<OpenAIResponse>(rsteing, _jsonOptions);
                             if (jinaRerankResult != null)
                             {
                                 var content = jinaRerankResult?.choices?.FirstOrDefault()?.message?.content;
 
-                                
+
                                 if (!string.IsNullOrWhiteSpace(content) && !content.Contains("[NOT]"))
                                 {
                                     item.Content = content ?? string.Empty;
@@ -563,7 +546,7 @@ namespace ChatBot.Web.Services
             _result.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
 
         }
-        public async Task JinaAiRerank2(string query)
+        public async Task GetInfoFromGemini(string query)
         {
 
             for (int i = _result.Data.Count - 1; i >= 0; i--)
@@ -602,13 +585,13 @@ namespace ChatBot.Web.Services
                 if (string.IsNullOrWhiteSpace(item.Content)) return;
 
                 var contents = new List<object>();
-                contents.Add(new { role = "system", content= "你是一个优秀的资料整理专家" });
+                contents.Add(new { role = "system", content = "你是一个优秀的资料整理专家" });
                 contents.Add(new
                 {
                     role = "user",
-                    content = ((new StringBuilder()).Append("在<info></info>中请提取和")
+                    content = ((new StringBuilder()).Append("在<info></info>中摘要和")
                      .Append(query)
-                    .Append("相关的原始信息，如果不能提取原始信息则回答:[NOT]")
+                    .Append("相关的信息，如果没有摘要信息则回答:[NOT]")
                     .Append('\n')
                     .Append('\n')
                     .Append("<info>")
@@ -670,7 +653,97 @@ namespace ChatBot.Web.Services
             _result.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
 
         }
+        public async Task<string> MergeInfo()
+        {
+
+            var apiKey = Environment.GetEnvironmentVariable("GeminiKey");
+            var apiEndpoint = $"https://cdsjf.xyz/gemini/v1beta/openai/chat/completions";
+
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromMinutes(30);
+
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+            StringBuilder sb = new StringBuilder();
+            foreach (var item in _result.Data)
+            {
+                if (string.IsNullOrWhiteSpace(item.Content)) continue;
+                sb.Append("Url:");
+                sb.Append(item.Url);
+                sb.AppendLine("Content：");
+                sb.AppendLine(item.Content);
+                sb.AppendLine();
+                sb.AppendLine();
+                sb.AppendLine();
+                sb.AppendLine();
+
+            }
+
+            var contents = new List<object>();
+            contents.Add(new { role = "system", content = "你是一个优秀的资料整合专家" });
+            contents.Add(new
+            {
+                role = "user",
+                content = ((new StringBuilder()).Append("整合<info></info>中资料,在描述中使用以空格符作为间隔的引用标记，引用信息来源（格式：[1]\u0020[3]\u0020[11]）,并且在内容末尾提供完整引用来源列表，格式为：\n\n [1]: https://example.com \n\n [2]: https://example.com")
+
+                .Append('\n')
+                .Append('\n')
+                .Append("<info>")
+                 .Append('\n')
+                 .Append(sb.ToString())
+                .Append('\n')
+                .Append("</info>")
+
+                .ToString())
+            });
+
+            var requestContent = new
+            {
+                model = "gemini-2.0-flash-lite",
+                messages = contents,
+                temperature = 0.1,
+
+            };
+
+            try
+            {
+                using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead))
+                {
+                    if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                    {
+                        response.EnsureSuccessStatusCode();
+                        string rsteing = await response.Content.ReadAsStringAsync();
+
+
+                        var jinaRerankResult = JsonSerializer.Deserialize<OpenAIResponse>(rsteing, _jsonOptions);
+                        if (jinaRerankResult != null)
+                        {
+                            var content = jinaRerankResult?.choices?.FirstOrDefault()?.message?.content;
+                            if (!string.IsNullOrWhiteSpace(content))
+                            {
+                                return await Task.FromResult(content);
+                            }
+                        }
+
+                    }
+
+                }
+            }
+
+
+            catch (Exception ex)
+            {
+
+            }
+
+            return await Task.FromResult(string.Empty);
+        }
+
     }
+
     public class TextSplitter
     {
         private readonly int _maxChunkSize;
