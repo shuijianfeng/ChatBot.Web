@@ -25,6 +25,7 @@ using Npgsql;
 using System.Threading;
 using System.Security.Cryptography.Xml;
 using DocumentFormat.OpenXml.Bibliography;
+//using DocumentFormat.OpenXml.Spreadsheet;
 
 
 
@@ -1185,27 +1186,7 @@ namespace ChatBot.Web.Services
                     }
 
             },
-            new
-            {
-                type = "function",
-
-                    name = nameof(GetWeather),
-                    description = "获取天气预报并返回结果",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            city = new
-                            {
-                                type = "string",
-                                description = "城市(用英文表示)"
-                            }
-                        },
-                        required = new[] { "city" }
-                    }
-
-            },
+            
             new
             {
                 type = "function",
@@ -1217,11 +1198,48 @@ namespace ChatBot.Web.Services
                         type = "object",
                         properties = new
                         {
-                            
-                        }
+                              city = new
+                            {
+                                type = "string",
+                                description = "城市(用英文表示)"
+                            }
+                        },
+                         required = new[] { "city" }
                     }
 
             },
+            new
+            {
+                type = "function",
+
+                    name = nameof(SearchTrainTicket),
+                    description = "获取指定日期的火车票、火车车次",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+
+                                startingplace = new
+                            {
+                                type = "string",
+                                description = "起始城市"
+                            },
+                                  arrivalplace = new
+                            {
+                                type = "string",
+                                description = "到达城市"
+                            },
+
+                              date = new
+                            {
+                                type = "string",
+                                description = "日期(格式:YYYY-MM-DD)"
+                            }
+                        }
+                       },
+                         required = new[] { "startingplace", "arrivalplace", "date" }
+            }
         }
         : null;
 
@@ -1383,6 +1401,20 @@ namespace ChatBot.Web.Services
                                                                 toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
                                                                 break;
                                                             }
+                                                        case nameof(SearchTrainTicket):
+                                                            {
+                                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments);
+                                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+                                                                 query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                                                                if (!query)
+                                                                {
+                                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                                }
+                                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(),date.GetString());
+                                                                break;
+                                                            }
                                                         case nameof(GetWeather):
                                                             {
                                                                 using JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments);
@@ -1454,6 +1486,20 @@ namespace ChatBot.Web.Services
                                         {
                                             
                                             toolResult = await GetCurrentDataTime();
+                                            break;
+                                        }
+                                    case nameof(SearchTrainTicket):
+                                        {
+                                            using JsonDocument argumentsJson = JsonDocument.Parse(item.arguments);
+                                            bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+                                            query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                            query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                                            if (!query)
+                                            {
+                                                throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                            }
+                                            toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
                                             break;
                                         }
                                     case nameof(JinaAiSearch):
@@ -1609,7 +1655,8 @@ namespace ChatBot.Web.Services
             new
             {
                 type = "function",
-
+                function = new
+                {
                     name = nameof(GetCurrentDataTime),
                     description = "获取当前日期和时间并返回结果",
                     parameters = new
@@ -1620,8 +1667,43 @@ namespace ChatBot.Web.Services
 
                         }
                     }
-
+                }
             },
+            new
+            {
+                type = "function",
+                function = new
+                {
+                    name = nameof(SearchTrainTicket),
+                    description = "获取指定日期的火车票、火车车次",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+
+                                startingplace = new
+                            {
+                                type = "string",
+                                description = "起始城市"
+                            },
+                                  arrivalplace = new
+                            {
+                                type = "string",
+                                description = "到达城市"
+                            },
+
+                              date = new
+                            {
+                                type = "string",
+                                description = "日期(格式:YYYY-MM-DD)"
+                            }
+                        }
+                       ,
+                         required = new[] { "startingplace", "arrivalplace", "date" }
+                    }
+                }
+            }
         }
         : null;
 
@@ -1802,6 +1884,20 @@ namespace ChatBot.Web.Services
                                                 toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
                                                 break;
                                             }
+                                        case nameof(SearchTrainTicket):
+                                            {
+                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                                                if (!query)
+                                                {
+                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                }
+                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                                break;
+                                            }
                                         case nameof(GetWeather):
                                             {
                                                 using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
@@ -1922,6 +2018,20 @@ namespace ChatBot.Web.Services
                                                     throw new ArgumentNullException(nameof(query), "The location argument is required.");
                                                 }
                                                 toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+                                                break;
+                                            }
+                                        case nameof(SearchTrainTicket):
+                                            {
+                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                                                if (!query)
+                                                {
+                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                }
+                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
                                                 break;
                                             }
                                         case nameof(GetWeather):
@@ -2074,6 +2184,38 @@ namespace ChatBot.Web.Services
                     }
 
             },
+             new
+            {
+                
+                    name = nameof(SearchTrainTicket),
+                    description = "获取指定日期的火车票、火车车次",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+
+                                startingplace = new
+                            {
+                                type = "string",
+                                description = "起始城市"
+                            },
+                                  arrivalplace = new
+                            {
+                                type = "string",
+                                description = "到达城市"
+                            },
+
+                              date = new
+                            {
+                                type = "string",
+                                description = "日期(格式:YYYY-MM-DD)"
+                            }
+                        }
+                       ,
+                         required = new[] { "startingplace", "arrivalplace", "date" }
+                    }
+            }
         } : null;
 
 
@@ -2288,6 +2430,36 @@ namespace ChatBot.Web.Services
                                                         toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
                                                         break;
                                                     }
+                                                case nameof(SearchTrainTicket):
+                                                    {
+                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
+                                                        bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+                                                        query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                        query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                                                        if (!query)
+                                                        {
+                                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                        }
+                                                        
+                                                        content.Add(new
+                                                        {
+                                                            type = "tool_use",
+                                                            id = pair.id,
+                                                            name = pair.name,
+                                                            input = new { startingplace = startingplace.GetString(), arrivalplace= arrivalplace.GetString(), date= date.GetString() }
+                                                        });
+                                                        toolsmessages.Add(new
+                                                        {
+                                                            role = "assistant",
+                                                            content = content
+
+
+                                                        });
+
+                                                        toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                                        break;
+                                                    }
                                                 case nameof(GetWeather):
                                                     {
                                                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
@@ -2456,6 +2628,36 @@ namespace ChatBot.Web.Services
                                             });
                                             text = string.Empty;
                                             toolResult = await GetCurrentDataTime();
+                                            break;
+                                        }
+                                    case nameof(SearchTrainTicket):
+                                        {
+                                            using JsonDocument argumentsJson = JsonDocument.Parse(pair.input.ToString());
+                                            bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+                                            query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                            query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                                            if (!query)
+                                            {
+                                                throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                            }
+
+                                            content1.Add(new
+                                            {
+                                                type = "tool_use",
+                                                id = pair.id,
+                                                name = pair.name,
+                                                input = new { startingplace = startingplace.GetString(), arrivalplace = arrivalplace.GetString(), date = date.GetString() }
+                                            });
+                                            toolsmessages.Add(new
+                                            {
+                                                role = "assistant",
+                                                content = content1
+
+
+                                            });
+
+                                            toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
                                             break;
                                         }
                                     case nameof(JinaAiSearch):
@@ -4916,6 +5118,12 @@ namespace ChatBot.Web.Services
         private async Task<string>? GetWeather(string query)
         {
             var result = await _openWeather.GetWeatherAsync(query);
+            return await Task.FromResult(result);
+        }
+
+        private async Task<string>? SearchTrainTicket(string startingplace, string arrivalplace, string date)
+        {
+            var result = await _jinaSearch.SearchTrainTicket(startingplace, arrivalplace, date);
             return await Task.FromResult(result);
         }
 

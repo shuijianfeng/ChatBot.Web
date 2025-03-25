@@ -17,8 +17,17 @@ namespace ChatBot.Web.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly JsonSerializerOptions _jsonOptions;
         private readonly JinaSearchResult _result;
+        private readonly Dictionary<string, string> _nameToCode ;
+        private readonly Dictionary<string, string> _codeToName;
 
         public JinaSearchResult Result => _result;
+
+        public async Task<JinaSearch> InitializeAsync()
+        {
+            string stationData = await GetStationDataAsync();
+            ParseStationData(stationData, _nameToCode, _codeToName);
+            return this;
+        }
 
         public JinaSearch(IHttpClientFactory httpClientFactory)
         {
@@ -31,6 +40,11 @@ namespace ChatBot.Web.Services
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             };
+            _nameToCode = new Dictionary<string, string>();
+            _codeToName = new Dictionary<string, string>();
+
+            // Call the async initialization method
+            InitializeAsync().GetAwaiter().GetResult();
         }
 
 
@@ -103,7 +117,7 @@ namespace ChatBot.Web.Services
             var str = await MergeInfo();
             return await Task.FromResult(str);
         }
-        
+
         public async Task<JinaSearchResult?> Search(string query, string site, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
         {
             var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
@@ -480,9 +494,9 @@ namespace ChatBot.Web.Services
                 contents.Add(new
                 {
                     role = "user",
-                    content = ((new StringBuilder()).Append("在<info></info>中请提取和")
+                    content = ((new StringBuilder()).Append("在<info></info>中摘要和")
                      .Append(query)
-                    .Append("相关的原始信息，如果不能提取原始信息则回答:[NOT]")
+                    .Append("相关的信息，如果没有摘要信息则回答:[NOT]")
                     .Append('\n')
                     .Append('\n')
                     .Append("<info>")
@@ -742,131 +756,308 @@ namespace ChatBot.Web.Services
             return await Task.FromResult(string.Empty);
         }
 
-    }
+        //    public async Task<string?> SearchTrainTicket(string Startingplace, string Arrivalplace, string date)
+        //    {
 
-    public class TextSplitter
-    {
-        private readonly int _maxChunkSize;
-        private readonly int _overlap;
+        //        var  Startingplacecode = _nameToCode.GetValueOrDefault(Startingplace);
+        //        var Arrivalplacecode = _nameToCode.GetValueOrDefault(Arrivalplace);
 
-        // 构造函数，设置切片大小和重叠部分
-        public TextSplitter(int maxChunkSize = 512, int overlap = 50)
+        //        if( string.IsNullOrEmpty( Startingplacecode)|| string.IsNullOrEmpty( Arrivalplacecode ))
+        //        {
+        //            return await Task.FromResult(string.Empty);
+        //        }
+
+        //        var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
+        //        var apiEndpoint = $"https://kyfw.12306.cn/otn/leftTicket/queryR";
+
+        //        var client = _httpClientFactory.CreateClient();
+        //        client.Timeout = TimeSpan.FromMinutes(30);
+        //        client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        //        client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8");
+        //        client.DefaultRequestHeaders.Add("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+        //        client.DefaultRequestHeaders.Add("Cache-Control", "max-age=0");
+        //        client.DefaultRequestHeaders.Add("Connection", "keep-alive");
+        //        client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
+        //        //client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        //        //client.DefaultRequestHeaders.Add("Accept", "application/json");
+        //        //client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
+        //        //client.DefaultRequestHeaders.Add("X-No-Cache", "true");
+
+        //        string uri = $"https://kyfw.12306.cn/otn/leftTicket/queryR?leftTicketDTO.train_date={date}&leftTicketDTO.from_station={Startingplacecode}&leftTicketDTO.to_station={Arrivalplacecode}&purpose_codes=ADULT";
+        //        string loguri = $"https://kyfw.12306.cn/otn/leftTicket/log?leftTicketDTO.train_date={date}&leftTicketDTO.from_station={Startingplacecode}&leftTicketDTO.to_station={Arrivalplacecode}&purpose_codes=ADULT";
+        //        var requestContent = new
+        //        {
+        //            leftTicketDTO= new
+        //            {
+
+        //                train_date = date,
+        //                from_station = Startingplacecode,
+        //                to_station = Arrivalplacecode,
+        //                purpose_codes = "ADULT"
+        //            }
+
+
+
+
+        //        };
+
+        //        using (HttpClient client2 = new HttpClient())
+        //        {
+        //            string url = uri;
+        //            var str1= await client.GetStringAsync(loguri);
+        //        }
+        //        using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Get, uri)
+        //        //{
+        //        //    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+        //        //}
+        //        ))
+        //        {
+        //            if (response.StatusCode == System.Net.HttpStatusCode.OK)
+        //            {
+        //                response.EnsureSuccessStatusCode();
+        //                string rsteing = await response.Content.ReadAsStringAsync();
+
+
+        //                //return await Task.FromResult(rsteing);
+        //            }
+        //        }
+
+        //        return await Task.FromResult(string.Empty);
+
+        //}
+
+        public async Task<string?> SearchTrainTicket(string Startingplace, string Arrivalplace, string date)
         {
-            _maxChunkSize = maxChunkSize;
-            _overlap = overlap;
+            var Startingplacecode = _nameToCode.GetValueOrDefault(Startingplace);
+            var Arrivalplacecode = _nameToCode.GetValueOrDefault(Arrivalplace);
+
+            if (string.IsNullOrEmpty(Startingplacecode) || string.IsNullOrEmpty(Arrivalplacecode))
+            {
+                return await Task.FromResult("未找到车站代码");
+            }
+
+            try
+            {
+                // 创建一个HttpClientHandler以自定义SSL/TLS处理
+                var handler = new HttpClientHandler
+                {
+                    // 接受所有证书（仅用于开发，生产环境应使用正确的证书验证）
+                    ServerCertificateCustomValidationCallback =
+                        (message, cert, chain, sslPolicyErrors) => true,
+                    AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+                };
+
+                using (var client = new HttpClient(handler))
+                {
+                    client.Timeout = TimeSpan.FromMinutes(1);
+
+                    // 添加浏览器常见请求头
+                    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                    client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8");
+                    client.DefaultRequestHeaders.Add("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+                    client.DefaultRequestHeaders.Add("Cache-Control", "max-age=0");
+                    client.DefaultRequestHeaders.Add("Connection", "keep-alive");
+                    client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
+                    client.DefaultRequestHeaders.Referrer = new Uri("https://kyfw.12306.cn/");
+
+                    // 日志URI
+                    string loguri = $"https://kyfw.12306.cn/otn/leftTicket/log?leftTicketDTO.train_date={date}&leftTicketDTO.from_station={Startingplacecode}&leftTicketDTO.to_station={Arrivalplacecode}&purpose_codes=ADULT";
+
+                    // 先请求日志接口
+                    await client.GetStringAsync(loguri);
+
+                    // 主查询URI
+                    string uri = $"https://kyfw.12306.cn/otn/leftTicket/query?leftTicketDTO.train_date={date}&leftTicketDTO.from_station={Startingplacecode}&leftTicketDTO.to_station={Arrivalplacecode}&purpose_codes=ADULT";
+
+                    var response = await client.GetAsync(uri);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string content = await response.Content.ReadAsStringAsync();
+
+                        // 解析JSON响应
+                        var trainData = JsonSerializer.Deserialize<Train>(content, _jsonOptions);
+
+                        // 处理数据并返回格式化结果
+                        if (trainData != null && trainData.data.result.Count > 0)
+                        {
+                            return FormatTrainData(trainData, _codeToName);
+                        }
+                        else
+                        {
+                            return "未找到符合条件的列车";
+                        }
+                    }
+                    else
+                    {
+                        return $"请求失败：{response.StatusCode} - {await response.Content.ReadAsStringAsync()}";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return $"发生错误：{ex.Message}";
+            }
         }
 
-        public IEnumerable<string> Split(string text)
+        // 格式化列车数据为可读形式
+        private string FormatTrainData(Train trainData, Dictionary<string, string> codeToName)
         {
-            // 1. 首先按段落分割
-            var paragraphs = text.Split(new[] { "\n\n", "\r\n\r\n" },
-                StringSplitOptions.RemoveEmptyEntries);
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("列车查询结果：");
 
-            var currentChunk = new StringBuilder();
-            var chunks = new List<string>();
-
-            foreach (var paragraph in paragraphs)
+            foreach (var item in trainData.data.result)
             {
-                // 如果段落本身超过最大长度，需要进一步分割
-                if (paragraph.Length > _maxChunkSize)
+                // 解析列车数据字符串，具体格式需要根据实际返回调整
+                string[] segments = item.Split('|');
+                if (segments.Length > 30)
                 {
-                    // 处理当前累积的内容
-                    if (currentChunk.Length > 0)
-                    {
-                        chunks.Add(currentChunk.ToString());
-                        currentChunk.Clear();
-                    }
+                    string trainCode = segments[3]; // 车次
+                    string fromStation = codeToName.GetValueOrDefault(segments[4], segments[4]); // 始发站
+                    string toStation = codeToName.GetValueOrDefault(segments[5], segments[5]); // 终点站
+                    string fromStation1 = codeToName.GetValueOrDefault(segments[6], segments[6]); // 出发站
+                    string toStation1 = codeToName.GetValueOrDefault(segments[7], segments[7]); // 到达站
+                    string startTime = segments[8]; // 出发时间
+                    string arriveTime = segments[9]; // 到达时间
+                    string duration = segments[10]; // 历时
 
-                    // 对长段落进行句子级别的分割
-                    var sentences = SplitIntoSentences(paragraph);
-                    var sentenceChunks = ChunkSentences(sentences);
-                    chunks.AddRange(sentenceChunks);
+                    // 座位信息（不同车次的索引可能不同）
+                    string ywSeat = segments[28]; // 硬卧
+                    string yzSeat = segments[29]; // 硬座
+                    string rwSeat = segments[23]; // 软卧
+                    string tdSeat = segments[32]; // 特等座
+                    string swzSeat = segments[25] == "" ? "无" : segments[25]; // 商务座
+                    string zyDeat = segments[31]; // 一等座
+                    string edSeat = segments[30]; // 二等座
+
+                    sb.AppendLine($"车次: {trainCode}");
+                    sb.AppendLine($"始发/终点: {fromStation} -> {toStation}");
+                    sb.AppendLine($"出发/到达: {fromStation1} -> {toStation1}");
+                    sb.AppendLine($"时间: {startTime} -> {arriveTime} 历时: {duration}");
+                    sb.AppendLine($"座位: 商务: {swzSeat}，特等：{tdSeat}, 一等: {zyDeat}, 二等: {edSeat}");
+                    sb.AppendLine($"      软卧: {rwSeat},  硬卧: {ywSeat}, 硬座: {yzSeat}");
+                    sb.AppendLine("----------------------");
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        static async Task<string> GetStationDataAsync()
+        {
+            using (HttpClient client = new HttpClient())
+            {
+                string url = "https://kyfw.12306.cn/otn/resources/js/framework/station_name.js";
+                return await client.GetStringAsync(url);
+            }
+        }
+
+        // 解析车站数据
+        static void ParseStationData(string data, Dictionary<string, string> nameToCode, Dictionary<string, string> codeToName)
+        {
+            // 提取有效部分（去掉开头的"var station_names ="）
+            string pattern = @"@([a-z]+)\|([^|]+)\|([A-Z]+)\|";
+            MatchCollection matches = Regex.Matches(data, pattern);
+
+            foreach (Match match in matches)
+            {
+                string name = match.Groups[2].Value;  // 站名
+                string code = match.Groups[3].Value;  // 站代码
+
+                if (!nameToCode.ContainsKey(name))
+                    nameToCode[name] = code;
+
+                if (!codeToName.ContainsKey(code))
+                    codeToName[code] = name;
+            }
+        }
+
+        public static string getsegstr(string as_str, char as_fgstr, int ai_num)
+        {
+
+            int j = 0, i = 0;
+
+            if (string.IsNullOrEmpty(as_str) || ai_num <= 0) return string.Empty;
+            ReadOnlySpan<char> strSpan = as_str.AsSpan();
+
+            if (strSpan.IndexOf(as_fgstr) < 0)
+            {
+                if (ai_num == 1)
+                {
+                    return as_str;
                 }
                 else
                 {
-                    // 判断添加这个段落是否会超出最大长度
-                    if (currentChunk.Length + paragraph.Length > _maxChunkSize)
-                    {
-                        chunks.Add(currentChunk.ToString());
-                        currentChunk.Clear();
-                    }
-
-                    if (currentChunk.Length > 0)
-                    {
-                        currentChunk.AppendLine();
-                    }
-                    currentChunk.Append(paragraph);
+                    return string.Empty;
                 }
+
             }
 
-            // 添加最后一个chunk
-            if (currentChunk.Length > 0)
+
+            j = strSpan.IndexOf(as_fgstr);
+            while (j >= 0)
             {
-                chunks.Add(currentChunk.ToString());
-            }
-
-            // 处理重叠部分
-            return AddOverlap(chunks);
-        }
-
-        private IEnumerable<string> SplitIntoSentences(string text)
-        {
-            // 使用正则表达式分割句子
-            var sentencePattern = @"(?<=[.!?。！？])\s+";
-            return Regex.Split(text, sentencePattern)
-                .Where(s => !string.IsNullOrWhiteSpace(s));
-        }
-
-        private IEnumerable<string> ChunkSentences(IEnumerable<string> sentences)
-        {
-            var currentChunk = new StringBuilder();
-            var chunks = new List<string>();
-
-            foreach (var sentence in sentences)
-            {
-                if (currentChunk.Length + sentence.Length > _maxChunkSize)
+                i++;
+                if (i == ai_num)
                 {
-                    if (currentChunk.Length > 0)
-                    {
-                        chunks.Add(currentChunk.ToString());
-                        currentChunk.Clear();
-                    }
+                    return strSpan.Slice(0, j).ToString();
 
-                    // 如果单个句子超过最大长度，强制切分
-                    if (sentence.Length > _maxChunkSize)
-                    {
-                        var words = sentence.Split(' ');
-                        foreach (var chunk in ChunkByWords(words))
-                        {
-                            chunks.Add(chunk);
-                        }
-                        continue;
-                    }
                 }
+                strSpan = strSpan.Slice(j + 1);
+                j = strSpan.IndexOf(as_fgstr);
 
+            }
+            i++;
+            if (i == ai_num)
+            {
+                return strSpan.ToString();
+            }
+            return string.Empty;
+        }
+    }
+
+    public class TextSplitter
+{
+    private readonly int _maxChunkSize;
+    private readonly int _overlap;
+
+    // 构造函数，设置切片大小和重叠部分
+    public TextSplitter(int maxChunkSize = 512, int overlap = 50)
+    {
+        _maxChunkSize = maxChunkSize;
+        _overlap = overlap;
+    }
+
+    public IEnumerable<string> Split(string text)
+    {
+        // 1. 首先按段落分割
+        var paragraphs = text.Split(new[] { "\n\n", "\r\n\r\n" },
+            StringSplitOptions.RemoveEmptyEntries);
+
+        var currentChunk = new StringBuilder();
+        var chunks = new List<string>();
+
+        foreach (var paragraph in paragraphs)
+        {
+            // 如果段落本身超过最大长度，需要进一步分割
+            if (paragraph.Length > _maxChunkSize)
+            {
+                // 处理当前累积的内容
                 if (currentChunk.Length > 0)
                 {
-                    currentChunk.Append(" ");
+                    chunks.Add(currentChunk.ToString());
+                    currentChunk.Clear();
                 }
-                currentChunk.Append(sentence);
+
+                // 对长段落进行句子级别的分割
+                var sentences = SplitIntoSentences(paragraph);
+                var sentenceChunks = ChunkSentences(sentences);
+                chunks.AddRange(sentenceChunks);
             }
-
-            if (currentChunk.Length > 0)
+            else
             {
-                chunks.Add(currentChunk.ToString());
-            }
-
-            return chunks;
-        }
-
-        private IEnumerable<string> ChunkByWords(string[] words)
-        {
-            var currentChunk = new StringBuilder();
-            var chunks = new List<string>();
-
-            foreach (var word in words)
-            {
-                if (currentChunk.Length + word.Length + 1 > _maxChunkSize)
+                // 判断添加这个段落是否会超出最大长度
+                if (currentChunk.Length + paragraph.Length > _maxChunkSize)
                 {
                     chunks.Add(currentChunk.ToString());
                     currentChunk.Clear();
@@ -874,51 +1065,145 @@ namespace ChatBot.Web.Services
 
                 if (currentChunk.Length > 0)
                 {
-                    currentChunk.Append(" ");
+                    currentChunk.AppendLine();
                 }
-                currentChunk.Append(word);
+                currentChunk.Append(paragraph);
+            }
+        }
+
+        // 添加最后一个chunk
+        if (currentChunk.Length > 0)
+        {
+            chunks.Add(currentChunk.ToString());
+        }
+
+        // 处理重叠部分
+        return AddOverlap(chunks);
+    }
+
+    private IEnumerable<string> SplitIntoSentences(string text)
+    {
+        // 使用正则表达式分割句子
+        var sentencePattern = @"(?<=[.!?。！？])\s+";
+        return Regex.Split(text, sentencePattern)
+            .Where(s => !string.IsNullOrWhiteSpace(s));
+    }
+
+    private IEnumerable<string> ChunkSentences(IEnumerable<string> sentences)
+    {
+        var currentChunk = new StringBuilder();
+        var chunks = new List<string>();
+
+        foreach (var sentence in sentences)
+        {
+            if (currentChunk.Length + sentence.Length > _maxChunkSize)
+            {
+                if (currentChunk.Length > 0)
+                {
+                    chunks.Add(currentChunk.ToString());
+                    currentChunk.Clear();
+                }
+
+                // 如果单个句子超过最大长度，强制切分
+                if (sentence.Length > _maxChunkSize)
+                {
+                    var words = sentence.Split(' ');
+                    foreach (var chunk in ChunkByWords(words))
+                    {
+                        chunks.Add(chunk);
+                    }
+                    continue;
+                }
             }
 
             if (currentChunk.Length > 0)
             {
-                chunks.Add(currentChunk.ToString());
+                currentChunk.Append(" ");
             }
-
-            return chunks;
+            currentChunk.Append(sentence);
         }
 
-        private IEnumerable<string> AddOverlap(List<string> chunks)
+        if (currentChunk.Length > 0)
         {
-            if (_overlap <= 0 || chunks.Count <= 1)
-                return chunks;
-
-            var result = new List<string>();
-            for (int i = 0; i < chunks.Count; i++)
-            {
-                if (i > 0)
-                {
-                    // 从前一个chunk的末尾获取重叠内容
-                    var previousChunk = chunks[i - 1];
-                    var overlapFromPrevious = previousChunk.Length <= _overlap
-                        ? previousChunk
-                        : previousChunk.Substring(previousChunk.Length - _overlap);
-
-                    result.Add(overlapFromPrevious + chunks[i]);
-                }
-                else
-                {
-                    result.Add(chunks[i]);
-                }
-            }
-
-            return result;
+            chunks.Add(currentChunk.ToString());
         }
+
+        return chunks;
     }
 
-    public class RerankItem
+    private IEnumerable<string> ChunkByWords(string[] words)
     {
-        public JinaSearchResultData jinaSearchResultData { get; set; }
-        public int beging { get; set; }
-        public int end { get; set; }
+        var currentChunk = new StringBuilder();
+        var chunks = new List<string>();
+
+        foreach (var word in words)
+        {
+            if (currentChunk.Length + word.Length + 1 > _maxChunkSize)
+            {
+                chunks.Add(currentChunk.ToString());
+                currentChunk.Clear();
+            }
+
+            if (currentChunk.Length > 0)
+            {
+                currentChunk.Append(" ");
+            }
+            currentChunk.Append(word);
+        }
+
+        if (currentChunk.Length > 0)
+        {
+            chunks.Add(currentChunk.ToString());
+        }
+
+        return chunks;
+    }
+
+    private IEnumerable<string> AddOverlap(List<string> chunks)
+    {
+        if (_overlap <= 0 || chunks.Count <= 1)
+            return chunks;
+
+        var result = new List<string>();
+        for (int i = 0; i < chunks.Count; i++)
+        {
+            if (i > 0)
+            {
+                // 从前一个chunk的末尾获取重叠内容
+                var previousChunk = chunks[i - 1];
+                var overlapFromPrevious = previousChunk.Length <= _overlap
+                    ? previousChunk
+                    : previousChunk.Substring(previousChunk.Length - _overlap);
+
+                result.Add(overlapFromPrevious + chunks[i]);
+            }
+            else
+            {
+                result.Add(chunks[i]);
+            }
+        }
+
+        return result;
+    }
+}
+
+public class RerankItem
+{
+    public JinaSearchResultData jinaSearchResultData { get; set; }
+    public int beging { get; set; }
+    public int end { get; set; }
+}
+
+    public class Train
+    {
+        public Traindata data { get; set; } = new Traindata();
+
+        public class Traindata
+        {
+
+            public List<string> result { get; set; } = new List<string>();
+        }
+    
+    
     }
 }
