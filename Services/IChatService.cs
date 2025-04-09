@@ -22,10 +22,7 @@ using PdfSharp.Fonts;
 using System.Text.RegularExpressions;
 
 using Npgsql;
-using System.Threading;
-using System.Security.Cryptography.Xml;
-using DocumentFormat.OpenXml.Bibliography;
-//using DocumentFormat.OpenXml.Spreadsheet;
+
 
 
 
@@ -1186,7 +1183,7 @@ namespace ChatBot.Web.Services
                     }
 
             },
-            
+
             new
             {
                 type = "function",
@@ -1251,10 +1248,10 @@ namespace ChatBot.Web.Services
                 input = messages,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-
+                text = ToResponsesOpenAischema(),
                 tools = tools,
             };
-
+            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
@@ -1363,7 +1360,7 @@ namespace ChatBot.Web.Services
                                     }
                                 case "response.function_call_arguments.done":
                                     {
-                                       
+
                                         break;
                                     }
 
@@ -1383,8 +1380,8 @@ namespace ChatBot.Web.Services
                                                     {
                                                         case nameof(GetCurrentDataTime):
                                                             {
-                                                                
-                                                               
+
+
                                                                 toolResult = await GetCurrentDataTime();
                                                                 break;
                                                             }
@@ -1406,13 +1403,13 @@ namespace ChatBot.Web.Services
                                                                 using JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments);
                                                                 bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
 
-                                                                 query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
                                                                 query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
                                                                 if (!query)
                                                                 {
                                                                     throw new ArgumentNullException(nameof(query), "The location argument is required.");
                                                                 }
-                                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(),date.GetString());
+                                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
                                                                 break;
                                                             }
                                                         case nameof(GetWeather):
@@ -1484,7 +1481,7 @@ namespace ChatBot.Web.Services
                                 {
                                     case nameof(GetCurrentDataTime):
                                         {
-                                            
+
                                             toolResult = await GetCurrentDataTime();
                                             break;
                                         }
@@ -1575,7 +1572,7 @@ namespace ChatBot.Web.Services
                             }
                             break;
                         }
-                       
+
                     }
                 }
 
@@ -1715,7 +1712,7 @@ namespace ChatBot.Web.Services
                 messages = messages,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-
+                //response_format = ToOpenAischema(),
                 tools = tools,
             };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
@@ -1938,7 +1935,7 @@ namespace ChatBot.Web.Services
                                 break;
                             }
 
-                           
+
 
                         }
                     }
@@ -2171,7 +2168,7 @@ namespace ChatBot.Web.Services
                 },
              new
             {
-               
+
                     name = nameof(GetCurrentDataTime),
                     description = "获取当前日期和时间并返回结果",
                     input_schema = new
@@ -2186,7 +2183,7 @@ namespace ChatBot.Web.Services
             },
              new
             {
-                
+
                     name = nameof(SearchTrainTicket),
                     description = "获取指定日期的火车票、火车车次",
                     input_schema = new
@@ -2256,7 +2253,7 @@ namespace ChatBot.Web.Services
                 List<ClaudeChunkResponse.Delta> tool_calls = new List<ClaudeChunkResponse.Delta>();
                 string text = string.Empty;
                 string textthinking = string.Empty;
-                string textsignature= string.Empty;
+                string textsignature = string.Empty;
                 bool beging = false;
                 bool end = false;
                 while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
@@ -2300,7 +2297,7 @@ namespace ChatBot.Web.Services
                                 {
                                     if (chunk.delta.type == "text_delta")
                                     {
-                                        
+
                                         text += Regex.Replace(chunk.delta.text, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                                         if (beging && !end)
                                         {
@@ -2314,7 +2311,7 @@ namespace ChatBot.Web.Services
                                     }
                                     if (chunk.delta.type == "thinking_delta")
                                     {
-                                        textthinking +=  chunk.delta.thinking ;
+                                        textthinking += chunk.delta.thinking;
                                         if (!beging)
                                         {
                                             yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + chunk.delta.thinking;
@@ -2329,12 +2326,12 @@ namespace ChatBot.Web.Services
                                     if (chunk.delta.type == "signature_delta")
                                     {
                                         textsignature += chunk.delta.signature;
-                                        
+
                                     }
                                     if (chunk.delta.type == "input_json_delta")
                                     {
                                         tool_calls[tool_calls.Count - 1].partial_json += chunk.delta.partial_json;
-                                       
+
                                         continue;
                                     }
                                     break;
@@ -2383,7 +2380,7 @@ namespace ChatBot.Web.Services
                                             {
                                                 case nameof(GetCurrentDataTime):
                                                     {
-                                                        
+
                                                         content.Add(new
                                                         {
                                                             type = "tool_use",
@@ -2426,7 +2423,7 @@ namespace ChatBot.Web.Services
 
 
                                                         });
-                                                       
+
                                                         toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
                                                         break;
                                                     }
@@ -2441,13 +2438,13 @@ namespace ChatBot.Web.Services
                                                         {
                                                             throw new ArgumentNullException(nameof(query), "The location argument is required.");
                                                         }
-                                                        
+
                                                         content.Add(new
                                                         {
                                                             type = "tool_use",
                                                             id = pair.id,
                                                             name = pair.name,
-                                                            input = new { startingplace = startingplace.GetString(), arrivalplace= arrivalplace.GetString(), date= date.GetString() }
+                                                            input = new { startingplace = startingplace.GetString(), arrivalplace = arrivalplace.GetString(), date = date.GetString() }
                                                         });
                                                         toolsmessages.Add(new
                                                         {
@@ -2465,7 +2462,7 @@ namespace ChatBot.Web.Services
                                                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
                                                         bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
 
-                                                       
+
                                                         if (!query)
                                                         {
                                                             throw new ArgumentNullException(nameof(query), "The location argument is required.");
@@ -2484,7 +2481,7 @@ namespace ChatBot.Web.Services
 
 
                                                         });
-                                                       
+
                                                         toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "city cannot be null."));
                                                         break;
                                                     }
@@ -2535,7 +2532,7 @@ namespace ChatBot.Web.Services
                     }
                     else
                     {
-                       
+
 
                         var chunk = JsonSerializer.Deserialize<ClaudeResponse>(line);
                         var content = chunk?.Content;
@@ -2548,10 +2545,10 @@ namespace ChatBot.Web.Services
                                 {
                                     case "thinking":
                                         {
-                                            textthinking = item.thinking??string.Empty;
-                                            textsignature = item.signature?? string.Empty;
+                                            textthinking = item.thinking ?? string.Empty;
+                                            textsignature = item.signature ?? string.Empty;
 
-                                           var textthinking1 = "<think>" + textthinking + "</think>";
+                                            var textthinking1 = "<think>" + textthinking + "</think>";
                                             textthinking1 = textthinking1.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
                                             textthinking1 = textthinking1.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
                                             yield return textthinking1;
@@ -2573,7 +2570,7 @@ namespace ChatBot.Web.Services
                                     default:
                                         {
                                             yield return item.text ?? string.Empty;
-                                            text += item.text?? string.Empty;
+                                            text += item.text ?? string.Empty;
                                             break;
                                         }
                                 }
@@ -2754,7 +2751,7 @@ namespace ChatBot.Web.Services
                                     yield return item;
                                 }
                             }
-                            
+
                         }
 
                     }
@@ -5059,6 +5056,247 @@ namespace ChatBot.Web.Services
 
             return messages;
         }
+
+        private static object ToResponsesOpenAischema()
+        {
+            return new
+            {
+                format = new
+                {
+                    type = "json_schema",
+                    name = "getdata",
+                    schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            delist = new
+                            {
+                                type = "array",
+                                description = "定额子目集合",
+                                items =
+
+                          new
+                          {
+                              type = "object",
+                              description = "定额子目",
+                              properties = new
+                              {
+                                  deh = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目编号"
+                                  },
+                                  xmmc = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目名称"
+                                  },
+                                  syfw = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目适用范围，如果没有就留空"
+                                  },
+                                  gznr = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目工作内容，如果没有就留空"
+                                  },
+                                  dw = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目单位"
+                                  },
+                                  rcjlist = new
+                                  {
+                                      type = "array",
+                                      description = "人工、材料、机械、其他、定额的集合，不显示名称为合计的项目，不显示yl=0的项目",
+                                      items = new
+                                      {
+
+                                          type = "object",
+                                          properties = new
+                                          {
+                                              clmc = new
+                                              {
+                                                  type = "string",
+                                                  description = "人材机名称"
+                                              },
+                                              cldw = new
+                                              {
+                                                  type = "string",
+                                                  description = "人材机单位"
+                                              },
+                                              yl = new
+                                              {
+                                                  type = "number",
+                                                  description = "人材机用量"
+                                              },
+
+                                              flag = new
+                                              {
+                                                  type = "number",
+                                                  description = "人材机名称靠右的和上一个人材机都设置flag=1，其他flag=0"
+                                              },
+
+
+
+
+                                          },
+                                          required = new[]
+                                        {
+                                          "clmc",
+                                          "cldw",
+                                          "yl",
+                                          "flag"
+                                        },
+                                          additionalProperties= false
+
+                                      }
+                                  }
+                              },
+                              required = new[]
+                          {
+                              "deh",
+                              "xmmc",
+                              "syfw",
+                              "gznr",
+                              "dw",
+                              "rcjlist"
+                          },
+                              additionalProperties = false
+                          }
+
+                            }
+                        },
+                        required = new[]
+                        {
+                            "delist"
+                        },
+                        additionalProperties = false
+                    }
+                }
+            };
+        }
+        private static object ToOpenAischema()
+        {
+            return new
+            {
+                type = "json_schema",
+                json_schema = new
+                {
+
+                    name = "getdata",
+                    schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            delist = new
+                            {
+                                type = "array",
+                                description = "定额子目集合，如果没有就不输出",
+                                items =
+
+                          new
+                          {
+                              type = "object",
+                              description = "定额子目",
+                              properties = new
+                              {
+                                  deh = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目编号"
+                                  },
+                                  xmmc = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目名称"
+                                  },
+                                  syfw = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目适用范围，如果没有就留空"
+                                  },
+                                  gznr = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目工作内容，如果没有就留空"
+                                  },
+                                  dw = new
+                                  {
+                                      type = "string",
+                                      description = "定额子目单位"
+                                  },
+                                  rcjlist = new
+                                  {
+                                      type = "array",
+                                      description = "人工、材料、机械、其他、定额的集合，不显示名称为合计的项目，不显示yl=0的项目",
+                                      items = new
+                                      {
+                                          type = "object",
+                                          properties = new
+                                          {
+                                              clmc = new
+                                              {
+                                                  type = "string",
+                                                  description = "人材机名称"
+                                              },
+                                              cldw = new
+                                              {
+                                                  type = "string",
+                                                  description = "人材机单位"
+                                              },
+                                              yl = new
+                                              {
+                                                  type = "number",
+                                                  description = "人材机用量"
+                                              },
+                                              flag = new
+                                              {
+                                                  type = "number",
+                                                  description = "人材机名称靠右的和上一个人材机都设置flag=1，其他flag=0"
+                                              }
+
+                                          },
+                                          required = new[]
+                                        {
+                                          "clmc",
+                                          "cldw",
+                                          "yl",
+                                          "flag"
+                                        },
+                                          additionalProperties = false
+
+                                      }
+                                  }
+                              },
+                              required = new[]
+                          {
+                              "deh",
+                              "xmmc",
+                              "syfw",
+                              "gznr",
+                              "dw",
+                              "rcjlist"
+                          },
+                              additionalProperties = false
+
+
+                          }
+                            }
+                        },
+                        required = new[]
+                        {
+                            "delist"
+                        },
+                        additionalProperties = false
+
+                    }
+                }
+            };
+        }
         #endregion
 
 
@@ -5129,9 +5367,9 @@ namespace ChatBot.Web.Services
 
         private async Task<string>? GetCurrentDataTime()
         {
-            
-            var result= DateTime.Now.ToString(" 日期: yyyy年M月dd日 dddd 时间：HH:mm:ss ");
-            
+
+            var result = DateTime.Now.ToString(" 日期: yyyy年M月dd日 dddd 时间：HH:mm:ss ");
+
             return await Task.FromResult(result);
         }
         #endregion
@@ -5185,7 +5423,7 @@ namespace ChatBot.Web.Services
                         // 设置压缩质量
                         var encoder = new JpegEncoder
                         {
-                            Quality = 80 // 压缩质量，范围0-100
+                            Quality = 100 // 压缩质量，范围0-100
                         };
 
                         using (var msCompressed = new MemoryStream())

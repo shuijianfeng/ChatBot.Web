@@ -836,7 +836,7 @@ body {
 
 /* 深色主题变量 */
 [data-theme="dark"] {
-    --color-canvas-default: #0d1117;
+    --color-canvas-default: #292929;
     --color-border-default: #50575f;
     --color-fg-default: #e6edf3;
     --color-fg-muted: #8b949e;
