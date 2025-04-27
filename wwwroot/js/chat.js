@@ -553,6 +553,70 @@ class ChatUI {
         langLabel.className = 'code-language';
         langLabel.textContent = language;
         header.appendChild(langLabel);
+
+        // 添加下载按钮
+        const downloadButton = document.createElement('button');
+        downloadButton.className = 'download-code-button';
+        downloadButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M7.47 10.78a.75.75 0 001.06 0l3.75-3.75a.75.75 0 00-1.06-1.06L8.75 8.44V1.75a.75.75 0 00-1.5 0v6.69L4.78 5.97a.75.75 0 00-1.06 1.06l3.75 3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"></path></svg>';
+        downloadButton.title = '下载代码';
+        downloadButton.setAttribute('aria-label', '下载代码');
+
+        // 添加下载功能
+        downloadButton.addEventListener('click', () => {
+            // 创建文件名，根据语言类型设置适当的扩展名
+            let extension = '.txt';
+            switch (language.toLowerCase()) {
+                case 'javascript': extension = '.js'; break;
+                case 'html': extension = '.html'; break;
+                case 'css': extension = '.css'; break;
+                case 'csharp': case 'cs': extension = '.cs'; break;
+                case 'python': extension = '.py'; break;
+                case 'java': extension = '.java'; break;
+                case 'json': extension = '.json'; break;
+                case 'xml': extension = '.xml'; break;
+                case 'sql': extension = '.sql'; break;
+                case 'typescript': extension = '.ts'; break;
+                case 'c': extension = '.c'; break;
+                case 'cpp': case 'c++': extension = '.cpp'; break;
+                // 可以根据需要添加更多语言类型
+            }
+
+            const filename = `code${extension}`;
+
+            // 创建 Blob
+            const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+
+            // 创建下载链接
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+
+            // 触发下载
+            document.body.appendChild(a);
+            a.click();
+
+            // 清理
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            // 显示下载成功反馈
+            const originalHTML = downloadButton.innerHTML;
+            downloadButton.innerHTML = `
+            <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                <path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
+            </svg>
+        `;
+            downloadButton.classList.add('download-success');
+
+            setTimeout(() => {
+                downloadButton.innerHTML = originalHTML;
+                downloadButton.classList.remove('download-success');
+            }, 2000);
+        });
+
+        header.appendChild(downloadButton);
+
         // 在 createCodeHeader 方法中修改 HTML 预览功能
         if (language.toLowerCase() === 'html') {
             const runButton = document.createElement('button');
@@ -714,63 +778,7 @@ class ChatUI {
 
 
 
-        //if (language.toLowerCase() === 'html') {
-
-        //    const runButton = document.createElement('button');
-        //    runButton.className = 'run-html-button';
-        //    runButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill-rule="evenodd" d="M5 3.25a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5A.75.75 0 015 3.25zm0 5a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5A.75.75 0 015 8.25zm0 5a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5a.75.75 0 01-.75-.75zM.924 5.31a.75.75 0 011.226-.86l2.25 3.25a.75.75 0 010 .87l-2.25 3.25a.75.75 0 01-1.226-.86l1.95-2.82-1.95-2.82z"></path></svg> 运行';
-        //    runButton.title = '运行此HTML代码';
-        //    header.appendChild(runButton);
-            
-        //    // 运行HTML代码
-        //    runButton.addEventListener('click', () => {
-
-        //        // 创建遮罩层
-        //        const overlay = document.createElement('div');
-        //        overlay.className = 'run-html';
-
-        //        // 添加关闭提示
-        //        const closeHint = document.createElement('div');
-        //        closeHint.className = 'close-hint';
-        //        closeHint.textContent = '点击任意位置关闭';
-
-        //        const contentWrapper = document.createElement('div');
-        //        contentWrapper.className = 'html-content-wrapper';
-        //        const htmlCode = code;
-        //        const sandbox = document.createElement('iframe');
-        //        sandbox.className = 'html-sandbox';
-        //        sandbox.setAttribute('sandbox', 'allow-scripts');
-        //        contentWrapper.innerHTML = '';
-        //        contentWrapper.appendChild(sandbox);
-
-        //        // 组装元素
-        //        overlay.appendChild(contentWrapper);
-        //        overlay.appendChild(closeHint);
-        //        document.body.appendChild(overlay);
-
-        //        // 点击关闭
-        //        overlay.addEventListener('click', () => {
-        //            document.body.removeChild(overlay);
-        //        });
-
-        //        // 设置iframe内容
-        //        setTimeout(() => {
-        //            const doc = sandbox.contentDocument || sandbox.contentWindow.document;
-        //            doc.open();
-        //            doc.write(htmlCode);
-        //            doc.close();
-
-        //            // 调整iframe高度以适应内容
-        //            setTimeout(() => {
-        //                const height = doc.body.scrollHeight;
-        //                sandbox.style.height = (height + 30) + 'px';
-        //            }, 100);
-        //        }, 0);
-
-
-        //    });
-        //}
-        //添加复制按钮
+       
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-button';
         copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
@@ -783,15 +791,12 @@ class ChatUI {
 
         return header;
     }
-
     addCopyButtonListener(button) {
         button.addEventListener('click', async () => {
-            const pre = button.closest('.code-block-wrapper').querySelector('pre');
-            /*const code = pre.textContent;*/
-            const code = button.dataset.copyContent
+            const code = button.dataset.copyContent;
             try {
-                await navigator.clipboard.writeText(code);
-                this.showCopyFeedback(button, true);
+                // 使用新的方法复制内容，保持原始格式
+                await this.copyWithFormatPreservation(code, button);
             } catch (err) {
                 console.error('复制失败:', err);
                 this.showCopyFeedback(button, false);
@@ -799,14 +804,51 @@ class ChatUI {
         });
     }
 
-    showCopyFeedback(button, success) {
-        const originalHTML = button.innerHTML;
-        button.innerHTML = success ?
-            '<i class="bi bi-clipboard-check"></i>' :
-            '<i class="bi bi-clipboard-x"></i>';
+    //addCopyButtonListener(button) {
+    //    button.addEventListener('click', async () => {
+    //        const pre = button.closest('.code-block-wrapper').querySelector('pre');
+    //        /*const code = pre.textContent;*/
+    //        const code = button.dataset.copyContent
+    //        try {
+    //            await navigator.clipboard.writeText(code);
+    //            this.showCopyFeedback(button, true);
+    //        } catch (err) {
+    //            console.error('复制失败:', err);
+    //            this.showCopyFeedback(button, false);
+    //        }
+    //    });
+    //}
 
+    /**
+ * 显示复制操作的反馈
+ * @param {HTMLElement} button 按钮元素
+ * @param {boolean} success 是否成功
+ */
+    showCopyFeedback(button, success) {
+        if (!button) return;
+
+        const originalHTML = button.innerHTML;
+
+        if (success) {
+            button.innerHTML = `
+            <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                <path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
+            </svg>
+        `;
+            button.classList.add('copy-success');
+        } else {
+            button.innerHTML = `
+            <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                <path fill="currentColor" d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/>
+            </svg>
+        `;
+            button.classList.add('copy-failure');
+        }
+
+        // 2秒后恢复按钮原始状态
         setTimeout(() => {
             button.innerHTML = originalHTML;
+            button.classList.remove('copy-success', 'copy-failure');
         }, 2000);
     }
 
@@ -1112,48 +1154,68 @@ class ChatUI {
         <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
     </svg>`;
     }
-
     createCopyButton(textToCopy) {
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-button';
         copyButton.title = '复制消息';
         copyButton.setAttribute('aria-label', 'Copy');
         copyButton.innerHTML = `
-            <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/>
-                <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
-            </svg>
-        `;
+        <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+            <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/>
+            <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
+        </svg>
+    `;
 
         copyButton.addEventListener('click', async () => {
-            try {
-                const contentToCopy = copyButton.dataset.copyContent || textToCopy;
-                // 确保复制完整内容
-                await navigator.clipboard.writeText(contentToCopy);
-                //// 确保复制完整内容
-                //await navigator.clipboard.writeText(copyButton.dataset.copyContent);
-
-                // 更新按钮状态
-                const originalHTML = copyButton.innerHTML;
-                copyButton.innerHTML = `
-                    <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                        <path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
-                    </svg>
-                `;
-                copyButton.classList.add('copy-success');
-
-                // 2秒后恢复原始状态
-                setTimeout(() => {
-                    copyButton.innerHTML = originalHTML;
-                    copyButton.classList.remove('copy-success');
-                }, 2000);
-            } catch (err) {
-                console.error('复制失败:', err);
-            }
+            const contentToCopy = copyButton.dataset.copyContent || textToCopy;
+            // 使用新的方法复制内容，保持原始格式
+            await this.copyWithFormatPreservation(contentToCopy, copyButton);
         });
 
         return copyButton;
     }
+
+    //createCopyButton(textToCopy) {
+    //    const copyButton = document.createElement('button');
+    //    copyButton.className = 'copy-button';
+    //    copyButton.title = '复制消息';
+    //    copyButton.setAttribute('aria-label', 'Copy');
+    //    copyButton.innerHTML = `
+    //        <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    //            <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/>
+    //            <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
+    //        </svg>
+    //    `;
+
+    //    copyButton.addEventListener('click', async () => {
+    //        try {
+    //            const contentToCopy = copyButton.dataset.copyContent || textToCopy;
+    //            // 确保复制完整内容
+    //            await navigator.clipboard.writeText(contentToCopy);
+    //            //// 确保复制完整内容
+    //            //await navigator.clipboard.writeText(copyButton.dataset.copyContent);
+
+    //            // 更新按钮状态
+    //            const originalHTML = copyButton.innerHTML;
+    //            copyButton.innerHTML = `
+    //                <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    //                    <path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
+    //                </svg>
+    //            `;
+    //            copyButton.classList.add('copy-success');
+
+    //            // 2秒后恢复原始状态
+    //            setTimeout(() => {
+    //                copyButton.innerHTML = originalHTML;
+    //                copyButton.classList.remove('copy-success');
+    //            }, 2000);
+    //        } catch (err) {
+    //            console.error('复制失败:', err);
+    //        }
+    //    });
+
+    //    return copyButton;
+    //}
 
     // 优化链接预览功能
     setupLinkPreviews() {
@@ -1617,6 +1679,79 @@ class ChatUI {
         return icons[role] || icons.system;
     }
 
+    /**
+ * 复制内容到剪贴板并保持原始格式
+ * @param {string} text 要复制的文本内容
+ * @param {HTMLElement} [buttonElement] 可选的按钮元素，用于显示反馈
+ * @returns {Promise<boolean>} 复制是否成功
+ */
+    async copyWithFormatPreservation(text, buttonElement = null) {
+        try {
+            // 不再尝试强制焦点，直接使用更可靠的备用方案
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                this.showCopyFeedback(buttonElement, true);
+                return true;
+            } else {
+                // 如果Clipboard API不可用或不在安全上下文中，直接使用备用方法
+                throw new Error('使用备用方法');
+            }
+        } catch (error) {
+            console.warn('使用备用复制方法:', error);
+
+            // 使用更可靠的备用方法
+            return this.fallbackCopy(text, buttonElement);
+        }
+    }
+
+    /**
+     * 备用的复制方法，使用DOM和execCommand
+     * @param {string} text 要复制的文本内容
+     * @param {HTMLElement} buttonElement 按钮元素
+     * @returns {boolean} 是否成功
+     */
+    fallbackCopy(text, buttonElement) {
+        try {
+            // 1. 创建textarea元素
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+
+            // 2. 设置样式确保可见但不干扰布局
+            textarea.style.position = 'fixed';
+            textarea.style.top = '0';
+            textarea.style.left = '0';
+            textarea.style.width = '2em';
+            textarea.style.height = '2em';
+            textarea.style.padding = '0';
+            textarea.style.border = 'none';
+            textarea.style.outline = 'none';
+            textarea.style.boxShadow = 'none';
+            textarea.style.background = 'transparent';
+            textarea.style.zIndex = '-1'; // 置于底层
+
+            // 3. 添加到DOM
+            document.body.appendChild(textarea);
+
+            // 4. 选择文本
+            textarea.focus();
+            textarea.select();
+
+            // 5. 尝试复制
+            const successful = document.execCommand('copy');
+
+            // 6. 清理
+            document.body.removeChild(textarea);
+
+            // 7. 反馈
+            this.showCopyFeedback(buttonElement, successful);
+            return successful;
+
+        } catch (err) {
+            console.error('备用复制方法失败:', err);
+            this.showCopyFeedback(buttonElement, false);
+            return false;
+        }
+    }
 
 
     async copyToClipboard(text) {
