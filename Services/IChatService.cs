@@ -54,7 +54,7 @@ namespace ChatBot.Web.Services
         ChatModelConfig GetModelConfig(string modelName);
         Task<byte[]> ExportMessageToPdf(string content);
         Task<byte[]> ExportMessageToDocx(string content);
-
+        public string CreateJavaScriptCommand(string functionName, params object[] args);
     }
 
     /// <summary>
@@ -100,7 +100,19 @@ namespace ChatBot.Web.Services
         }
 
         #region 搜索相关
+        // 在 ChatService 类中实现
+        public string CreateJavaScriptCommand(string functionName, params object[] args)
+        {
+            // 创建一个特殊格式的命令字符串，前端可以识别并执行
+            var command = new
+            {
+                type = "js_command",
+                function = functionName,
+                arguments = args
+            };
 
+            return $"<js_command>{JsonSerializer.Serialize(command)}</js_command>";
+        }
         #region google搜索相关
         /// <summary>
         /// google搜索api
@@ -572,6 +584,7 @@ namespace ChatBot.Web.Services
             }
             else
             {
+                
                 switch (config.ChatModelType)
                 {
                     case ChatModelType.Llama:
@@ -1189,7 +1202,7 @@ namespace ChatBot.Web.Services
                 type = "function",
 
                     name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间并返回结果",
+                    description = "获取当前日期和时间。",
                     parameters = new
                     {
                         type = "object",
@@ -1197,8 +1210,7 @@ namespace ChatBot.Web.Services
                         {
                               city = new
                             {
-                                type = "string",
-                                description = "城市(用英文表示)"
+                                
                             }
                         },
                          required = new[] { "city" }
@@ -1231,7 +1243,7 @@ namespace ChatBot.Web.Services
                               date = new
                             {
                                 type = "string",
-                                description = "日期(格式:YYYY-MM-DD)"
+                                description = "出发日期(格式:YYYY-MM-DD)"
                             }
                         }
                        },
@@ -1633,7 +1645,7 @@ namespace ChatBot.Web.Services
                 function = new
                 {
                     name = nameof(GetWeather),
-                    description = "获取天气预报并返回结果",
+                    description = "获取指定城市未来8天天气预报",
                     parameters = new
                     {
                         type = "object",
@@ -1655,7 +1667,7 @@ namespace ChatBot.Web.Services
                 function = new
                 {
                     name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间并返回结果",
+                    description = "获取当前日期和时间",
                     parameters = new
                     {
                         type = "object",
@@ -1693,7 +1705,7 @@ namespace ChatBot.Web.Services
                               date = new
                             {
                                 type = "string",
-                                description = "日期(格式:YYYY-MM-DD)"
+                                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
                             }
                         }
                        ,
@@ -1714,6 +1726,8 @@ namespace ChatBot.Web.Services
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 //response_format = ToOpenAischema(),
                 tools = tools,
+                parallel_tool_calls=false
+
             };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
@@ -2170,7 +2184,7 @@ namespace ChatBot.Web.Services
             {
 
                     name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间并返回结果",
+                    description = "获取当前日期和时间",
                     input_schema = new
                     {
                         type = "object",
@@ -2916,198 +2930,524 @@ namespace ChatBot.Web.Services
             }
         }
         //Deepseek OpenAI 兼容方式
-        public async IAsyncEnumerable<string> DeepseekOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+        
+        public async IAsyncEnumerable<string> DeepseekOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
         {
-            // 验证配置
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
+
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
                 throw new InvalidOperationException("API配置缺失");
             }
-            string Search = string.Empty;
-            if (request.EnableSearch)
-            {
-                string Searchterm = await OpenAISearchtermAsync(modelconfg, request.History[request.History.Count - 1].Content, cancellationToken);
-                SearchTermsResponse Searchtermlist = null;
-                try
-                {
-                    Searchtermlist = JsonSerializer.Deserialize<SearchTermsResponse>(Searchterm);
-                }
-                catch (JsonException ex)
-                {
-                    _logger.LogError(ex, "反序列化 Searchterm 失败");
-                    // 根据需要处理异常，例如返回默认值或重新抛出
-                }
 
-                List<JinaSearchResultData> Searchlist = new List<JinaSearchResultData>();
 
-                if (Searchtermlist == null || Searchtermlist.SearchTerms.Count == 0)
-                {
-                    var list = await JinaAiSearch(request.History[request.History.Count - 1].Content, cancellationToken, 1, maxSearchCount);
-
-                    Searchlist.AddRange(list.Data);
-                }
-                else
-                {
-
-                    for (int i = 0; i < Searchtermlist.SearchTerms.Count; i++)
-                    {
-                        var list = await JinaAiSearch(Searchtermlist.SearchTerms[i], cancellationToken, Searchtermlist.SearchTerms.Count, maxSearchCount);
-
-                        Searchlist.AddRange(list.Data);
-                    }
-                }
-                Search = JsonSerializer.Serialize(Searchlist, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                });
-            }
             // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            HttpResponseMessage response = null;
-            if (modelconfg.Temperature >= 0)
+            HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
+            if (inputclient == null)
             {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg, Search),
-                    stream = modelconfg.Stream,
-                    temperature = modelconfg.Temperature,
-
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg, Search),
-                    stream = modelconfg.Stream,
-
-
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                client.Timeout = TimeSpan.FromMinutes(30);
+                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             }
 
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            var messages = ToMessagesOpenAi(request, modelconfg);
+            toolsmessages ??= new List<object>();
+            messages.AddRange(toolsmessages);
+            //toolsmessages.Clear();
+            List<object> tools = request.EnableSearch
+        ? new List<object>
+        {
+            new
             {
-                yield return "失败: StatusCode " + response.StatusCode.ToString();
-                yield break;
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-            bool beging = false;
-            bool end = false;
-            bool beging1 = false;
-            bool end1 = false;
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-
-                if (modelconfg.Stream)
+                type = "function",
+                function = new
                 {
-                    var line = await reader.ReadLineAsync(cancellationToken);
-                    if (string.IsNullOrEmpty(line)) continue;
-                    if (line.StartsWith("data: "))
+                    name = nameof(JinaAiSearch),
+                    description = "执行网页搜索并返回结果",
+                    parameters = new
                     {
-                        line = line.Substring(6);
-                        if (line == "[DONE]") break;
-
-                        var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-                        var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
-                        var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
-                        if (!string.IsNullOrEmpty(reasoning_content))
+                        type = "object",
+                        properties = new
                         {
-                            if (!beging)
+                            query = new
                             {
-                                yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
-                                beging = true;
+                                type = "string",
+                                description = "搜索词"
                             }
-                            else
-                            {
-                                yield return reasoning_content;
-
-                            }
-
-                        }
-                        if (!string.IsNullOrEmpty(content))
-                        {
-                            if (beging && !end)
-                            {
-                                yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                                end = true;
-                            }
-                            else
-                            {
-                                if (content == "<think>" && !beging1 && !end1)
-                                {
-                                    yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
-                                    beging1 = true;
-                                }
-                                else
-                                {
-                                    if (content == "</think>" && beging1 && !end1)
-                                    {
-                                        yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
-                                        end1 = true;
-                                    }
-                                    else
-                                    {
-                                        yield return content;
-                                    }
-
-                                }
-
-                            }
-
-                        }
-
+                        },
+                        required = new[] { "query" }
                     }
                 }
-                else
+            },
+            new
+            {
+                type = "function",
+                function = new
                 {
-                    var line = await reader.ReadToEndAsync(cancellationToken);
-                    if (string.IsNullOrEmpty(line)) continue;
-                    var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                    var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                    var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
-                    if (!string.IsNullOrEmpty(reasoning_content))
+                    name = nameof(GetWeather),
+                    description = "获取天气预报并返回结果",
+                    parameters = new
                     {
-                        reasoning_content = "<think>" + reasoning_content + "</think>";
-                        reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                        reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                        yield return reasoning_content + content;
+                        type = "object",
+                        properties = new
+                        {
+                            city = new
+                            {
+                                type = "string",
+                                description = "城市(用英文表示)"
+                            }
+                        },
+                        required = new[] { "city" }
                     }
-                    if (!string.IsNullOrEmpty(content))
+                }
+            },
+            new
+            {
+                type = "function",
+                function = new
+                {
+                    name = nameof(GetCurrentDataTime),
+                    description = "获取当前日期和时间",
+                    parameters = new
                     {
-                        content = content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                        content = content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                        yield return content;
+                        type = "object",
+                        properties = new
+                        {
+
+                        }
+                    }
+                }
+            },
+            new
+            {
+                type = "function",
+                function = new
+                {
+                    name = nameof(SearchTrainTicket),
+                    description = "获取指定日期的火车票、火车车次",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+
+                                startingplace = new
+                            {
+                                type = "string",
+                                description = "起始城市"
+                            },
+                                  arrivalplace = new
+                            {
+                                type = "string",
+                                description = "到达城市"
+                            },
+
+                              date = new
+                            {
+                                type = "string",
+                                description = "出发日期(格式:YYYY-MM-DD)"
+                            }
+                        }
+                       ,
+                         required = new[] { "startingplace", "arrivalplace", "date" }
                     }
                 }
             }
         }
+        : null;
 
+
+            var requestContent = new
+            {
+
+                model = modelconfg.Model,
+                messages = messages,
+                stream = modelconfg.Stream,
+                temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
+                //response_format = ToOpenAischema(),
+                tools = tools,
+                parallel_tool_calls=false
+
+            };
+            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+            using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
+            {
+
+
+
+                if (response.StatusCode != System.Net.HttpStatusCode.OK)
+                {
+                    yield return "失败: StatusCode " + response.StatusCode.ToString();
+                    yield break;
+                }
+                response.EnsureSuccessStatusCode();
+
+                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using var reader = new StreamReader(stream);
+                bool beging = false;
+                bool end = false;
+                bool beging1 = false;
+                bool end1 = false;
+                List<tool_call> tool_calls = new();
+                var contentBuilder = new StringBuilder();
+                bool iscitations = false;
+                string citationsstring = string.Empty;
+                while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+                {
+
+                    if (modelconfg.Stream)
+                    {
+                        var line = await reader.ReadLineAsync(cancellationToken);
+                        if (string.IsNullOrEmpty(line)) continue;
+                        if (line.StartsWith("data: "))
+                        {
+                            line = line.Substring(6);
+                            if (line == "[DONE]") break;
+
+
+                            var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
+
+                            var citations = chunk?.citations;
+                            if (citations != null && citations.Length > 0 && !iscitations)
+                            {
+                                StringBuilder sb = new StringBuilder();
+                                sb.AppendLine("");
+                                for (int i = 0; i < citations.Length; i++)
+                                {
+                                    sb.AppendLine("[" + (i + 1).ToString() + "]: " + citations[i]);
+
+                                }
+                                sb.AppendLine("");
+                                citationsstring = sb.ToString();
+                                iscitations = true;
+                            }
+                            var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
+                            var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
+                            if (!string.IsNullOrEmpty(content))
+                            {
+                                content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+
+                                contentBuilder.Append(content);
+                            }
+                            if (!string.IsNullOrEmpty(reasoning_content))
+                            {
+                                reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                            }
+
+                            if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
+                            {
+                                if (!string.IsNullOrEmpty(chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault()?.function?.name))
+                                {
+                                    tool_calls.Add(chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault());
+                                }
+                                else
+                                {
+                                    int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
+                                    tool_calls[index].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
+
+
+                                }
+                                //continue;
+                            }
+                            if (!string.IsNullOrEmpty(reasoning_content))
+                            {
+                                if (!beging)
+                                {
+                                    yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
+                                    beging = true;
+                                }
+                                else
+                                {
+                                    yield return reasoning_content;
+
+                                }
+
+                            }
+                            if (!string.IsNullOrEmpty(content))
+                            {
+                                if (beging && !end)
+                                {
+                                    yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                                    end = true;
+                                }
+                                else
+                                {
+                                    if (content.Contains("<think>") && !beging1 && !end1)
+                                    {
+                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                                        beging1 = true;
+                                    }
+                                    else
+                                    {
+                                        if (content.Contains("</think>") && beging1 && !end1)
+                                        {
+
+                                            yield return content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                                            end1 = true;
+                                        }
+                                        else
+                                        {
+                                            yield return content;
+                                        }
+
+                                    }
+
+                                }
+
+                            }
+                            if (tool_calls.Count > 0 && (chunk?.choices?.FirstOrDefault()?.finish_reason == "tool_calls" || chunk?.choices?.FirstOrDefault()?.finish_reason == "stop"))
+                            {
+                                List<object> tool_calls1 = new List<object>();
+                                tool_calls1.AddRange(tool_calls);
+                                toolsmessages.Add(new
+                                {
+                                    role = "assistant",
+
+                                    content = contentBuilder.ToString(),
+                                    tool_calls = tool_calls1
+                                });
+                                //var pair=tool_calls.First();
+                                foreach (var pair in tool_calls)
+                                {
+                                    string toolResult = string.Empty;
+                                    switch (pair.function.name)
+                                    {
+                                        case nameof(GetCurrentDataTime):
+                                            {
+
+
+                                                toolResult = await GetCurrentDataTime();
+                                                break;
+                                            }
+                                        case nameof(JinaAiSearch):
+                                            {
+                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                                                bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
+
+
+                                                if (!query)
+                                                {
+                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                }
+                                                toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+                                                break;
+                                            }
+                                        case nameof(SearchTrainTicket):
+                                            {
+                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                                                if (!query)
+                                                {
+                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                }
+                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                                break;
+                                            }
+                                        case nameof(GetWeather):
+                                            {
+                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                                                bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
+
+
+                                                if (!query)
+                                                {
+                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                }
+                                                toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
+                                                break;
+                                            }
+                                        default:
+                                            {
+                                                yield return "未知工具调用";
+                                                break;
+                                            }
+                                    }
+
+                                    toolsmessages.Add(new
+                                    {
+                                        role = "tool",
+                                        tool_call_id = pair.id,
+                                        content = toolResult
+                                    });
+
+
+
+                                }
+                                contentBuilder.Clear();
+                                tool_calls.Clear();
+                                response.Content.Dispose();
+                                await foreach (var item in DeepseekOpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                                {
+                                    yield return item;
+                                }
+                                break;
+                            }
+
+
+
+                        }
+                    }
+                    else
+                    {
+                        var line = await reader.ReadToEndAsync(cancellationToken);
+                        if (string.IsNullOrEmpty(line)) continue;
+                        var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
+                        var citations = chunk?.citations;
+                        if (citations != null && citations.Length > 0 && !iscitations)
+                        {
+                            StringBuilder sb = new StringBuilder();
+                            sb.Append('\n');
+                            sb.Append('\n');
+                            for (int i = 0; i < citations.Length; i++)
+                            {
+                                sb.AppendLine("[" + (i + 1).ToString() + "]: " + citations[i]);
+
+                            }
+                            sb.Append('\n');
+                            citationsstring = sb.ToString();
+                            iscitations = true;
+                        }
+                        var content = chunk?.choices?.FirstOrDefault()?.message?.content;
+                        var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                            contentBuilder.Append(content);
+                        }
+                        if (!string.IsNullOrEmpty(reasoning_content))
+                        {
+                            reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                        }
+
+                        if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
+                        {
+
+
+                            var toolCalls = chunk?.choices?.FirstOrDefault()?.message?.tool_calls;
+                            if (toolCalls != null)
+                            {
+                                tool_calls.AddRange(toolCalls.Cast<tool_call>());
+                            }
+                            if (tool_calls.Count > 0)
+                            {
+                                List<object> tool_calls1 = new List<object>();
+                                tool_calls1.AddRange(tool_calls);
+                                toolsmessages.Add(new
+                                {
+                                    role = "assistant",
+
+                                    content = contentBuilder.ToString(),
+                                    tool_calls = tool_calls1
+                                });
+
+                                foreach (var pair in tool_calls)
+                                {
+                                    string toolResult = string.Empty;
+                                    switch (pair.function.name)
+                                    {
+                                        case nameof(GetCurrentDataTime):
+                                            {
+
+
+                                                toolResult = await GetCurrentDataTime();
+                                                break;
+                                            }
+                                        case nameof(JinaAiSearch):
+                                            {
+                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                                                bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
+
+
+                                                if (!query)
+                                                {
+                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                }
+                                                toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+                                                break;
+                                            }
+                                        case nameof(SearchTrainTicket):
+                                            {
+                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                                                if (!query)
+                                                {
+                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                }
+                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                                break;
+                                            }
+                                        case nameof(GetWeather):
+                                            {
+                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                                                bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
+
+
+                                                if (!query)
+                                                {
+                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                }
+                                                toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
+                                                break;
+                                            }
+                                        default:
+                                            {
+                                                yield return "未知工具调用";
+                                                break;
+                                            }
+                                    }
+
+                                    toolsmessages.Add(new
+                                    {
+                                        role = "tool",
+                                        tool_call_id = pair.id,
+                                        content = toolResult
+                                    });
+
+
+
+                                }
+                                contentBuilder.Clear();
+                                tool_calls.Clear();
+                                response.Content.Dispose();
+                                await foreach (var item in DeepseekOpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                                {
+                                    yield return item;
+                                }
+                                break;
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(reasoning_content))
+                        {
+                            reasoning_content = "<think>" + reasoning_content + "</think>";
+                            reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                            reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                            yield return reasoning_content + content;
+                        }
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                            content = content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                            yield return content;
+                        }
+                    }
+                }
+                if (!string.IsNullOrEmpty(citationsstring))
+                {
+                    yield return "\n\n" + citationsstring;
+                }
+            }
+        }
         /// <summary>
         /// 使用 Dify API 生成消息内容，支持流式输出
         /// </summary>
