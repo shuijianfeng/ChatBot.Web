@@ -2164,6 +2164,39 @@ class ChatUI {
             this.uploadedImageUrls = []; // 清除已上传的图片URLs
         }
     }
+
+    // chat.js 中添加方法来处理命令
+    processMessage(message) {
+        // 检查消息是否包含 JavaScript 命令
+        const jsCommandRegex = /<js_command>(.*?)<\/js_command>/g;
+        const matches = [...message.matchAll(jsCommandRegex)];
+
+        if (matches.length > 0) {
+            // 提取并移除所有命令
+            let cleanMessage = message;
+
+            matches.forEach(match => {
+                try {
+                    const commandData = JSON.parse(match[1]);
+                    if (commandData.type === "js_command" &&
+                        typeof this[commandData.function] === 'function') {
+                        // 执行命令
+                        this[commandData.function].apply(this, commandData.arguments);
+                    }
+
+                    // 从消息中移除命令
+                    cleanMessage = cleanMessage.replace(match[0], '');
+                } catch (err) {
+                    console.error("处理命令时出错:", err);
+                }
+            });
+
+            return cleanMessage; // 返回清理后的消息
+        }
+
+        return message; // 如果没有命令，返回原始消息
+    }
+
 }
 
 // 初始化
