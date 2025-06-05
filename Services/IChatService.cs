@@ -13,16 +13,20 @@ using System.Data;
 
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
-using PdfSharp.Drawing;
-using PdfSharp.Pdf;
+
 
 using DocumentFormat.OpenXml;
-using Color = DocumentFormat.OpenXml.Wordprocessing.Color;
-using PdfSharp.Fonts;
+
 using System.Text.RegularExpressions;
 
 using Npgsql;
 
+using Markdig;
+
+using iText.Html2pdf;
+using iText.Layout.Font;
+using HtmlConverter = HtmlToOpenXml.HtmlConverter;
+using Color = DocumentFormat.OpenXml.Wordprocessing.Color;
 
 
 
@@ -940,14 +944,14 @@ namespace ChatBot.Web.Services
 
                             if (content == "<think>" && !beging1 && !end1)
                             {
-                                yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
+                                yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
                                 beging1 = true;
                             }
                             else
                             {
                                 if (content == "</think>" && beging1 && !end1)
                                 {
-                                    yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
+                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
                                     end1 = true;
                                 }
                                 else
@@ -1318,14 +1322,14 @@ namespace ChatBot.Web.Services
                                         {
                                             if (beging && !end)
                                             {
-                                                yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                                                 end = true;
                                             }
                                             else
                                             {
                                                 if (content.Contains("<think>") && !beging1 && !end1)
                                                 {
-                                                    yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                                                    yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
                                                     beging1 = true;
                                                 }
                                                 else
@@ -1333,7 +1337,7 @@ namespace ChatBot.Web.Services
                                                     if (content.Contains("</think>") && beging1 && !end1)
                                                     {
 
-                                                        yield return content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                                                        yield return content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                                                         end1 = true;
                                                     }
                                                     else
@@ -1572,8 +1576,8 @@ namespace ChatBot.Web.Services
                         var content = contentBuilder.ToString();
                         if (!string.IsNullOrEmpty(content))
                         {
-                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                            content = content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+                            content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                             yield return content;
                         }
                         if (toolsmessages.Count > 0)
@@ -1816,7 +1820,7 @@ namespace ChatBot.Web.Services
                             {
                                 if (!beging)
                                 {
-                                    yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
+                                    yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
                                     beging = true;
                                 }
                                 else
@@ -1830,14 +1834,14 @@ namespace ChatBot.Web.Services
                             {
                                 if (beging && !end)
                                 {
-                                    yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                                     end = true;
                                 }
                                 else
                                 {
                                     if (content.Contains("<think>") && !beging1 && !end1)
                                     {
-                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
                                         beging1 = true;
                                     }
                                     else
@@ -1845,7 +1849,7 @@ namespace ChatBot.Web.Services
                                         if (content.Contains("</think>") && beging1 && !end1)
                                         {
 
-                                            yield return content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                                            yield return content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                                             end1 = true;
                                         }
                                         else
@@ -2089,14 +2093,14 @@ namespace ChatBot.Web.Services
                         if (!string.IsNullOrEmpty(reasoning_content))
                         {
                             reasoning_content = "<think>" + reasoning_content + "</think>";
-                            reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                            reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                            reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+                            reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                             yield return reasoning_content + content;
                         }
                         if (!string.IsNullOrEmpty(content))
                         {
-                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                            content = content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+                            content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                             yield return content;
                         }
                     }
@@ -2315,7 +2319,7 @@ namespace ChatBot.Web.Services
                                         text += Regex.Replace(chunk.delta.text, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                                         if (beging && !end)
                                         {
-                                            yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + Regex.Replace(chunk.delta.text, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                                            yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + Regex.Replace(chunk.delta.text, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                             end = true;
                                         }
                                         else
@@ -2328,7 +2332,7 @@ namespace ChatBot.Web.Services
                                         textthinking += chunk.delta.thinking;
                                         if (!beging)
                                         {
-                                            yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + chunk.delta.thinking;
+                                            yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + chunk.delta.thinking;
                                             beging = true;
                                         }
                                         else
@@ -2563,8 +2567,8 @@ namespace ChatBot.Web.Services
                                             textsignature = item.signature ?? string.Empty;
 
                                             var textthinking1 = "<think>" + textthinking + "</think>";
-                                            textthinking1 = textthinking1.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                                            textthinking1 = textthinking1.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                                            textthinking1 = textthinking1.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+                                            textthinking1 = textthinking1.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                                             yield return textthinking1;
 
                                             break;
@@ -3157,7 +3161,7 @@ namespace ChatBot.Web.Services
                             {
                                 if (!beging)
                                 {
-                                    yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
+                                    yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
                                     beging = true;
                                 }
                                 else
@@ -3171,14 +3175,14 @@ namespace ChatBot.Web.Services
                             {
                                 if (beging && !end)
                                 {
-                                    yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                                     end = true;
                                 }
                                 else
                                 {
                                     if (content.Contains("<think>") && !beging1 && !end1)
                                     {
-                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
+                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
                                         beging1 = true;
                                     }
                                     else
@@ -3186,7 +3190,7 @@ namespace ChatBot.Web.Services
                                         if (content.Contains("</think>") && beging1 && !end1)
                                         {
 
-                                            yield return content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                                            yield return content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                                             end1 = true;
                                         }
                                         else
@@ -3430,14 +3434,14 @@ namespace ChatBot.Web.Services
                         if (!string.IsNullOrEmpty(reasoning_content))
                         {
                             reasoning_content = "<think>" + reasoning_content + "</think>";
-                            reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                            reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                            reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+                            reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                             yield return reasoning_content + content;
                         }
                         if (!string.IsNullOrEmpty(content))
                         {
-                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                            content = content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+                            content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                             yield return content;
                         }
                     }
@@ -3941,7 +3945,7 @@ namespace ChatBot.Web.Services
                                 {
                                     if (!beging)
                                     {
-                                        yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
+                                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
                                         beging = true;
                                     }
                                     else
@@ -3955,21 +3959,21 @@ namespace ChatBot.Web.Services
                                 {
                                     if (beging && !end)
                                     {
-                                        yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                                         end = true;
                                     }
                                     else
                                     {
                                         if (content == "<think>" && !beging1 && !end1)
                                         {
-                                            yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
+                                            yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
                                             beging1 = true;
                                         }
                                         else
                                         {
                                             if (content == "</think>" && beging1 && !end1)
                                             {
-                                                yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
+                                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
                                                 end1 = true;
                                             }
                                             else
@@ -4063,14 +4067,14 @@ namespace ChatBot.Web.Services
                             if (!string.IsNullOrEmpty(reasoning_content))
                             {
                                 reasoning_content = "<think>" + reasoning_content + "</think>";
-                                reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                                reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                                reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+                                reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                                 yield return reasoning_content + content;
                             }
                             if (!string.IsNullOrEmpty(content))
                             {
-                                content = content.Replace("<think>", "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n");
-                                content = content.Replace("</think>", "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                                content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+                                content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
                                 yield return content;
                             }
                         }
@@ -5961,271 +5965,1450 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
         }
 
 
+
         public async Task<byte[]> ExportMessageToDocx(string content)
-        {
-            //content = Markdig.Markdown.ToPlainText(content);
-            using (var ms = new MemoryStream())
-            {
-                using (var doc = WordprocessingDocument.Create(ms, WordprocessingDocumentType.Document))
-                {
-                    var mainPart = doc.AddMainDocumentPart();
-                    mainPart.Document = new Document();
-                    var body = mainPart.Document.AppendChild(new Body());
-
-                    // 添加标题样式
-                    var titleStyle = new Style
-                    {
-                        StyleId = "Title",
-                        Type = StyleValues.Paragraph
-                    };
-                    titleStyle.Append(new StyleName { Val = "Title" });
-                    titleStyle.Append(new PrimaryStyle());
-
-                    var docStyles = mainPart.StyleDefinitionsPart ?? mainPart.AddNewPart<StyleDefinitionsPart>();
-                    docStyles.Styles = new Styles();
-                    docStyles.Styles.Append(titleStyle);
-
-                    // 添加标题
-                    var titlePara = body.AppendChild(new Paragraph(
-                        new ParagraphProperties(
-                            new ParagraphStyleId { Val = "Title" }
-                        ),
-                        new Run(
-                            new RunProperties(
-                                new RunFonts { Ascii = "微软雅黑", EastAsia = "微软雅黑" },
-                                new FontSize { Val = "32" },
-                                new Bold()
-                            ),
-                            new Text("聊天记录")
-                        )
-                    ));
-
-                    // 添加导出时间
-                    var timePara = body.AppendChild(new Paragraph(
-                        new Run(
-                            new RunProperties(
-                                new RunFonts { Ascii = "微软雅黑", EastAsia = "微软雅黑" },
-                                new FontSize { Val = "24" }
-                            ),
-                            new Text($"导出时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}")
-                        )
-                    ));
-
-                    // 按行处理内容
-                    var lines = content.Split('\n');
-                    foreach (var line in lines)
-                    {
-                        var para = body.AppendChild(new Paragraph());
-                        var run = new Run();
-                        var runProps = new RunProperties(
-                            new RunFonts { Ascii = "微软雅黑", EastAsia = "微软雅黑" },
-                            new FontSize { Val = "24" }
-                        );
-
-                        // 处理代码块
-                        if (line.StartsWith("```"))
-                        {
-                            runProps = new RunProperties(
-                                new RunFonts { Ascii = "Consolas", EastAsia = "Consolas" },
-                                new FontSize { Val = "20" },
-                                new Color { Val = "666666" }
-                            );
-                        }
-                        // 处理标题
-                        else if (line.StartsWith("#"))
-                        {
-                            runProps.Append(new Bold());
-                            runProps.Append(new FontSize { Val = "28" });
-                        }
-                        // 处理粗体
-                        else if (line.Contains("**"))
-                        {
-                            runProps.Append(new Bold());
-                        }
-                        // 处理斜体
-                        else if (line.Contains("*"))
-                        {
-                            runProps.Append(new Italic());
-                        }
-
-                        run.Append(runProps);
-                        run.Append(new Text(line));
-                        para.Append(run);
-                    }
-
-                    doc.Save();
-                }
-                return ms.ToArray();
-            }
-        }
-
-
-        public async Task<byte[]> ExportMessageToPdf(string content)
         {
             try
             {
-                //content=Markdig.Markdown.ToPlainText(content);
-                // 注册编码和字体
-                System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
-                if (GlobalFontSettings.FontResolver == null)
-                {
-                    GlobalFontSettings.FontResolver = new CustomFontResolver();
-                }
-
+                // 预处理内容，确保表头前有空行
+                content = PreprocessLatex(EnsureTableHeaderHasEmptyLine(content));
                 using (var ms = new MemoryStream())
                 {
-                    using (var document = new PdfDocument())
+                    using (var doc = WordprocessingDocument.Create(ms, WordprocessingDocumentType.Document))
                     {
-                        var page = document.AddPage();
-                        var gfx = XGraphics.FromPdfPage(page);
+                        // 添加主文档部分
+                        var mainPart = doc.AddMainDocumentPart();
+                        mainPart.Document = new Document();
+                        var body = mainPart.Document.AppendChild(new Body());
 
-                        // 尝试使用不同的中文字体
-                        XFont titleFont, normalFont, codeFont;
+                        // 配置表格样式
+                        var stylePart = mainPart.AddNewPart<StyleDefinitionsPart>();
+                        GenerateCompleteStyles(stylePart);
+
+                        // 使用加强的Markdown流水线，特别是表格支持
+                        var pipeline = new MarkdownPipelineBuilder()
+                                       .UseAdvancedExtensions()
+                                       .UseBootstrap() // 使用Bootstrap扩展改善表格渲染
+                                       .UsePipeTables() // 确保支持管道表格
+                                       .UseGridTables() // 支持网格表格
+                                       .UseEmphasisExtras() // 支持更多强调语法
+                                       .UseTaskLists() // 支持任务列表
+                                       .UseAutoIdentifiers() // 自动添加表格ID
+                                       .UseCustomContainers() // 支持自定义容器
+                                       .UseDefinitionLists() // 支持定义列表
+                                       .UseFootnotes() // 支持脚注
+                                       .UseAutoLinks() // 自动检测链接
+                                       .UseListExtras() // 增强列表功能
+                                       .UseMediaLinks() // 支持媒体链接
+                                       .UseFigures() // 支持图表
+                                       .UseGenericAttributes() // 支持通用属性
+                                       .UseYamlFrontMatter() // 支持YAML前置元数据
+                                       .Build();
+
+                        // 将Markdown转换为HTML
+                        var htmlContent = Markdig.Markdown.ToHtml(content, pipeline);
+
+                        // 构建完整的HTML文档，优化表格样式
+                        htmlContent = $@"
+        <!DOCTYPE html>
+        <html lang=""zh-CN"">
+        <head>
+            <meta charset=""utf-8""/>
+            <style>
+                body {{ 
+                    font-family: 'SimSun', 'Microsoft YaHei', 'Arial Unicode MS', Arial, sans-serif; 
+                    padding: 20px;
+
+                }}
+                table {{ 
+                    border-collapse: collapse; 
+                    width: 100%;
+                    margin-bottom: 1em;
+                    max-width: 100%;
+                    table-layout: fixed;
+                }}
+                table, th, td {{ 
+                    border: 1px solid #000; 
+                }}
+                th, td {{ 
+                    padding: 8px; 
+                    text-align: left;
+                    word-wrap: break-word;
+                    overflow-wrap: break-word;
+                }}
+                th {{ 
+                    background-color: #f2f2f2; 
+                    font-weight: bold;
+                }}
+                tr:nth-child(even) {{ 
+                    background-color: #f9f9f9; 
+                }}
+                code {{ 
+                    font-family: Consolas, Monaco, 'Courier New', monospace;
+                    background-color: #f5f5f5;
+                    padding: 2px 4px;
+                    border-radius: 4px;
+                }}
+                pre {{ 
+                    background-color: #f5f5f5;
+                    padding: 10px;
+                    border-radius: 4px;
+                    overflow-x: auto;
+                    white-space: pre-wrap;
+                }}
+                blockquote {{
+                    border-left: 4px solid #ddd;
+                    padding-left: 15px;
+                    margin-left: 0;
+                    color: #666;
+                }}
+            </style>
+        </head>
+        <body>{htmlContent}</body>
+        </html>";
+
                         try
                         {
-                            titleFont = new XFont("SimHei", 16, XFontStyleEx.Regular);
-                            normalFont = new XFont("KaiU", 12, XFontStyleEx.Regular);
-                            codeFont = new XFont("SimHei", 11, XFontStyleEx.Regular);
+                            // 创建HTML转换器 - 注意这里不使用不存在的HtmlConverterSettings
+                            var converter = new HtmlConverter(mainPart);
+
+                            // 解析HTML并添加到文档
+                            var paragraphs = converter.Parse(htmlContent);
+
+                            // 将段落添加到文档
+                            foreach (var para in paragraphs)
+                            {
+                                body.AppendChild(para.CloneNode(true));
+                            }
                         }
-                        catch
+                        catch (Exception ex)
                         {
-                            // 如果上述字体不可用，尝试其他字体
-                            var defaultFont = GlobalFontSettings.FontResolver.ResolveTypeface(null, false, false).FaceName;
-                            titleFont = new XFont(defaultFont, 16, XFontStyleEx.Regular);
-                            normalFont = new XFont(defaultFont, 12, XFontStyleEx.Regular);
-                            codeFont = new XFont(defaultFont, 11, XFontStyleEx.Regular);
+                            // 如果表格处理失败，尝试替代方案
+                            _logger.LogError($"表格处理错误: {ex.Message}");
+
+                            // 预处理HTML以修复表格
+                            var processedHtml = ProcessTablesForWordExport(htmlContent);
+                            var converter = new HtmlConverter(mainPart);
+                            var paragraphs = converter.Parse(processedHtml);
+
+                            foreach (var para in paragraphs)
+                            {
+                                body.AppendChild(para.CloneNode(true));
+                            }
                         }
 
-                        // 绘制标题
-                        gfx.DrawString("聊天记录", titleFont, XBrushes.Black, 50, 50);
-
-                        // 绘制时间
-                        gfx.DrawString($"导出时间: {DateTime.Now:yyyy-MM-dd HH:mm:ss}",
-                            normalFont, XBrushes.Black, 50, 80);
-
-                        // 绘制分隔线
-                        gfx.DrawLine(XPens.Gray, 50, 100, 550, 100);
-
-                        // 处理内容
-                        var yPosition = 120.0;
-                        var lines = content.Split('\n');
-                        var maxWidth = page.Width - 100;
-
-                        foreach (var line in lines)
-                        {
-                            if (yPosition > page.Height - 50)
-                            {
-                                page = document.AddPage();
-                                gfx = XGraphics.FromPdfPage(page);
-                                yPosition = 50;
-                            }
-
-                            var font = line.StartsWith("```") ? codeFont : normalFont;
-                            var size = gfx.MeasureString(line, font);
-
-                            // 处理长行自动换行
-                            if (size.Width > maxWidth)
-                            {
-                                var words = line.ToCharArray();
-                                var currentLine = new StringBuilder();
-
-                                foreach (var c in words)
-                                {
-                                    currentLine.Append(c);
-                                    var testSize = gfx.MeasureString(currentLine.ToString(), font);
-
-                                    if (testSize.Width >= maxWidth)
-                                    {
-                                        gfx.DrawString(currentLine.ToString(), font, XBrushes.Black,
-                                            new XRect(50, yPosition, maxWidth, font.Height),
-                                            XStringFormats.TopLeft);
-                                        yPosition += font.Height + 2;
-                                        currentLine.Clear();
-                                    }
-                                }
-
-                                if (currentLine.Length > 0)
-                                {
-                                    gfx.DrawString(currentLine.ToString(), font, XBrushes.Black,
-                                        new XRect(50, yPosition, maxWidth, font.Height),
-                                        XStringFormats.TopLeft);
-                                }
-                            }
-                            else
-                            {
-                                gfx.DrawString(line, font, XBrushes.Black,
-                                    new XRect(50, yPosition, maxWidth, font.Height),
-                                    XStringFormats.TopLeft);
-                            }
-
-                            yPosition += font.Height + 5;
-                        }
-
-                        document.Save(ms);
+                        // 保存文档
+                        doc.Save();
                     }
                     return ms.ToArray();
                 }
             }
             catch (Exception ex)
             {
+                _logger.LogError($"DOCX生成失败: {ex.Message}, 堆栈: {ex.StackTrace}");
+                throw new Exception($"DOCX生成失败: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<byte[]> ExportMessageToDocx1(string content)
+        {
+            try
+            {
+                // 预处理内容，确保表头前有空行
+                content = PreprocessLatex(EnsureTableHeaderHasEmptyLine(content));
+                using (var ms = new MemoryStream())
+                {
+                    using (var doc = WordprocessingDocument.Create(ms, WordprocessingDocumentType.Document))
+                    {
+                        // 添加主文档部分
+                        var mainPart = doc.AddMainDocumentPart();
+                        mainPart.Document = new Document();
+                        var body = mainPart.Document.AppendChild(new Body());
+
+                        // 配置表格样式
+                        var stylePart = mainPart.AddNewPart<StyleDefinitionsPart>();
+                        GenerateCompleteStyles(stylePart);
+
+                        // 使用加强的Markdown流水线，特别是表格支持
+                        var pipeline = new MarkdownPipelineBuilder()
+                                       .UseAdvancedExtensions()
+                                       .UseBootstrap() // 使用Bootstrap扩展改善表格渲染
+                                       .UsePipeTables() // 确保支持管道表格
+                                       .UseGridTables() // 支持网格表格
+                                       .UseEmphasisExtras() // 支持更多强调语法
+                                       .UseTaskLists() // 支持任务列表
+                                       .UseAutoIdentifiers() // 自动添加表格ID
+                                       .UseCustomContainers() // 支持自定义容器
+                                       .UseDefinitionLists() // 支持定义列表
+                                       .UseFootnotes() // 支持脚注
+                                       .UseAutoLinks() // 自动检测链接
+                                       .UseListExtras() // 增强列表功能
+                                       .UseMediaLinks() // 支持媒体链接
+                                       .UseFigures() // 支持图表
+                                       .UseGenericAttributes() // 支持通用属性
+                                       .UseYamlFrontMatter() // 支持YAML前置元数据
+                                       .Build();
+
+                        // 将Markdown转换为HTML
+                        var htmlContent = Markdig.Markdown.ToHtml(content, pipeline);
+
+                        // 构建完整的HTML文档，优化表格样式
+                        htmlContent = $@"
+<!DOCTYPE html>
+<html lang=""zh-CN"">
+<head>
+    <meta charset=""utf-8""/>
+<link rel=""stylesheet"" href=""https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css"" integrity=""sha384-5TcZemv2l/9On385z///+d7MSYlvIEw9FuZTIdZ14vJLqWphw7e7ZPuOiCHJcFCP"" crossorigin=""anonymous"">
+<script defer src=""https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"" integrity=""sha384-cMkvdD8LoxVzGF/RPUKAcvmm49FQ0oxwDF3BGKtDXcEc+T1b2N+teh/OJfpU0jr6"" crossorigin=""anonymous""></script>
+<script defer src=""https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js"" integrity=""sha384-hCXGrW6PitJEwbkoStFjeJxv+fSOOQKOPbJxSfM6G5sWZjAyWhXiTIIAmQqnlLlh"" crossorigin=""anonymous""></script>
+
+
+<script>
+            document.addEventListener('DOMContentLoaded', function() {{
+                renderMathInElement(document.body, {{
+                    delimiters: [
+                        {{left: '$$', right: '$$', display: true}},
+                        {{left: '$', right: '$', display: false}},
+                        {{left: '\\(', right: '\\)', display: false}},
+                        {{left: '\\[', right: '\\]', display: true}},
+                        {{left: '$$\\begin{{align}}', right: '\\end{{align}}$$', display: true}},
+                        {{left: '\\begin{{equation}}', right: '\\end{{equation}}', display: true}},
+                        {{left: '\\begin{{align}}', right: '\\end{{align}}', display: true}},
+                        {{left: '\\begin{{alignat}}', right: '\\end{{alignat}}', display: true}},
+                        {{left: '\\begin{{gather}}', right: '\\end{{gather}}', display: true}},
+                        {{left: '\\begin{{CD}}', right: '\\end{{CD}}', display: true}},
+                        {{left: '\\begin{{matrix}}', right: '\\end{{matrix}}', display: true}},
+                        {{left: '\\begin{{pmatrix}}', right: '\\end{{pmatrix}}', display: true}},
+                        {{left: '\\begin{{bmatrix}}', right: '\\end{{bmatrix}}', display: true}},
+                        {{left: '\\begin{{vmatrix}}', right: '\\end{{vmatrix}}', display: true}}
+                    ],
+                    throwOnError: false,
+                    errorColor: '#cc0000',
+                    macros: {{
+                        ""\\\\coloneqq"": ""≔"",
+                        ""\\\\implies"": ""⟹"",
+                        ""\\\\iff"": ""⟺"",
+                        ""\\\\varnothing"": ""∅"",
+                        ""\\\\Reals"": ""\\mathbb{{R}}"",
+                        ""\\\\Naturals"": ""\\mathbb{{N}}"",
+                        ""\\\\Complex"": ""\\mathbb{{C}}"",
+                        ""\\\\Integers"": ""\\mathbb{{Z}}""
+                    }},
+                    strict: false,
+                    trust: true,
+                    fleqn: false,
+                    output: 'html',         // 使用HTML输出以获得更好的显示效果
+                    minRuleThickness: 0.08, // 调整分数线等元素的最小厚度
+                    maxSize: 10,            // 设置最大大小限制
+                    maxExpand: 1000,        // 提高展开宏的限制
+                    displayMode: true,      // 启用显示模式
+                    leqno: false            // 禁用左侧等式编号
+                }});
+            }});
+        </script>
+<style>
+/* 优化KaTeX显示 */
+.katex-display {{
+    overflow-x: auto;
+    overflow-y: visible; /* 改为visible允许内容超出 */
+    padding: 18px 0;     /* 增加上下内边距 */
+    margin: 1.2em 0;     /* 增加上下外边距 */
+    text-align: center;
+    min-height: 2.5em;   /* 设置最小高度 */
+}}
+
+.katex {{
+    font-size: 1.15em;
+    line-height: 1.8;    /* 增加行高 */
+    text-rendering: auto;
+}}
+
+/* 行内公式样式优化 */
+.katex-inline {{
+    padding: 2px 3px;
+    margin: 0 1px;
+    border-radius: 4px;
+    background-color: var(--math-bg);
+    border: none;
+    vertical-align: middle; /* 改善行内公式垂直对齐 */
+}}
+
+.katex-error {{
+    color: #cc0000;
+    background-color: #ffecec;
+    padding: 2px 4px;
+    border-radius: 3px;
+    border: 1px solid #ffbaba;
+}}
+
+/* 隐藏公式序号 */
+.katex .tag {{
+    display: none !important;
+}}
+
+/* 矩阵样式优化 */
+.katex .mord.mathnormal {{
+    font-style: normal;
+    font-weight: normal;
+    font-family: 'KaTeX_Math', serif;
+}}
+
+/* 改善矩阵显示 */
+.katex .mtable {{
+    margin: 0.8em 0;     /* 增加矩阵上下间距 */
+}}
+
+.katex .mtable .arraycolsep {{
+    width: 0.8em; /* 增加列间距 */
+}}
+
+/* 矩阵括号优化 */
+.katex .delimsizing.size3 .delim-size3 {{
+    font-size: 2.5em;
+}}
+
+.katex .vlist > span {{
+    font-weight: normal;
+}}
+
+/* 分数样式优化 */
+.katex .mfrac {{
+    margin: 0 0.25em;
+}}
+
+.katex .mfrac .frac-line {{
+    border-bottom-width: 0.08em;
+    min-height: 0.08em;
+}}
+
+.katex .mfrac .frac-line::after {{
+    border-bottom-width: 0.08em;
+}}
+
+/* 提高分式的可读性 */
+.katex .mfrac .msubsup {{
+    font-size: 0.9em;
+}}
+
+/* 调整上下标大小和位置 */
+.katex .msupsub {{
+    font-size: 0.85em;
+    vertical-align: baseline;
+}}
+
+/* 处理长公式换行问题 */
+.katex-display > .katex {{
+    display: inline-block;
+    max-width: 100%;
+    text-align: center;
+}}
+
+.katex-display > .katex > .katex-html {{
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: visible; /* 改为visible允许内容超出 */
+    padding: 6px 5px;    /* 增加上下内边距 */
+    text-align: center;
+    white-space: nowrap;
+}}
+
+/* 对齐环境优化 */
+.katex .align {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 0.8em;   /* 增加上下间距 */
+    margin-bottom: 0.8em;
+}}
+
+.katex .align-inner {{
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: auto;
+}}
+
+/* 隐藏公式编号 */
+.katex .eqn-num {{
+    display: none !important;
+}}
+
+/* 特别处理align环境中的编号 */
+.katex-display .katex .align .tag {{
+    display: none !important;
+}}
+
+/* 增加公式容器防止裁剪 */
+.katex-html {{
+    padding-top: 8px;    /* 增加顶部内边距 */
+    padding-bottom: 8px; /* 增加底部内边距 */
+}}
+
+/* 修复大型公式分割问题 */
+.katex .vlist-t {{
+    display: inline-table !important;
+    table-layout: fixed;
+}}
+
+/* 优化大型矩阵和多行公式 */
+.katex .vlist-s {{
+    height: 2px; /* 增加行间距 */
+}}
+</style>
+    <style>
+        body {{ 
+            font-family: 'SimSun', 'SimHei', 'Microsoft YaHei', 'Arial Unicode MS', Arial, sans-serif; 
+            padding: 20px;
+            font-size: 11pt;
+            line-height: 1.8;
+        }}
+        table {{ 
+            border-collapse: collapse; 
+            width: 100%;
+            margin-bottom: 1em;
+            max-width: 100%;
+            table-layout: fixed;
+        }}
+        table, th, td {{ 
+            border: 1px solid #000; 
+        }}
+        th, td {{ 
+            padding: 8px; 
+            text-align: left;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }}
+        th {{ 
+            background-color: #f2f2f2; 
+            font-weight: bold;
+        }}
+        tr:nth-child(even) {{ 
+            background-color: #f9f9f9; 
+        }}
+        code {{ 
+            font-family: Consolas, Monaco, 'Courier New', monospace;
+            background-color: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }}
+        pre {{ 
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }}
+        blockquote {{
+            border-left: 4px solid #ddd;
+            padding-left: 15px;
+            margin-left: 0;
+            color: #666;
+        }}
+    </style>
+</head>
+<body>{htmlContent}</body>
+</html>";
+
+                        try
+                        {
+                            // 创建HTML转换器 - 注意这里不使用不存在的HtmlConverterSettings
+                            var converter = new HtmlConverter(mainPart);
+
+                            // 解析HTML并添加到文档
+                            var paragraphs = converter.Parse(htmlContent);
+
+                            // 将段落添加到文档
+                            foreach (var para in paragraphs)
+                            {
+                                body.AppendChild(para.CloneNode(true));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // 如果表格处理失败，尝试替代方案
+                            _logger.LogError($"表格处理错误: {ex.Message}");
+
+                            // 预处理HTML以修复表格
+                            var processedHtml = ProcessTablesForWordExport(htmlContent);
+                            var converter = new HtmlConverter(mainPart);
+                            var paragraphs = converter.Parse(processedHtml);
+
+                            foreach (var para in paragraphs)
+                            {
+                                body.AppendChild(para.CloneNode(true));
+                            }
+                        }
+
+                        // 保存文档
+                        doc.Save();
+                    }
+                    return ms.ToArray();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"DOCX生成失败: {ex.Message}, 堆栈: {ex.StackTrace}");
+                throw new Exception($"DOCX生成失败: {ex.Message}", ex);
+            }
+        }
+        // 为文档添加更完整的样式
+        private void GenerateCompleteStyles(StyleDefinitionsPart styleDefinitionsPart)
+        {
+            var styles = new Styles();
+
+            // 添加默认段落样式
+            var normalStyle = new Style
+            {
+                Type = StyleValues.Paragraph,
+                StyleId = "Normal",
+                Default = true
+            };
+            normalStyle.Append(new StyleName { Val = "Normal" });
+            normalStyle.Append(new PrimaryStyle());
+            normalStyle.Append(
+                new StyleRunProperties(
+                    new RunFonts { Ascii = "SimSun", HighAnsi = "SimSun", EastAsia = "SimSun", ComplexScript = "SimSun" },
+                    new FontSize { Val = "22" } // 11pt
+                )
+            );
+            styles.Append(normalStyle);
+
+            // 添加标题样式
+            var titleStyle = new Style
+            {
+                Type = StyleValues.Paragraph,
+                StyleId = "Title"
+            };
+            titleStyle.Append(new StyleName { Val = "Title" });
+            titleStyle.Append(
+                new StyleParagraphProperties(
+                    new SpacingBetweenLines { Before = "480", After = "240" }
+                )
+            );
+            titleStyle.Append(
+                new StyleRunProperties(
+                    new RunFonts { Ascii = "SimHei", HighAnsi = "SimHei", EastAsia = "SimHei" },
+                    new Bold(),
+                    new FontSize { Val = "36" }, // 18pt
+                    new Color { Val = "2F5496" }
+                )
+            );
+            styles.Append(titleStyle);
+
+            // 添加副标题样式
+            var subtitleStyle = new Style
+            {
+                Type = StyleValues.Paragraph,
+                StyleId = "Subtitle"
+            };
+            subtitleStyle.Append(new StyleName { Val = "Subtitle" });
+            subtitleStyle.Append(
+                new StyleParagraphProperties(
+                    new SpacingBetweenLines { Before = "240", After = "480" }
+                )
+            );
+            subtitleStyle.Append(
+                new StyleRunProperties(
+                    new RunFonts { Ascii = "SimHei", HighAnsi = "SimHei", EastAsia = "SimHei" },
+                    new Italic(),
+                    new FontSize { Val = "24" }, // 12pt
+                    new Color { Val = "595959" }
+                )
+            );
+            styles.Append(subtitleStyle);
+
+            // 添加Heading 1-6样式
+            for (int i = 1; i <= 6; i++)
+            {
+                var headingStyle = new Style
+                {
+                    Type = StyleValues.Paragraph,
+                    StyleId = $"Heading{i}"
+                };
+                headingStyle.Append(new StyleName { Val = $"Heading {i}" });
+
+                int fontSize = 32 - (i * 2); // 从16pt逐渐减小
+                string colorVal = i <= 3 ? "2F5496" : "333333";
+
+                headingStyle.Append(
+                    new StyleParagraphProperties(
+                        new SpacingBetweenLines { Before = $"{240}", After = $"{120}" },
+                        new OutlineLevel { Val = i - 1 }
+                    )
+                );
+                headingStyle.Append(
+                    new StyleRunProperties(
+                        new RunFonts { Ascii = "SimHei", HighAnsi = "SimHei", EastAsia = "SimHei" },
+                        new Bold(),
+                        new FontSize { Val = $"{fontSize}" },
+                        new Color { Val = colorVal }
+                    )
+                );
+                styles.Append(headingStyle);
+            }
+
+            // 添加表格样式
+            var tableStyle = new Style
+            {
+                Type = StyleValues.Table,
+                StyleId = "TableStyle",
+                Default = true
+            };
+            tableStyle.Append(new StyleName { Val = "Table Style" });
+
+            // 添加表格边框样式
+            var tableBorders = new TableBorders(
+                new TopBorder { Val = BorderValues.Single, Size = 2, Color = "000000" },
+                new BottomBorder { Val = BorderValues.Single, Size = 2, Color = "000000" },
+                new LeftBorder { Val = BorderValues.Single, Size = 2, Color = "000000" },
+                new RightBorder { Val = BorderValues.Single, Size = 2, Color = "000000" },
+                new InsideHorizontalBorder { Val = BorderValues.Single, Size = 1, Color = "000000" },
+                new InsideVerticalBorder { Val = BorderValues.Single, Size = 1, Color = "000000" }
+            );
+
+            tableStyle.Append(tableBorders);
+
+            // 添加单元格边距
+            var tableCellMarginDefault = new TableCellMarginDefault(
+                new TopMargin { Width = "60" },
+                new BottomMargin { Width = "60" },
+                new LeftMargin { Width = "60" },
+                new RightMargin { Width = "60" }
+            );
+
+            tableStyle.Append(tableCellMarginDefault);
+            styles.Append(tableStyle);
+
+            // 添加页眉样式
+            var headerStyle = new Style
+            {
+                Type = StyleValues.Paragraph,
+                StyleId = "Header"
+            };
+            headerStyle.Append(new StyleName { Val = "Header" });
+            headerStyle.Append(
+                new StyleParagraphProperties(
+                    new Justification { Val = JustificationValues.Right },
+                    new SpacingBetweenLines { After = "0" }
+                )
+            );
+            headerStyle.Append(
+                new StyleRunProperties(
+                    new RunFonts { Ascii = "SimSun", HighAnsi = "SimSun", EastAsia = "SimSun" },
+                    new FontSize { Val = "18" }, // 9pt
+                    new Color { Val = "666666" }
+                )
+            );
+            styles.Append(headerStyle);
+
+            // 添加页脚样式
+            var footerStyle = new Style
+            {
+                Type = StyleValues.Paragraph,
+                StyleId = "Footer"
+            };
+            footerStyle.Append(new StyleName { Val = "Footer" });
+            footerStyle.Append(
+                new StyleParagraphProperties(
+                    new Justification { Val = JustificationValues.Center },
+                    new SpacingBetweenLines { After = "0" }
+                )
+            );
+            footerStyle.Append(
+                new StyleRunProperties(
+                    new RunFonts { Ascii = "SimSun", HighAnsi = "SimSun", EastAsia = "SimSun" },
+                    new FontSize { Val = "18" }, // 9pt
+                    new Color { Val = "666666" }
+                )
+            );
+            styles.Append(footerStyle);
+
+            // 添加超链接样式
+            var hyperlinkStyle = new Style
+            {
+                Type = StyleValues.Character,
+                StyleId = "Hyperlink"
+            };
+            hyperlinkStyle.Append(new StyleName { Val = "Hyperlink" });
+            hyperlinkStyle.Append(
+                new StyleRunProperties(
+                    new Color { Val = "0066CC" },
+                    new Underline { Val = UnderlineValues.Single }
+                )
+            );
+            styles.Append(hyperlinkStyle);
+
+            // 添加代码块样式
+            var codeStyle = new Style
+            {
+                Type = StyleValues.Paragraph,
+                StyleId = "CodeBlock"
+            };
+            codeStyle.Append(new StyleName { Val = "Code Block" });
+            codeStyle.Append(
+                new StyleParagraphProperties(
+                    new SpacingBetweenLines { Before = "240", After = "240" },
+                    new Indentation { Left = "720" },
+                    new ParagraphBorders(
+                        new TopBorder { Val = BorderValues.Single, Size = 2, Color = "AAAAAA" },
+                        new BottomBorder { Val = BorderValues.Single, Size = 2, Color = "AAAAAA" },
+                        new LeftBorder { Val = BorderValues.Single, Size = 8, Color = "AAAAAA" },
+                        new RightBorder { Val = BorderValues.Single, Size = 2, Color = "AAAAAA" }
+                    ),
+                    new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = "F5F5F5" }
+                )
+            );
+            codeStyle.Append(
+                new StyleRunProperties(
+                    new RunFonts { Ascii = "Consolas", HighAnsi = "Consolas" },
+                    new FontSize { Val = "20" } // 10pt
+                )
+            );
+            styles.Append(codeStyle);
+
+            styleDefinitionsPart.Styles = styles;
+        }
+        // 为文档添加表格样式
+        //private void GenerateTableStyles(StyleDefinitionsPart styleDefinitionsPart)
+        //{
+        //    var styles = new Styles();
+
+        //    // 添加表格样式
+        //    var tableStyle = new Style
+        //    {
+        //        Type = StyleValues.Table,
+        //        StyleId = "TableStyle",
+        //        Default = true
+        //    };
+
+        //    tableStyle.Append(new StyleName { Val = "Table Style" });
+
+        //    // 添加表格边框样式
+        //    var tableBorders = new TableBorders(
+        //        new TopBorder { Val = BorderValues.Single, Size = 2 },
+        //        new BottomBorder { Val = BorderValues.Single, Size = 2 },
+        //        new LeftBorder { Val = BorderValues.Single, Size = 2 },
+        //        new RightBorder { Val = BorderValues.Single, Size = 2 },
+        //        new InsideHorizontalBorder { Val = BorderValues.Single, Size = 1 },
+        //        new InsideVerticalBorder { Val = BorderValues.Single, Size = 1 }
+        //    );
+
+        //    tableStyle.Append(tableBorders);
+        //    styles.Append(tableStyle);
+
+        //    // 添加默认段落样式
+        //    var paragraphStyle = new Style
+        //    {
+        //        Type = StyleValues.Paragraph,
+        //        StyleId = "Normal",
+        //        Default = true
+        //    };
+
+        //    paragraphStyle.Append(new StyleName { Val = "Normal" });
+        //    styles.Append(paragraphStyle);
+
+        //    // 保存样式
+        //    styleDefinitionsPart.Styles = styles;
+        //}
+
+        // 预处理HTML中的表格，确保它们能正确转换
+        private string ProcessTablesForWordExport(string htmlContent)
+        {
+            // 简化表格结构，确保每个单元格都有明确的宽度和标准结构
+            var processedHtml = Regex.Replace(
+                htmlContent,
+                @"<table[^>]*>",
+                "<table style='width:100%; border-collapse:collapse;'>"
+            );
+
+            // 确保所有单元格有标准边框
+            processedHtml = Regex.Replace(
+                processedHtml,
+                @"<(td|th)[^>]*>",
+                match => {
+                    var tag = match.Value;
+                    if (!tag.Contains("style"))
+                        return tag.Insert(tag.Length - 1, " style='border:1px solid black; padding:4px;'");
+                    else if (!tag.Contains("border"))
+                        return tag.Insert(tag.Length - 1, " border='1'");
+                    return tag;
+                }
+            );
+
+            // 如果存在复杂表格，可能需要添加额外的表格标记来帮助转换
+            processedHtml = Regex.Replace(
+                processedHtml,
+                @"<tr[^>]*>",
+                "<tr style='page-break-inside:avoid'>"
+            );
+
+            return processedHtml;
+        }
+
+        // 添加新的帮助方法处理表头前无空行的情况
+        private string EnsureTableHeaderHasEmptyLine(string content)
+        {
+            // 使用正则表达式匹配表格开始的地方（文本后紧跟着一个表格的起始）
+            // 匹配模式解释:
+            // 1. 查找一个非空行后面紧跟着一个以 | 开头的行（可能是表头）
+            // 2. 确保这个 | 开头的行不是表格内部的行（前面的行不是表格行）
+            return Regex.Replace(
+                content,
+                @"(\S[^\r\n]*(?<!\|))(\r?\n)((?:\|[^\r\n]+\|[^\r\n]*)+)",
+                m => {
+                    // 检查前一行是否已经是空行（应该是一个非空行才需要添加空行）
+                    if (string.IsNullOrWhiteSpace(m.Groups[1].Value))
+                        return m.Value; // 已有空行，不做改变
+
+                    // 在表头前插入空行
+                    return m.Groups[1].Value + m.Groups[2].Value + Environment.NewLine + m.Groups[3].Value;
+                }
+            );
+        }
+
+        private string PreprocessLatex(string markdown)
+        {
+
+            // 兼容 \[ ... \] 公式为 $$ ... $$
+            string pattern = @"\\\[(.*?)\\\]";
+            string replacement = @"$$1$$";
+            string result = System.Text.RegularExpressions.Regex.Replace(markdown, pattern, replacement, System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            // 在 PreprocessLatex 方法中添加如下替换
+            pattern = @"\\begin\{split\}";
+            replacement = "\\begin{aligned}";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            pattern = @"\\end\{split\}";
+            replacement = "\\end{aligned}";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+
+            // 处理紧凑格式的align环境
+            pattern = @"(\$\$)\\begin\{align\}";
+            replacement = "\n$1\n\\begin{align}";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            // 处理align环境的结束标记
+            pattern = @"\\end\{align\}(\$\$)";
+            replacement = "\\end{align}\n$1";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            // 处理aligned环境
+            pattern = @"(\$\$)\\begin\{aligned\}";
+            replacement = "\n$1\n\\begin{aligned}";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            pattern = @"\\end\{aligned\}(\$\$)";
+            replacement = "\\end{aligned}\n$1";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            // 处理array环境
+            pattern = @"(\$\$)\\begin\{array\}";
+            replacement = "\n$1\n\\begin{array}";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            pattern = @"\\end\{array\}(\$\$)";
+            replacement = "\\end{array}\n$1";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            // 处理matrix环境
+            pattern = @"(\$\$)\\begin\{(b|p|v|B|V|P)?matrix\}";
+            replacement = "\n$1\n\\begin{$2matrix}";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            pattern = @"\\end\{(b|p|v|B|V|P)?matrix\}(\$\$)";
+            replacement = "\\end{$1matrix}\n$2";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            // 确保公式周围有足够的空间
+            pattern = @"(\$\$)(.*?)(\$\$)";
+            replacement = "\n\n$1$2$3\n\n";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement,
+                                                                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            // 优化行内公式的间距
+            pattern = @"([^\$])\$([^\$]+?)\$([^\$])";
+            replacement = "$1 $$$2$$ $3";
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, replacement);
+
+            return result;
+        }
+
+        public async Task<byte[]> ExportMessageToPdf(string content)
+        {
+            try
+            {
+                // 预处理内容，确保表头前有空行
+                content = PreprocessLatex(EnsureTableHeaderHasEmptyLine(content));
+                // 使用加强的Markdown流水线，特别是表格支持
+                var pipeline = new MarkdownPipelineBuilder()
+                               .UseAdvancedExtensions()
+                               .UseBootstrap() // 使用Bootstrap扩展改善表格渲染
+                               .UsePipeTables() // 确保支持管道表格
+                               .UseGridTables() // 支持网格表格
+                               .UseEmphasisExtras() // 支持更多强调语法
+                               .UseTaskLists() // 支持任务列表
+                               .UseAutoIdentifiers() // 自动添加表格ID
+                               .UseCustomContainers() // 支持自定义容器
+                               .UseDefinitionLists() // 支持定义列表
+                               .UseFootnotes() // 支持脚注
+                               .UseAutoLinks() // 自动检测链接
+                               .UseListExtras() // 增强列表功能
+                               .UseMediaLinks() // 支持媒体链接
+                               .UseFigures() // 支持图表
+                               .UseGenericAttributes() // 支持通用属性
+                               .UseYamlFrontMatter() // 支持YAML前置元数据
+                               .Build();
+
+                // 将Markdown转换为HTML
+                var htmlContent = Markdig.Markdown.ToHtml(content, pipeline);
+
+                // 注册编码和字体，增强表格样式
+                htmlContent = $@"
+<!DOCTYPE html>
+<html lang=""zh-CN"">
+<head>
+    <meta charset=""utf-8""/>
+    <style>
+        @page {{ 
+            margin: 2.5cm 1.5cm;
+            size: A4;
+        }}
+        body {{ 
+            font-family: 'SimSun',  'Microsoft YaHei', 'Arial Unicode MS', Arial, sans-serif; 
+            padding: 20px;
+           
+            
+        }}
+        /* 增强表格样式，提高表格稳定性和兼容性 */
+        table {{ 
+            border-collapse: collapse; 
+            width: 100%;
+            margin-bottom: 1.5em;
+            page-break-inside: auto;
+            max-width: 100%;
+            table-layout: fixed;
+        }}
+        table, th, td {{ 
+            border: 1px solid #000; 
+        }}
+        th, td {{ 
+            padding: 6px; 
+            text-align: left;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
+        }}
+        th {{ 
+            background-color: #f2f2f2; 
+            font-weight: bold;
+        }}
+        tr {{ 
+            page-break-inside: avoid;
+        }}
+        /* 确保表格内容不会溢出 */
+        table, tr, td, th, tbody, thead, tfoot {{
+            page-break-inside: avoid !important;
+        }}
+        /* 代码样式 */
+        code {{ 
+            font-family: Consolas, Monaco, 'Courier New', monospace;
+            background-color: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-size: 90%;
+        }}
+        pre {{ 
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }}
+        blockquote {{
+            border-left: 4px solid #ddd;
+            padding-left: 15px;
+            margin-left: 0;
+            color: #666;
+        }}
+        /* 使内容适应页面 */
+        img {{
+            max-width: 100%;
+        }}
+    </style>
+</head>
+<body>{htmlContent}</body>
+</html>";
+
+                using (var ms = new MemoryStream())
+                {
+                    using (var htmlms = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(htmlContent)))
+                    {
+                        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+                        var properties = new ConverterProperties();
+                        var fontProvider = new FontProvider();
+
+                        // 添加默认字体
+                        fontProvider.AddStandardPdfFonts();
+
+                        // 添加中文字体 - 尝试添加系统中常见的中文字体
+                        try
+                        {
+                            var fontPaths = new[]
+                            {
+                        "simsun.ttc",    // 宋体
+                        
+                        "msyh.ttc",      // 微软雅黑
+                        "simkai.ttf",    // 楷体
+                        "simfang.ttf",   // 仿宋，增加一种字体支持
+                        "SIMLI.TTF",     // 隶书
+                        "STKAITI.TTF",   // 楷体
+                        "STFANGSO.TTF"   // 仿宋
+                    };
+
+                            var fontDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+                            foreach (var font in fontPaths)
+                            {
+                                var path = Path.Combine(fontDir, font);
+                                if (File.Exists(path))
+                                {
+                                    fontProvider.AddFont(path);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // 如果加载系统字体失败，记录错误但继续使用标准字体
+                            _logger.LogWarning($"加载系统字体失败: {ex.Message}");
+                        }
+
+                        properties.SetFontProvider(fontProvider);
+
+                        // 设置PDF版本和兼容性
+                        //properties.SetPdfVersion(iText.Kernel.Pdf.PdfVersion.PDF_1_7);
+
+                        // 增加转换时的内存限制
+                        //properties.SetTagWorkerFactory(new iText.Html2pdf.AttachmentTagWorkerFactory());
+
+                        // 优化表格处理
+                        properties.SetBaseUri("");
+
+                        // 提高文档处理能力 - 增加设备宽度，提高复杂布局处理能力
+                        iText.StyledXmlParser.Css.Media.MediaDeviceDescription mediaDeviceDescription =
+                            new iText.StyledXmlParser.Css.Media.MediaDeviceDescription(
+                                iText.StyledXmlParser.Css.Media.MediaType.SCREEN);
+                        mediaDeviceDescription.SetWidth(1600); // 增加宽度以适应复杂表格
+                        properties.SetMediaDeviceDescription(mediaDeviceDescription);
+
+                        // 转换HTML到PDF，使用异常处理捕获详细错误信息
+                        try
+                        {
+                            iText.Html2pdf.HtmlConverter.ConvertToPdf(htmlms, ms, properties);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"HTML转PDF失败，详细错误: {ex.Message}, 堆栈: {ex.StackTrace}");
+                            throw new Exception($"转换PDF时发生错误: {ex.Message}", ex);
+                        }
+
+                        return ms.ToArray();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"PDF生成失败: {ex.Message}, 堆栈: {ex.StackTrace}");
+                throw new Exception($"PDF生成失败: {ex.Message}", ex);
+            }
+        }
+        public async Task<byte[]> ExportMessageToPdf1(string content)
+        {
+            try
+            {
+                // 预处理内容，确保表头前有空行
+                content = PreprocessLatex(EnsureTableHeaderHasEmptyLine(content));
+                // 使用加强的Markdown流水线，特别是表格支持
+                var pipeline = new MarkdownPipelineBuilder()
+                               .UseAdvancedExtensions()
+                               .UseBootstrap() // 使用Bootstrap扩展改善表格渲染
+                               .UsePipeTables() // 确保支持管道表格
+                               .UseGridTables() // 支持网格表格
+                               .UseEmphasisExtras() // 支持更多强调语法
+                               .UseTaskLists() // 支持任务列表
+                               .UseAutoIdentifiers() // 自动添加表格ID
+                               .UseCustomContainers() // 支持自定义容器
+                               .UseDefinitionLists() // 支持定义列表
+                               .UseFootnotes() // 支持脚注
+                               .UseAutoLinks() // 自动检测链接
+                               .UseListExtras() // 增强列表功能
+                               .UseMediaLinks() // 支持媒体链接
+                               .UseFigures() // 支持图表
+                               .UseGenericAttributes() // 支持通用属性
+                               .UseYamlFrontMatter() // 支持YAML前置元数据
+                               .Build();
+
+                // 将Markdown转换为HTML
+                var htmlContent = Markdig.Markdown.ToHtml(content, pipeline);
+
+                // 注册编码和字体，增强表格样式
+                htmlContent = $@"
+<!DOCTYPE html>
+<html lang=""zh-CN"">
+<head>
+    <meta charset=""utf-8""/>
+<link rel=""stylesheet"" href=""https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css"" integrity=""sha384-5TcZemv2l/9On385z///+d7MSYlvIEw9FuZTIdZ14vJLqWphw7e7ZPuOiCHJcFCP"" crossorigin=""anonymous"">
+<script defer src=""https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"" integrity=""sha384-cMkvdD8LoxVzGF/RPUKAcvmm49FQ0oxwDF3BGKtDXcEc+T1b2N+teh/OJfpU0jr6"" crossorigin=""anonymous""></script>
+<script defer src=""https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js"" integrity=""sha384-hCXGrW6PitJEwbkoStFjeJxv+fSOOQKOPbJxSfM6G5sWZjAyWhXiTIIAmQqnlLlh"" crossorigin=""anonymous""></script>
+
+
+<script>
+            document.addEventListener('DOMContentLoaded', function() {{
+                renderMathInElement(document.body, {{
+                    delimiters: [
+                        {{left: '$$', right: '$$', display: true}},
+                        {{left: '$', right: '$', display: false}},
+                        {{left: '\\(', right: '\\)', display: false}},
+                        {{left: '\\[', right: '\\]', display: true}},
+                        {{left: '$$\\begin{{align}}', right: '\\end{{align}}$$', display: true}},
+                        {{left: '\\begin{{equation}}', right: '\\end{{equation}}', display: true}},
+                        {{left: '\\begin{{align}}', right: '\\end{{align}}', display: true}},
+                        {{left: '\\begin{{alignat}}', right: '\\end{{alignat}}', display: true}},
+                        {{left: '\\begin{{gather}}', right: '\\end{{gather}}', display: true}},
+                        {{left: '\\begin{{CD}}', right: '\\end{{CD}}', display: true}},
+                        {{left: '\\begin{{matrix}}', right: '\\end{{matrix}}', display: true}},
+                        {{left: '\\begin{{pmatrix}}', right: '\\end{{pmatrix}}', display: true}},
+                        {{left: '\\begin{{bmatrix}}', right: '\\end{{bmatrix}}', display: true}},
+                        {{left: '\\begin{{vmatrix}}', right: '\\end{{vmatrix}}', display: true}}
+                    ],
+                    throwOnError: false,
+                    errorColor: '#cc0000',
+                    macros: {{
+                        ""\\\\coloneqq"": ""≔"",
+                        ""\\\\implies"": ""⟹"",
+                        ""\\\\iff"": ""⟺"",
+                        ""\\\\varnothing"": ""∅"",
+                        ""\\\\Reals"": ""\\mathbb{{R}}"",
+                        ""\\\\Naturals"": ""\\mathbb{{N}}"",
+                        ""\\\\Complex"": ""\\mathbb{{C}}"",
+                        ""\\\\Integers"": ""\\mathbb{{Z}}""
+                    }},
+                    strict: false,
+                    trust: true,
+                    fleqn: false,
+                    output: 'html',         // 使用HTML输出以获得更好的显示效果
+                    minRuleThickness: 0.08, // 调整分数线等元素的最小厚度
+                    maxSize: 10,            // 设置最大大小限制
+                    maxExpand: 1000,        // 提高展开宏的限制
+                    displayMode: true,      // 启用显示模式
+                    leqno: false            // 禁用左侧等式编号
+                }});
+            }});
+        </script>
+<style>
+/* 优化KaTeX显示 */
+.katex-display {{
+    overflow-x: auto;
+    overflow-y: visible; /* 改为visible允许内容超出 */
+    padding: 18px 0;     /* 增加上下内边距 */
+    margin: 1.2em 0;     /* 增加上下外边距 */
+    text-align: center;
+    min-height: 2.5em;   /* 设置最小高度 */
+}}
+
+.katex {{
+    font-size: 1.15em;
+    line-height: 1.8;    /* 增加行高 */
+    text-rendering: auto;
+}}
+
+/* 行内公式样式优化 */
+.katex-inline {{
+    padding: 2px 3px;
+    margin: 0 1px;
+    border-radius: 4px;
+    background-color: var(--math-bg);
+    border: none;
+    vertical-align: middle; /* 改善行内公式垂直对齐 */
+}}
+
+.katex-error {{
+    color: #cc0000;
+    background-color: #ffecec;
+    padding: 2px 4px;
+    border-radius: 3px;
+    border: 1px solid #ffbaba;
+}}
+
+/* 隐藏公式序号 */
+.katex .tag {{
+    display: none !important;
+}}
+
+/* 矩阵样式优化 */
+.katex .mord.mathnormal {{
+    font-style: normal;
+    font-weight: normal;
+    font-family: 'KaTeX_Math', serif;
+}}
+
+/* 改善矩阵显示 */
+.katex .mtable {{
+    margin: 0.8em 0;     /* 增加矩阵上下间距 */
+}}
+
+.katex .mtable .arraycolsep {{
+    width: 0.8em; /* 增加列间距 */
+}}
+
+/* 矩阵括号优化 */
+.katex .delimsizing.size3 .delim-size3 {{
+    font-size: 2.5em;
+}}
+
+.katex .vlist > span {{
+    font-weight: normal;
+}}
+
+/* 分数样式优化 */
+.katex .mfrac {{
+    margin: 0 0.25em;
+}}
+
+.katex .mfrac .frac-line {{
+    border-bottom-width: 0.08em;
+    min-height: 0.08em;
+}}
+
+.katex .mfrac .frac-line::after {{
+    border-bottom-width: 0.08em;
+}}
+
+/* 提高分式的可读性 */
+.katex .mfrac .msubsup {{
+    font-size: 0.9em;
+}}
+
+/* 调整上下标大小和位置 */
+.katex .msupsub {{
+    font-size: 0.85em;
+    vertical-align: baseline;
+}}
+
+/* 处理长公式换行问题 */
+.katex-display > .katex {{
+    display: inline-block;
+    max-width: 100%;
+    text-align: center;
+}}
+
+.katex-display > .katex > .katex-html {{
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: visible; /* 改为visible允许内容超出 */
+    padding: 6px 5px;    /* 增加上下内边距 */
+    text-align: center;
+    white-space: nowrap;
+}}
+
+/* 对齐环境优化 */
+.katex .align {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 0.8em;   /* 增加上下间距 */
+    margin-bottom: 0.8em;
+}}
+
+.katex .align-inner {{
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: auto;
+}}
+
+/* 隐藏公式编号 */
+.katex .eqn-num {{
+    display: none !important;
+}}
+
+/* 特别处理align环境中的编号 */
+.katex-display .katex .align .tag {{
+    display: none !important;
+}}
+
+/* 增加公式容器防止裁剪 */
+.katex-html {{
+    padding-top: 8px;    /* 增加顶部内边距 */
+    padding-bottom: 8px; /* 增加底部内边距 */
+}}
+
+/* 修复大型公式分割问题 */
+.katex .vlist-t {{
+    display: inline-table !important;
+    table-layout: fixed;
+}}
+
+/* 优化大型矩阵和多行公式 */
+.katex .vlist-s {{
+    height: 2px; /* 增加行间距 */
+}}
+</style>
+    <style>
+        @page {{ 
+            margin: 2.5cm 1.5cm;
+            size: A4;
+        }}
+        body {{ 
+            font-family: 'SimSun', 'SimHei', 'Microsoft YaHei', 'Arial Unicode MS', Arial, sans-serif; 
+            padding: 20px;
+            font-size: 11pt;
+            line-height: 1.8;
+        }}
+        /* 增强表格样式，提高表格稳定性和兼容性 */
+        table {{ 
+            border-collapse: collapse; 
+            width: 100%;
+            margin-bottom: 1.5em;
+            page-break-inside: auto;
+            max-width: 100%;
+            table-layout: fixed;
+        }}
+        table, th, td {{ 
+            border: 1px solid #000; 
+        }}
+        th, td {{ 
+            padding: 6px; 
+            text-align: left;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
+        }}
+        th {{ 
+            background-color: #f2f2f2; 
+            font-weight: bold;
+        }}
+        tr {{ 
+            page-break-inside: avoid;
+        }}
+        /* 确保表格内容不会溢出 */
+        table, tr, td, th, tbody, thead, tfoot {{
+            page-break-inside: avoid !important;
+        }}
+        /* 代码样式 */
+        code {{ 
+            font-family: Consolas, Monaco, 'Courier New', monospace;
+            background-color: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-size: 90%;
+        }}
+        pre {{ 
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }}
+        blockquote {{
+            border-left: 4px solid #ddd;
+            padding-left: 15px;
+            margin-left: 0;
+            color: #666;
+        }}
+        /* 使内容适应页面 */
+        img {{
+            max-width: 100%;
+        }}
+    </style>
+</head>
+<body>{htmlContent}</body>
+</html>";
+
+                using (var ms = new MemoryStream())
+                {
+                    using (var htmlms = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(htmlContent)))
+                    {
+                        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+                        var properties = new ConverterProperties();
+                        var fontProvider = new FontProvider();
+
+                        // 添加默认字体
+                        fontProvider.AddStandardPdfFonts();
+
+                        // 添加中文字体 - 尝试添加系统中常见的中文字体
+                        try
+                        {
+                            var fontPaths = new[]
+                            {
+                        "simsun.ttc",    // 宋体
+                        "simhei.ttf",    // 黑体
+                        "msyh.ttc",      // 微软雅黑
+                        "simkai.ttf",    // 楷体
+                        "simfang.ttf",   // 仿宋，增加一种字体支持
+                        "SIMLI.TTF",     // 隶书
+                        "STKAITI.TTF",   // 楷体
+                        "STFANGSO.TTF"   // 仿宋
+                    };
+
+                            var fontDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+                            foreach (var font in fontPaths)
+                            {
+                                var path = Path.Combine(fontDir, font);
+                                if (File.Exists(path))
+                                {
+                                    fontProvider.AddFont(path);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // 如果加载系统字体失败，记录错误但继续使用标准字体
+                            _logger.LogWarning($"加载系统字体失败: {ex.Message}");
+                        }
+
+                        properties.SetFontProvider(fontProvider);
+
+                        // 设置PDF版本和兼容性
+                        //properties.SetPdfVersion(iText.Kernel.Pdf.PdfVersion.PDF_1_7);
+
+                        // 增加转换时的内存限制
+                        //properties.SetTagWorkerFactory(new iText.Html2pdf.AttachmentTagWorkerFactory());
+
+                        // 优化表格处理
+                        properties.SetBaseUri("");
+
+                        // 提高文档处理能力 - 增加设备宽度，提高复杂布局处理能力
+                        iText.StyledXmlParser.Css.Media.MediaDeviceDescription mediaDeviceDescription =
+                            new iText.StyledXmlParser.Css.Media.MediaDeviceDescription(
+                                iText.StyledXmlParser.Css.Media.MediaType.SCREEN);
+                        mediaDeviceDescription.SetWidth(1600); // 增加宽度以适应复杂表格
+                        properties.SetMediaDeviceDescription(mediaDeviceDescription);
+
+                        // 转换HTML到PDF，使用异常处理捕获详细错误信息
+                        try
+                        {
+                            iText.Html2pdf.HtmlConverter.ConvertToPdf(htmlms, ms, properties);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"HTML转PDF失败，详细错误: {ex.Message}, 堆栈: {ex.StackTrace}");
+                            throw new Exception($"转换PDF时发生错误: {ex.Message}", ex);
+                        }
+
+                        return ms.ToArray();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"PDF生成失败: {ex.Message}, 堆栈: {ex.StackTrace}");
                 throw new Exception($"PDF生成失败: {ex.Message}", ex);
             }
         }
     }
 
-    public class CustomFontResolver : IFontResolver
-    {
-        private static readonly Dictionary<string, string> FontFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        {"kaiu", "kaiu.ttf"},        // 标楷体
-        {"simhei", "simhei.ttf"},    // 黑体
-        {"msyh", "msyh.ttf"},        // 微软雅黑
-        {"simsun", "simsun.ttc"},    // 宋体
-        {"simkai", "simkai.ttf"}     // 楷体
-    };
-
-        private static readonly Dictionary<string, byte[]> FontData = new Dictionary<string, byte[]>();
-
-        static CustomFontResolver()
-        {
-            var fontPath = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
-            foreach (var font in FontFiles)
-            {
-                var path = Path.Combine(fontPath, font.Value);
-                if (File.Exists(path))
-                {
-                    FontData[font.Key] = File.ReadAllBytes(path);
-                }
-            }
-
-            if (FontData.Count == 0)
-            {
-                throw new FileNotFoundException("未找到任何可用的中文字体");
-            }
-        }
-
-        public byte[] GetFont(string faceName)
-        {
-            string key = faceName.ToLower();
-            if (FontData.ContainsKey(key))
-            {
-                return FontData[key];
-            }
-            // 如果请求的字体不存在，返回第一个可用的字体
-            return FontData.First().Value;
-        }
-
-        public FontResolverInfo ResolveTypeface(string familyName, bool isBold, bool isItalic)
-        {
-            // 依次尝试可用的字体
-            foreach (var font in FontFiles.Keys)
-            {
-                if (FontData.ContainsKey(font))
-                {
-                    return new FontResolverInfo(font);
-                }
-            }
-            throw new Exception("没有可用的中文字体");
-        }
-    }
+    
 }

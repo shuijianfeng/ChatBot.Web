@@ -52,16 +52,17 @@ namespace ChatBot.Web.Services
         {
             _result.Data.Clear();
             var google = await Search(query, "", searchCount, isNoCache, isdirect);
-            //var bing = await JinaAiSearch(query, "bing.com ", searchCount, isNoCache, isdirect);
+            //var bing = await Search(query, "bing.com ", searchCount, isNoCache, isdirect);
             var badu = await Search(query, "baidu.com ", searchCount, isNoCache, isdirect);
-            //var sg = await JinaAiSearch(query, "sogou.com ", searchCount, isNoCache, isdirect);
-            //var tencent = await JinaAiSearch(query, "qq.com ", searchCount, isNoCache, isdirect);
-            //var zhihu = await JinaAiSearch(query, "zhihu.com ", searchCount, isNoCache, isdirect);
-            //var weibo = await JinaAiSearch(query, "weibo.com ", searchCount, isNoCache, isdirect);
+            //var sg = await Search(query, "sogou.com ", searchCount, isNoCache, isdirect);
+            //var tencent = await Search(query, "qq.com ", searchCount, isNoCache, isdirect);
+            //var zhihu = await Search(query, "zhihu.com ", searchCount, isNoCache, isdirect);
+            //var weibo = await Search(query, "weibo.com ", searchCount, isNoCache, isdirect);
+            var ctrip = await Search(query, "ctrip.com ", searchCount, isNoCache, isdirect);
             var dzdp = await Search(query, "dianping.com ", searchCount, isNoCache, isdirect);
-            //var douban = await JinaAiSearch(query, "douban.com ", searchCount, isNoCache, isdirect);
-            //var reddit = await JinaAiSearch(query, "reddit.com ", searchCount, isNoCache, isdirect);
-            //var Wikipedia = await JinaAiSearch(query, "wikipedia.org ", searchCount, isNoCache, isdirect);
+            //var douban = await Search(query, "douban.com ", searchCount, isNoCache, isdirect);
+            //var reddit = await Search(query, "reddit.com ", searchCount, isNoCache, isdirect);
+            var Wikipedia = await Search(query, "wikipedia.org ", searchCount, isNoCache, isdirect);
 
 
 
@@ -90,6 +91,10 @@ namespace ChatBot.Web.Services
             //{
             //    _result.Data.AddRange(weibo.Data);
             //}
+            if (ctrip?.Data != null)
+            {
+                _result.Data.AddRange(ctrip.Data);
+            }
             //if (douban?.Data != null)
             //{
             //    _result.Data.AddRange(douban.Data);
@@ -104,10 +109,10 @@ namespace ChatBot.Web.Services
             //    _result.Data.AddRange(sg.Data);
             //}
 
-            //if (Wikipedia?.Data != null)
-            //{
-            //    _result.Data.AddRange(Wikipedia.Data);
-            //}
+            if (Wikipedia?.Data != null)
+            {
+                _result.Data.AddRange(Wikipedia.Data);
+            }
             if (dzdp?.Data != null)
             {
                 _result.Data.AddRange(dzdp.Data);
@@ -361,7 +366,7 @@ namespace ChatBot.Web.Services
             _result.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
 
         }
-        public async Task Rerank(string query, int rerankCount = 5)
+        public async Task Rerank(string query, int rerankCount = 10)
         {
             for (int i = _result.Data.Count - 1; i >= 0; i--)
             {
@@ -599,22 +604,23 @@ namespace ChatBot.Web.Services
                 if (string.IsNullOrWhiteSpace(item.Content)) return;
 
                 var contents = new List<object>();
-                contents.Add(new { role = "system", content = "你是一个优秀的资料整理专家" });
+                contents.Add(new { role = "system", content = "你是一个优秀的资料整理专家，能够准确提取与特定查询相关的信息。" });
                 contents.Add(new
                 {
                     role = "user",
-                    content = ((new StringBuilder()).Append("在<info></info>中摘要和")
-                     .Append(query)
-                    .Append("相关的信息，如果没有摘要信息则回答:[NOT]")
+                    content = new StringBuilder()
+                    .Append("请从以下<info></info>中提取与查询\"")
+                    .Append(query)
+                    .Append("\"相关的详细准确信息。")
+                    .Append("。如果内容与查询无关，请回答: [NOT]")
                     .Append('\n')
                     .Append('\n')
                     .Append("<info>")
-                     .Append('\n')
-                     .Append(item.Content)
+                    .Append('\n')
+                    .Append(item.Content)
                     .Append('\n')
                     .Append("</info>")
-
-                    .ToString())
+                    .ToString()
                 });
 
                 var requestContent = new
@@ -684,6 +690,8 @@ namespace ChatBot.Web.Services
                 if (string.IsNullOrWhiteSpace(item.Content)) continue;
                 sb.Append("Url:");
                 sb.Append(item.Url);
+                sb.AppendLine("Title:");
+                sb.Append(item.Title);
                 sb.AppendLine("Content：");
                 sb.AppendLine(item.Content);
                 sb.AppendLine();
@@ -694,12 +702,14 @@ namespace ChatBot.Web.Services
             }
 
             var contents = new List<object>();
-            contents.Add(new { role = "system", content = "你是一个优秀的资料整合专家" });
+            contents.Add(new { role = "system", content = "你是一个优秀的资料整合专家，善于将多个来源的信息融合为连贯、详细且易于理解的文本。请确保保留所有重要信息，并正确引用来源。" });
             contents.Add(new
             {
                 role = "user",
-                content = ((new StringBuilder()).Append("整合<info></info>中资料,在描述中使用以空格符作为间隔的引用标记，引用信息来源（格式：[1]\u0020[3]\u0020[11]）,并且在内容末尾提供完整引用来源列表，格式为：\n\n [1]: https://example.com \n\n [2]: https://example.com")
-
+                content = ((new StringBuilder()).AppendLine("1、整合<info></info>中资料,保持尽可能多的原始信息和细节。")
+                .AppendLine("2、在描述中使用以空格符作为间隔的引用标记，引用信息来源（格式：[1] [3] [11]）,并且在内容末尾提供完整引用来源列表，格式为：\n\n [1]: https://example.com \n\n [2]: https://example.com")
+                .AppendLine("3、组织信息时，请按主题或时间顺序结构化内容，避免简单堆砌。")
+                .AppendLine("4、如有相互矛盾的信息，请一并呈现并标明来源。")
                 .Append('\n')
                 .Append('\n')
                 .Append("<info>")
