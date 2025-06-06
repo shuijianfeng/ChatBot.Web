@@ -1175,49 +1175,7 @@ class ChatUI {
         return copyButton;
     }
 
-    //createCopyButton(textToCopy) {
-    //    const copyButton = document.createElement('button');
-    //    copyButton.className = 'copy-button';
-    //    copyButton.title = '复制消息';
-    //    copyButton.setAttribute('aria-label', 'Copy');
-    //    copyButton.innerHTML = `
-    //        <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-    //            <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/>
-    //            <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
-    //        </svg>
-    //    `;
-
-    //    copyButton.addEventListener('click', async () => {
-    //        try {
-    //            const contentToCopy = copyButton.dataset.copyContent || textToCopy;
-    //            // 确保复制完整内容
-    //            await navigator.clipboard.writeText(contentToCopy);
-    //            //// 确保复制完整内容
-    //            //await navigator.clipboard.writeText(copyButton.dataset.copyContent);
-
-    //            // 更新按钮状态
-    //            const originalHTML = copyButton.innerHTML;
-    //            copyButton.innerHTML = `
-    //                <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-    //                    <path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
-    //                </svg>
-    //            `;
-    //            copyButton.classList.add('copy-success');
-
-    //            // 2秒后恢复原始状态
-    //            setTimeout(() => {
-    //                copyButton.innerHTML = originalHTML;
-    //                copyButton.classList.remove('copy-success');
-    //            }, 2000);
-    //        } catch (err) {
-    //            console.error('复制失败:', err);
-    //        }
-    //    });
-
-    //    return copyButton;
-    //}
-
-    // 优化链接预览功能
+ 
     setupLinkPreviews() {
         // 创建预览容器
         const previewContainer = document.createElement('div');
@@ -1497,6 +1455,7 @@ class ChatUI {
     setupMarked() {
         const renderer = new marked.Renderer();
         const originalCode = renderer.code.bind(renderer);
+        
 
         // 修改链接渲染器，增加对引用式链接的支持
         renderer.link = (href, title, text) => {
@@ -1567,6 +1526,7 @@ class ChatUI {
             smartLists: true,
             smartypants: false,
             xhtml: false
+           
         });
         // 6. 在内容更新后触发渲染
         const renderMath = (element) => {

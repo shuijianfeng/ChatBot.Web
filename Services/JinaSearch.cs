@@ -47,9 +47,60 @@ namespace ChatBot.Web.Services
             InitializeAsync().GetAwaiter().GetResult();
         }
 
+        // 新增查询扩展方法
+        private async Task<string> ExpandQuery(string originalQuery)
+        {
+            // 如果查询很短，可能需要扩展
+            if (originalQuery.Split(' ').Length < 3)
+            {
+                var apiKey = Environment.GetEnvironmentVariable("GeminiKey");
+                var apiEndpoint = $"https://cdsjf.xyz/gemini/v1beta/openai/chat/completions";
+
+                var client = _httpClientFactory.CreateClient();
+                client.Timeout = TimeSpan.FromMinutes(1);
+                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+                var contents = new List<object>();
+                contents.Add(new { role = "system", content = "你是一个优秀的搜索查询优化专家。请将用户的查询扩展为更详细的搜索词，保持原始查询的核心意图，不超过5个词。直接返回扩展后的查询词，不要包含任何解释或其他文本。" });
+                contents.Add(new { role = "user", content = originalQuery });
+
+                var requestContent = new
+                {
+                    model = "gemini-2.0-flash-lite",
+                    messages = contents,
+                    temperature = 0.1,
+                };
+
+                try
+                {
+                    using var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                    {
+                        Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                    });
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string responseStr = await response.Content.ReadAsStringAsync();
+                        var result = JsonSerializer.Deserialize<OpenAIResponse>(responseStr, _jsonOptions);
+                        if (result?.choices?.FirstOrDefault()?.message?.content is string expandedQuery)
+                        {
+                            // 确保扩展查询不会太偏离原始查询
+                            return expandedQuery.Trim();
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // 查询扩展失败时使用原始查询
+                }
+            }
+
+            return originalQuery;
+        }
 
         public async Task<string?> Search(string query, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
         {
+            query = await ExpandQuery(query);
             _result.Data.Clear();
             var google = await Search(query, "", searchCount, isNoCache, isdirect);
             //var bing = await Search(query, "bing.com ", searchCount, isNoCache, isdirect);
@@ -626,6 +677,7 @@ namespace ChatBot.Web.Services
                 var requestContent = new
                 {
                     model = "gemini-2.0-flash-lite",
+                   
                     messages = contents,
                     temperature = 0.1,
 
@@ -724,6 +776,7 @@ namespace ChatBot.Web.Services
             var requestContent = new
             {
                 model = "gemini-2.0-flash-lite",
+               
                 messages = contents,
                 temperature = 0.1,
 

@@ -16,8 +16,8 @@
     <script>
         MathJax = {
             tex: {
-                inlineMath: [['$', '$'], ['\( ', ' \)']],
-                displayMath: [['$$', '$$'],['\[','\]']],
+                inlineMath: [['$', '$']],
+                displayMath: [['$$', '$$']],
                 processEscapes: true,
 
             },
@@ -183,7 +183,7 @@
     <script src="~/lib/highlight.js/languages/css.min.js"></script>
 
     <script src="~/js/chat.js" asp-append-version="true"></script>
-
+    
 
     @* 页面特定脚本 *@
     @await RenderSectionAsync("Scripts", required: false)
