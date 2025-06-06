@@ -588,7 +588,7 @@ namespace ChatBot.Web.Services
             }
             else
             {
-                
+
                 switch (config.ChatModelType)
                 {
                     case ChatModelType.Llama:
@@ -1214,7 +1214,7 @@ namespace ChatBot.Web.Services
                         {
                               city = new
                             {
-                                
+
                             }
                         },
                          required = new[] { "city" }
@@ -1730,7 +1730,7 @@ namespace ChatBot.Web.Services
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 //response_format = ToOpenAischema(),
                 tools = tools,
-                parallel_tool_calls=false
+                parallel_tool_calls = false
 
             };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
@@ -2934,7 +2934,7 @@ namespace ChatBot.Web.Services
             }
         }
         //Deepseek OpenAI 兼容方式
-        
+
         public async IAsyncEnumerable<string> DeepseekOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
         {
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
@@ -3071,7 +3071,7 @@ namespace ChatBot.Web.Services
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 //response_format = ToOpenAischema(),
                 tools = tools,
-                parallel_tool_calls=false
+                parallel_tool_calls = false
 
             };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
@@ -5494,7 +5494,7 @@ namespace ChatBot.Web.Services
                                           "yl",
                                           "flag"
                                         },
-                                          additionalProperties= false
+                                          additionalProperties = false
 
                                       }
                                   }
@@ -7410,5 +7410,5 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
         }
     }
 
-    
+
 }
