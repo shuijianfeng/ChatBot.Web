@@ -12,7 +12,7 @@
     <title>@ViewData["Title"] - AI助手</title>
 
 
-    <script src="~/lib/mathjax/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+    <script src="~/lib/mathjax/tex-mml-chtml.js" id="MathJax-script" async></script>
     <script>
         MathJax = {
             tex: {
@@ -30,19 +30,9 @@
             startup: {
                 ready: () => {
 
-                     MathJax.startup.defaultReady();
-                      MathJax.startup.input.preFilters.add(({ math }) => {
-          if (math.inputData.originalText) {
-            // Remove [数字] and (数字) patterns
-            math.inputData.originalText = math.inputData.originalText
-             .replace(/\[(\d+)\]/g, '')
-              .replace(/\((\d+)\)/g, '');    // Remove parenthetical numbers
-          }
-        });
-
-
-
-
+                    MathJax.startup.defaultReady();
+                      
+                     
                     MathJax.startup.promise.then(() => {
                         console.log('MathJax initial typesetting complete');
                     });
@@ -182,7 +172,7 @@
     <script src="~/lib/highlight.js/languages/json.min.js"></script>
     <script src="~/lib/highlight.js/languages/css.min.js"></script>
 
-    <script src="~/js/chat.js" asp-append-version="true"></script>
+    <script src="~/js/chat.js?v=@Guid.NewGuid().ToString("N")"></script>
     
 
     @* 页面特定脚本 *@

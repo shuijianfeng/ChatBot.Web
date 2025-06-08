@@ -15,7 +15,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<ChatModelConfig>();
 
 builder.Services.AddScoped<IChatService,ChatService> ();
-builder.Services.AddScoped<CustomFontResolver>();
+
 builder.Services.AddScoped<OpenAIService>();
 builder.Services.AddScoped<JinaSearch>();
 builder.Services.AddScoped<OpenWeather>();
@@ -30,8 +30,8 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
-//app.MapStaticAssets();
+//app.UseStaticFiles();
+app.MapStaticAssets();
 app.UseRouting();
 app.MapControllers();
 app.MapDefaultControllerRoute();

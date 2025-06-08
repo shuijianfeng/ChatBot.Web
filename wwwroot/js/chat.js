@@ -804,20 +804,7 @@ class ChatUI {
         });
     }
 
-    //addCopyButtonListener(button) {
-    //    button.addEventListener('click', async () => {
-    //        const pre = button.closest('.code-block-wrapper').querySelector('pre');
-    //        /*const code = pre.textContent;*/
-    //        const code = button.dataset.copyContent
-    //        try {
-    //            await navigator.clipboard.writeText(code);
-    //            this.showCopyFeedback(button, true);
-    //        } catch (err) {
-    //            console.error('复制失败:', err);
-    //            this.showCopyFeedback(button, false);
-    //        }
-    //    });
-    //}
+    
 
     /**
  * 显示复制操作的反馈
@@ -1531,10 +1518,14 @@ class ChatUI {
         // 6. 在内容更新后触发渲染
         const renderMath = (element) => {
             if (this.MathJax && this.MathJax.typesetPromise) {
-                this.MathJax.typesetPromise()
+                
+                this.MathJax.typesetPromise([element])
                     .catch(err => console.error('MathJax 渲染错误:', err));
+            } else if (window.MathJax && window.MathJax.typesetPromise) {
+                // 备用方案，使用全局 MathJax
+                window.MathJax.typesetPromise([element])
+                    .catch(err => console.error('备用 MathJax 渲染错误:', err));
             }
-
         };
 
         // 导出renderMath方法供外部使用
