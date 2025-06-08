@@ -1264,7 +1264,7 @@ namespace ChatBot.Web.Services
                 input = messages,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-                text = ToResponsesOpenAischema(),
+                
                 tools = tools,
             };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
@@ -1730,7 +1730,7 @@ namespace ChatBot.Web.Services
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 //response_format = ToOpenAischema(),
                 tools = tools,
-                parallel_tool_calls = false
+               
 
             };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
