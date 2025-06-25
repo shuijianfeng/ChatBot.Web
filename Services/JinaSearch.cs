@@ -66,7 +66,7 @@ namespace ChatBot.Web.Services
 
                 var requestContent = new
                 {
-                    model = "gemini-2.0-flash-lite",
+                    model = "gemini-2.5-flash-lite-preview-06-17",
                     messages = contents,
                     temperature = 0.1,
                 };
@@ -113,9 +113,9 @@ namespace ChatBot.Web.Services
             var dzdp = await Search(query, "dianping.com ", searchCount, isNoCache, isdirect);
             //var douban = await Search(query, "douban.com ", searchCount, isNoCache, isdirect);
             //var reddit = await Search(query, "reddit.com ", searchCount, isNoCache, isdirect);
-            var Wikipedia = await Search(query, "wikipedia.org ", searchCount, isNoCache, isdirect);
+            //var Wikipedia = await Search(query, "wikipedia.org ", searchCount, isNoCache, isdirect);
 
-
+            //var xhs = await Search(query, "xiaohongshu.com ", searchCount, isNoCache, isdirect);
 
 
             if (google?.Data != null)
@@ -160,14 +160,20 @@ namespace ChatBot.Web.Services
             //    _result.Data.AddRange(sg.Data);
             //}
 
-            if (Wikipedia?.Data != null)
-            {
-                _result.Data.AddRange(Wikipedia.Data);
-            }
+            //if (Wikipedia?.Data != null)
+            //{
+            //    _result.Data.AddRange(Wikipedia.Data);
+            //}
             if (dzdp?.Data != null)
             {
                 _result.Data.AddRange(dzdp.Data);
             }
+
+            //if (xhs?.Data != null)
+            //{
+            //    _result.Data.AddRange(xhs.Data);
+            //}
+
             await GetInfoFromGemini(query);
             await Rerank(query);
             var str = await MergeInfo();
@@ -662,7 +668,7 @@ namespace ChatBot.Web.Services
                     content = new StringBuilder()
                     .Append("请从以下<info></info>中提取与查询\"")
                     .Append(query)
-                    .Append("\"相关的详细准确信息。")
+                    .Append("\"相关信息,保持尽可能多的原始信息和细节")
                     .Append("。如果内容与查询无关，请回答: [NOT]")
                     .Append('\n')
                     .Append('\n')
@@ -676,7 +682,7 @@ namespace ChatBot.Web.Services
 
                 var requestContent = new
                 {
-                    model = "gemini-2.0-flash-lite",
+                    model = "gemini-2.5-flash-lite-preview-06-17",
                    
                     messages = contents,
                     temperature = 0.1,
@@ -775,8 +781,8 @@ namespace ChatBot.Web.Services
 
             var requestContent = new
             {
+                //model = "gemini-2.5-flash-lite-preview-06-17",
                 model = "gemini-2.0-flash-lite",
-               
                 messages = contents,
                 temperature = 0.1,
 

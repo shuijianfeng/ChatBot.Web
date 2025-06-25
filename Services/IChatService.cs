@@ -117,421 +117,7 @@ namespace ChatBot.Web.Services
 
             return $"<js_command>{JsonSerializer.Serialize(command)}</js_command>";
         }
-        #region google搜索相关
-        /// <summary>
-        /// google搜索api
-        /// </summary>
-        /// <param name="query"></param>
-        /// <param name="maxResults"></param>
-        /// <returns></returns>
-        public async Task<List<SearchResult>> PerformAdvancedSearch(string query, int maxResults = 2)
-        {
-            var apiKey = Environment.GetEnvironmentVariable("GeminiKey");
-
-            var url = $"https://cdsjf.xyz/googleapis/customsearch/v1?" +
-                      $"key={apiKey}&" +
-                      $"cx=6443be91738ab4541&" +
-                      $"hl=zh-CN&" +
-                        $"safe=active&" +
-                        //$"cr=countryCN&" +
-                        //$"gl=cn&" +
-                        $"filter=1&" +
-                      $"q={Uri.EscapeDataString(query)}&" +
-                      $"num={maxResults}&" +
-                      $"sort=date"; // 按日期排序
-            var client = _httpClientFactory.CreateClient();
-            try
-            {
-                var response = await client.GetStringAsync(url);
-                var jsonDocument = JsonDocument.Parse(response);
-                var root = jsonDocument.RootElement;
-
-                var searchResults = new List<SearchResult>();
-
-                if (root.TryGetProperty("items", out var items))
-                {
-                    foreach (var item in items.EnumerateArray())
-                    {
-                        var result = new SearchResult
-                        {
-                            Title = GetPropertyValueOrDefault(item, "title"),
-                            Snippet = GetPropertyValueOrDefault(item, "snippet"),
-                            Link = GetPropertyValueOrDefault(item, "link"),
-                            // 尝试解析发布日期
-                            PublishedDate = ParsePublishedDate(item),
-                            // 模拟点击率（实际应用中需要更复杂的逻辑）
-                            ClickRate = EstimateClickRate(item)
-                        };
-
-                        searchResults.Add(result);
-                    }
-                }
-
-                // 按综合相关性评分降序排序
-                return searchResults
-                    .OrderByDescending(r => r.GetRelevanceScore())
-                    .ToList();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "搜索失败");
-                return new List<SearchResult>();
-            }
-
-        }
-
-        private string GetPropertyValueOrDefault(JsonElement item, string propertyName)
-        {
-            return item.TryGetProperty(propertyName, out var prop)
-                ? prop.GetString()
-                : string.Empty;
-        }
-
-        private DateTime ParsePublishedDate(JsonElement item)
-        {
-            try
-            {
-                // 尝试从pagemap中提取发布日期
-                if (item.TryGetProperty("pagemap", out var pagemap) &&
-                    pagemap.TryGetProperty("metatags", out var metatags))
-                {
-                    foreach (var meta in metatags.EnumerateArray())
-                    {
-                        if (meta.TryGetProperty("article:published_time", out var publishedTime))
-                        {
-                            return DateTime.Parse(publishedTime.GetString());
-                        }
-                    }
-                }
-
-                // 如果无法提取，返回当前时间
-                return DateTime.Now;
-            }
-            catch
-            {
-                return DateTime.Now;
-            }
-        }
-
-        private int EstimateClickRate(JsonElement item)
-        {
-            // 简单的点击率估算逻辑
-            // 可以根据标题长度、关键词匹配等简单启发式方法
-            int baseRate = 100;
-
-            // 标题包含关键词加分
-            int titleBonus = item.TryGetProperty("title", out var title) &&
-                             title.GetString().Contains("热门") ? 50 : 0;
-
-            // 链接质量加分
-            int linkBonus = item.TryGetProperty("link", out var link) &&
-                            (link.GetString().Contains(".edu") || link.GetString().Contains(".gov")) ? 30 : 0;
-
-            return baseRate + titleBonus + linkBonus;
-        }
-
-        public Task<string> SummarizeSearchResults(string query, List<SearchResult> searchResults)
-        {
-
-            // 准备聊天消息
-            var summaries = searchResults.Take(5).Select(r =>
-    $"标题: {r.Title}\n链接: {r.Link}\n摘要: {r.Snippet}\n发布日期: {r.PublishedDate:yyyy-MM-dd}\n ").ToList();
-
-            return Task.FromResult(string.Join("\n", summaries));
-        }
-        #endregion
-
-        #region JinaAi相关
-        /// <summary>
-        /// JinaAi页面抓取api
-        /// </summary>
-        /// <param name="query"></param>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        public async Task<string> JinaAiRead(string query, CancellationToken cancellationToken)
-        {
-
-            if (cancellationToken.IsCancellationRequested) return await Task.FromResult(string.Empty);
-            var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
-            var apiEndpoint = $"https://r.jina.ai";
-
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-            //client.DefaultRequestHeaders.Add("Accept", "text/event-stream");
-            client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
-            //client.DefaultRequestHeaders.Add("X-Return-Format", "text");
-            var requestContent = new
-            {
-                url = query
-
-
-            };
-
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (response.StatusCode == System.Net.HttpStatusCode.OK)
-            {
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadAsStringAsync(cancellationToken);
-            }
-            else
-            {
-                return await Task.FromResult(string.Empty);
-            }
-        }
-
-        public async Task<JinaSearchResult> JinaAiSearch(string query, CancellationToken cancellationToken, int searchtermCount, int searchMaxCount, bool isNoCache = false, bool isdirect = true)
-        {
-            int Rerankcount = 3;
-            if (cancellationToken.IsCancellationRequested) return await Task.FromResult(new JinaSearchResult());
-            var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
-            var apiEndpoint = $"https://s.jina.ai";
-
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-            client.DefaultRequestHeaders.Add("Accept", "application/json");
-            client.DefaultRequestHeaders.Add("X-Retain-Images", "none");
-            //client.DefaultRequestHeaders.Add("X-Return-Format", "text");
-            if (isdirect)
-            {
-                client.DefaultRequestHeaders.Add("X-Engine", "direct");
-            }
-            if (isNoCache)
-            {
-                client.DefaultRequestHeaders.Add("X-No-Cache", "true");
-            }
-
-            int searchCount1 = searchMaxCount / searchtermCount;
-            if (searchCount1 == 0)
-            {
-                searchCount1 = 1;
-            }
-            if (searchCount1 > 5)
-            {
-                searchCount1 = 5;
-            }
-
-            //int rerankcount1 = searchMaxCount / searchtermCount;
-            //if (rerankcount1 == 0)
-            //{
-            //    rerankcount1 = 1;
-            //}
-            //if (rerankcount1 > 3)
-            //{
-            //    rerankcount1 = 3;
-            //}
-            var requestContent = new
-
-            {
-                q = query,
-                count = searchCount1
-
-            };
-
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (response.StatusCode == System.Net.HttpStatusCode.OK)
-            {
-                response.EnsureSuccessStatusCode();
-                string rsteing = await response.Content.ReadAsStringAsync(cancellationToken);
-                var jinaSearchResult = JsonSerializer.Deserialize<JinaSearchResult>(rsteing);
-
-                JinaAiRerank(query, jinaSearchResult, cancellationToken, Rerankcount);
-                return jinaSearchResult;
-            }
-            else
-            {
-                return await Task.FromResult(new JinaSearchResult());
-            }
-        }
-
-        //public async void JinaAiRerank(string query, JinaSearchResult jinaSearchResult, CancellationToken cancellationToken, int rerankCount = 3)
-        //{
-
-        //    if (cancellationToken.IsCancellationRequested) return ;
-        //    var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
-        //    var apiEndpoint = $"https://api.jina.ai/v1/rerank";
-
-        //    var client = _httpClientFactory.CreateClient();
-        //    client.Timeout = TimeSpan.FromMinutes(30);
-
-        //    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-        //    jinaSearchResult.AddIndex();
-
-        //    List<string> list = jinaSearchResult.ToData();
-        //    var requestContent = new
-        //    {
-        //        model= "jina-reranker-v2-base-multilingual",
-        //        query= query,
-        //        top_n= rerankCount,
-        //        documents = list
-
-        //    };
-
-        //    var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-        //    {
-        //        Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-        //    }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        //    if (response.StatusCode == System.Net.HttpStatusCode.OK)
-        //    {
-        //        response.EnsureSuccessStatusCode();
-        //        string rsteing = await response.Content.ReadAsStringAsync(cancellationToken);
-        //        var jinaRerankResult = JsonSerializer.Deserialize<JinaRerankResult>(rsteing);
-        //       jinaSearchResult.UpdateRerank(jinaRerankResult);
-
-        //    }
-        //    else
-        //    {
-        //        return ;
-        //    }
-        //}
-
-        public async void JinaAiRerank(string query, JinaSearchResult jinaSearchResult, CancellationToken cancellationToken, int rerankCount = 3)
-        {
-
-
-            var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
-            var apiEndpoint = $"https://api.jina.ai/v1/rerank";
-
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            foreach (var item in jinaSearchResult.Data)
-            {
-
-
-
-                var requestContent = new
-                {
-                    model = "jina-reranker-v2-base-multilingual",
-                    query = query,
-                    top_n = rerankCount,
-                    documents = (new TextSplitter()).Split(item.Content)
-
-                };
-
-                var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead);
-                if (response.StatusCode == System.Net.HttpStatusCode.OK)
-                {
-                    response.EnsureSuccessStatusCode();
-                    string rsteing = await response.Content.ReadAsStringAsync();
-                    var jinaRerankResult = JsonSerializer.Deserialize<JinaRerankResult>(rsteing);
-                    if (jinaRerankResult != null)
-                    {
-                        StringBuilder sb = new StringBuilder();
-                        for (int i = 0; i < System.Math.Min(jinaRerankResult.Results.Count, rerankCount); i++)
-                        {
-                            sb.AppendLine(jinaRerankResult.Results[i].Document.Text);
-                        }
-                        item.Content = sb.ToString();
-                    }
-
-                }
-                else
-                {
-                    return;
-                }
-            }
-
-
-
-        }
-
-        /// <summary>
-        /// 抓取并清洗数据
-        /// </summary>
-        /// <param name="searchResults"></param>
-        /// <param name="modelconfg"></param>
-        /// <param name="searchterm"></param>
-        /// <param name="outinfo"></param>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        //public async IAsyncEnumerable<string> SearchResults(List<JinaSearchResult> searchResults, ChatModelConfig modelconfg, string searchterm, StringBuilder outinfo, CancellationToken cancellationToken)
-        //{
-
-        //    string resultliat = string.Empty;
-        //    JinaSearch js = new JinaSearch(_httpClientFactory);
-        //    foreach (var item in searchResults)
-        //    {
-        //        js.JinaAiRerank(searchterm, item);
-        //        foreach (var dataitem in item.Data)
-        //        {
-        //            {
-        //                string bh = (searchResults.IndexOf(item) + 1).ToString();
-        //                yield return "<details>";
-        //                yield return $"\n<summary>{bh} 读取分析：{dataitem.Title}</summary>";
-        //                yield return $"\n\n链接： {dataitem.Url}";
-
-        //                if (!string.IsNullOrEmpty(dataitem.Content))
-        //                {
-        //                    string info = string.Empty;
-
-
-
-        //                    if (!string.IsNullOrEmpty(info))
-        //                    {
-
-        //                        outinfo.Append('\n');
-        //                        outinfo.Append(JsonSerializer.Serialize(new
-        //                        {
-        //                            Title = dataitem.Title,
-        //                            Url = dataitem.Url,
-        //                            Description = dataitem.Description,
-
-        //                            Content = info
-        //                        }, _jsonOptions));
-
-
-        //                        yield return $"\n\n内容摘要：\n\n{info}";
-
-        //                    }
-        //                }
-        //            }
-        //            yield return "\n</details>\n";
-
-
-        //        }
-        //        yield return "\n";
-        //        yield return "\n";
-        //        yield return "---";
-        //        yield return "\n";
-        //        yield return "\n";
-        //    }
-        //}
-
-        /// <summary>
-        /// 抓取方法
-        /// </summary>
-        /// <param name="item"></param>
-        /// <param name="token"></param>
-        /// <returns></returns>
-        private async Task<string> ProcessSearchResult(SearchResult item, CancellationToken token)
-        {
-            try
-            {
-                return await JinaAiRead(item.Link, token);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"处理链接 {item.Link} 时出错");
-                return string.Empty;
-            }
-        }
-        #endregion
+        
 
         #endregion
 
@@ -591,20 +177,6 @@ namespace ChatBot.Web.Services
 
                 switch (config.ChatModelType)
                 {
-                    case ChatModelType.Llama:
-                        await foreach (var item in GenerateStreamViallama32Async(config, request, cancellationToken))
-                        {
-                            yield return item;
-                        }
-                        break;
-                    case ChatModelType.QwenVl:
-                        {
-                            await foreach (var item in GenerateStreamViaVLAsync(config, request, cancellationToken))
-                            {
-                                yield return item;
-                            }
-                            break;
-                        }
                     case ChatModelType.DeepSeek:
                         {
                             await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
@@ -637,24 +209,7 @@ namespace ChatBot.Web.Services
                             }
                             break;
                         }
-                    case ChatModelType.OpenAiDeepResearch:
-                        {
-
-
-                            await foreach (var item in OpenAIDeepResearchAsync(config, request, cancellationToken))
-                            {
-                                yield return item;
-                            }
-                            break;
-                        }
-                    case ChatModelType.GeminiDeepResearch:
-                        {
-                            await foreach (var item in GeminiDeepResearchAsync(config, request, cancellationToken))
-                            {
-                                yield return item;
-                            }
-                            break;
-                        }
+                    
                     case ChatModelType.Dify:
                         // 添加对Dify的支持
 
@@ -694,286 +249,7 @@ namespace ChatBot.Web.Services
             }
         }
 
-        // 阿里平台流式输出 - llama3.2
-        public async IAsyncEnumerable<string> GenerateStreamViallama32Async(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-            client.DefaultRequestHeaders.Add("X-DashScope-SSE", "enable");
-            // 准备请求内容
-            var requestContent = new
-            {
-
-                model = modelconfg.Model,
-                input = new
-                {
-                    messages = ToMessagesllama32(request, modelconfg)
-                }
-                //stream = modelconfg.Stream,
-                //temperature = modelconfg.Temperature,
-                //max_tokens = modelconfg.MaxTokens,
-                //enable_search = modelconfg.EnableSearch,
-                //stream_options = new
-                //{
-                //    include_usage = modelconfg.Include_usage
-                //}
-            };
-
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                yield return "失败: StatusCode " + response.StatusCode.ToString();
-                yield break;
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadLineAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
-                if (line.StartsWith("data:"))
-                {
-                    line = line.Substring(5);
-                    if (line == "[DONE]") break;
-
-                    var chunk = JsonSerializer.Deserialize<llama32ChunkResponse>(line);
-
-                    var content = chunk?.output?.choices?.FirstOrDefault()?.message?.content[0].text;
-                    if (!string.IsNullOrEmpty(content))
-                    {
-                        yield return content;
-                    }
-                }
-            }
-        }
-
-        // 阿里平台流式输出 - 千问VL
-        public async IAsyncEnumerable<string> GenerateStreamViaVLAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            HttpResponseMessage response = null;
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg),
-                    stream = modelconfg.Stream,
-                    temperature = modelconfg.Temperature,
-
-                    stream_options = new
-                    {
-                        include_usage = modelconfg.Include_usage
-                    }
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg),
-                    stream = modelconfg.Stream,
-
-                    stream_options = new
-                    {
-                        include_usage = modelconfg.Include_usage
-                    }
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                yield return "失败: StatusCode " + response.StatusCode.ToString();
-                yield break;
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadLineAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
-                if (line.StartsWith("data: "))
-                {
-                    line = line.Substring(6);
-                    if (line == "[DONE]") break;
-
-                    var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-                    var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
-                    if (!string.IsNullOrEmpty(content))
-                    {
-                        yield return content;
-                    }
-                }
-            }
-        }
-
-        // 阿里平台流式输出 OpenAI 兼容方式
-        public async IAsyncEnumerable<string> GenerateStreamViaOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            HttpResponseMessage response = null;
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg),
-                    stream = modelconfg.Stream,
-                    temperature = modelconfg.Temperature,
-                    enable_search = modelconfg.EnableSearch,
-                    stream_options = new
-                    {
-                        include_usage = modelconfg.Include_usage
-                    }
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg),
-                    stream = modelconfg.Stream,
-
-                    enable_search = modelconfg.EnableSearch,
-                    stream_options = new
-                    {
-                        include_usage = modelconfg.Include_usage
-                    }
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                yield return "失败: StatusCode " + response.StatusCode.ToString();
-                yield break;
-            }
-
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadLineAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
-                if (line.StartsWith("data: "))
-                {
-                    line = line.Substring(6);
-                    if (line == "[DONE]") break;
-
-                    var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-                    var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
-                    bool beging1 = false;
-                    bool end1 = false;
-                    if (!string.IsNullOrEmpty(content))
-                    {
-                        if (modelconfg.Model == "deepseek-r1")
-                        {
-
-
-
-
-                            if (content == "<think>" && !beging1 && !end1)
-                            {
-                                yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
-                                beging1 = true;
-                            }
-                            else
-                            {
-                                if (content == "</think>" && beging1 && !end1)
-                                {
-                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
-                                    end1 = true;
-                                }
-                                else
-                                {
-                                    yield return content;
-                                }
-
-                            }
-
-
-
-                        }
-
-                        else
-                        {
-                            yield return content;
-                        }
-                    }
-                }
-            }
-        }
-
+        
         // 阿里平台流式输出 - DashScope 百练应用调用方式
         public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -1156,104 +432,7 @@ namespace ChatBot.Web.Services
             messages.AddRange(toolsmessages);
             //toolsmessages.Clear();
             List<object> tools = request.EnableSearch
-        ? new List<object>
-        {
-            new
-            {
-                type = "function",
-
-                    name = nameof(JinaAiSearch),
-                    description = "执行网页搜索并返回结果",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new
-                            {
-                                type = "string",
-                                description = "搜索词"
-                            }
-                        },
-                        required = new[] { "query" }
-                    }
-
-            },
-            new
-            {
-                type = "function",
-
-                    name = nameof(GetWeather),
-                    description = "获取天气预报并返回结果",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            city = new
-                            {
-                                type = "string",
-                                description = "城市(用英文表示)"
-                            }
-                        },
-                        required = new[] { "city" }
-                    }
-
-            },
-
-            new
-            {
-                type = "function",
-
-                    name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间。",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                              city = new
-                            {
-
-                            }
-                        },
-                         required = new[] { "city" }
-                    }
-
-            },
-            new
-            {
-                type = "function",
-
-                    name = nameof(SearchTrainTicket),
-                    description = "获取指定日期的火车票、火车车次",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-
-                                startingplace = new
-                            {
-                                type = "string",
-                                description = "起始城市"
-                            },
-                                  arrivalplace = new
-                            {
-                                type = "string",
-                                description = "到达城市"
-                            },
-
-                              date = new
-                            {
-                                type = "string",
-                                description = "出发日期(格式:YYYY-MM-DD)"
-                            }
-                        }
-                       },
-                         required = new[] { "startingplace", "arrivalplace", "date" }
-            }
-        }
+        ? PrepareOpenAiResponsesTools()
         : null;
 
 
@@ -1619,105 +798,7 @@ namespace ChatBot.Web.Services
             messages.AddRange(toolsmessages);
             //toolsmessages.Clear();
             List<object> tools = request.EnableSearch
-        ? new List<object>
-        {
-            new
-            {
-                type = "function",
-                function = new
-                {
-                    name = nameof(JinaAiSearch),
-                    description = "执行网页搜索并返回结果",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new
-                            {
-                                type = "string",
-                                description = "搜索词"
-                            }
-                        },
-                        required = new[] { "query" }
-                    }
-                }
-            },
-            new
-            {
-                type = "function",
-                function = new
-                {
-                    name = nameof(GetWeather),
-                    description = "获取指定城市未来8天天气预报",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            city = new
-                            {
-                                type = "string",
-                                description = "城市(用英文表示)"
-                            }
-                        },
-                        required = new[] { "city" }
-                    }
-                }
-            },
-            new
-            {
-                type = "function",
-                function = new
-                {
-                    name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-
-                        }
-                    }
-                }
-            },
-            new
-            {
-                type = "function",
-                function = new
-                {
-                    name = nameof(SearchTrainTicket),
-                    description = "获取指定日期的火车票、火车车次",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-
-                                startingplace = new
-                            {
-                                type = "string",
-                                description = "起始城市"
-                            },
-                                  arrivalplace = new
-                            {
-                                type = "string",
-                                description = "到达城市"
-                            },
-
-                              date = new
-                            {
-                                type = "string",
-                                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
-                            }
-                        }
-                       ,
-                         required = new[] { "startingplace", "arrivalplace", "date" }
-                    }
-                }
-            }
-        }
+        ? PrepareOpenAiTools()
         : null;
 
 
@@ -1733,7 +814,7 @@ namespace ChatBot.Web.Services
                
 
             };
-            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+            //var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
@@ -1769,7 +850,10 @@ namespace ChatBot.Web.Services
                         if (line.StartsWith("data: "))
                         {
                             line = line.Substring(6);
-                            if (line == "[DONE]") break;
+                            if (line == "[DONE]")
+                            {
+                                break;
+                            }
 
 
                             var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
@@ -1790,15 +874,20 @@ namespace ChatBot.Web.Services
                             }
                             var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
                             var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
+                            var reasoning = chunk?.choices?.FirstOrDefault()?.delta?.reasoning;
+                            if (string.IsNullOrEmpty(reasoning_content))
+                            {
+                                reasoning_content = reasoning;
+                            }
                             if (!string.IsNullOrEmpty(content))
                             {
-                                content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                //content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
 
                                 contentBuilder.Append(content);
                             }
                             if (!string.IsNullOrEmpty(reasoning_content))
                             {
-                                reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                //reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                             }
 
                             if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
@@ -1810,8 +899,10 @@ namespace ChatBot.Web.Services
                                 else
                                 {
                                     int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
-                                    tool_calls[index].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
-
+                                    if (tool_calls.Count > 0)
+                                    {
+                                        tool_calls[tool_calls.Count-1].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
+                                    }
 
                                 }
                                 //continue;
@@ -1941,7 +1032,7 @@ namespace ChatBot.Web.Services
                                     });
 
 
-
+                                   
                                 }
                                 contentBuilder.Clear();
                                 tool_calls.Clear();
@@ -1981,12 +1072,12 @@ namespace ChatBot.Web.Services
                         var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
                         if (!string.IsNullOrEmpty(content))
                         {
-                            content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                            //content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                             contentBuilder.Append(content);
                         }
                         if (!string.IsNullOrEmpty(reasoning_content))
                         {
-                            reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                            //reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                         }
 
                         if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
@@ -2800,50 +1891,7 @@ namespace ChatBot.Web.Services
             }
 
             string Search = string.Empty;
-            if (request.EnableSearch)
-            {
-                string Searchterm = await GeminiSearchtermAsync(modelconfg, request.History[request.History.Count - 1].Content, cancellationToken);
-                SearchTermsResponse Searchtermlist = null;
-                try
-                {
-                    Searchtermlist = JsonSerializer.Deserialize<SearchTermsResponse>(Searchterm);
-                }
-                catch (JsonException ex)
-                {
-                    _logger.LogError(ex, "反序列化 Searchterm 失败");
-                    // 根据需要处理异常，例如返回默认值或重新抛出
-                }
-
-                List<JinaSearchResultData> Searchlist = new List<JinaSearchResultData>();
-
-                if (Searchtermlist == null || Searchtermlist.SearchTerms.Count == 0)
-                {
-                    var list = await JinaAiSearch(request.History[request.History.Count - 1].Content, cancellationToken, 1, maxSearchCount);
-
-                    Searchlist.AddRange(list.Data);
-                }
-                else
-                {
-
-                    for (int i = 0; i < (Searchtermlist.SearchTerms.Count < 3 ? Searchtermlist.SearchTerms.Count : 3); i++)
-                    {
-                        var list = await JinaAiSearch(Searchtermlist.SearchTerms[i], cancellationToken, Searchtermlist.SearchTerms.Count < 3 ? Searchtermlist.SearchTerms.Count : 3, maxSearchCount);
-
-                        Searchlist.AddRange(list.Data);
-                    }
-                }
-                Search = JsonSerializer.Serialize(Searchlist, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                });
-            }
-            if (!string.IsNullOrWhiteSpace(Search))
-            {
-                Search = "\n\n以下是相关资料：\n\n" + Search;
-            }
+            
             // 创建HTTP客户端
             var client = _httpClientFactory.CreateClient();
 
@@ -2960,105 +2008,7 @@ namespace ChatBot.Web.Services
             messages.AddRange(toolsmessages);
             //toolsmessages.Clear();
             List<object> tools = request.EnableSearch
-        ? new List<object>
-        {
-            new
-            {
-                type = "function",
-                function = new
-                {
-                    name = nameof(JinaAiSearch),
-                    description = "执行网页搜索并返回结果",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new
-                            {
-                                type = "string",
-                                description = "搜索词"
-                            }
-                        },
-                        required = new[] { "query" }
-                    }
-                }
-            },
-            new
-            {
-                type = "function",
-                function = new
-                {
-                    name = nameof(GetWeather),
-                    description = "获取天气预报并返回结果",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            city = new
-                            {
-                                type = "string",
-                                description = "城市(用英文表示)"
-                            }
-                        },
-                        required = new[] { "city" }
-                    }
-                }
-            },
-            new
-            {
-                type = "function",
-                function = new
-                {
-                    name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-
-                        }
-                    }
-                }
-            },
-            new
-            {
-                type = "function",
-                function = new
-                {
-                    name = nameof(SearchTrainTicket),
-                    description = "获取指定日期的火车票、火车车次",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-
-                                startingplace = new
-                            {
-                                type = "string",
-                                description = "起始城市"
-                            },
-                                  arrivalplace = new
-                            {
-                                type = "string",
-                                description = "到达城市"
-                            },
-
-                              date = new
-                            {
-                                type = "string",
-                                description = "出发日期(格式:YYYY-MM-DD)"
-                            }
-                        }
-                       ,
-                         required = new[] { "startingplace", "arrivalplace", "date" }
-                    }
-                }
-            }
-        }
+        ? PrepareOpenAiTools()
         : null;
 
 
@@ -3071,9 +2021,16 @@ namespace ChatBot.Web.Services
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 //response_format = ToOpenAischema(),
                 tools = tools,
-                parallel_tool_calls = false
+                provider= new
+                {
+                    order = new List<string>
+                    {
+                        "fireworks"
+                    }
+                }        
+    
 
-            };
+        };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
             {
@@ -3131,15 +2088,20 @@ namespace ChatBot.Web.Services
                             }
                             var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
                             var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
+                            var reasoning = chunk?.choices?.FirstOrDefault()?.delta?.reasoning;
+                            if (string.IsNullOrEmpty(reasoning_content))
+                            {
+                                reasoning_content = reasoning;
+                            }
                             if (!string.IsNullOrEmpty(content))
                             {
-                                content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                //content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
 
                                 contentBuilder.Append(content);
                             }
                             if (!string.IsNullOrEmpty(reasoning_content))
                             {
-                                reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                //reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                             }
 
                             if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
@@ -3151,10 +2113,23 @@ namespace ChatBot.Web.Services
                                 else
                                 {
                                     int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
-                                    tool_calls[index].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
-
+                                    if (tool_calls.Count > 0)
+                                    {
+                                        tool_calls[tool_calls.Count - 1].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
+                                    }
 
                                 }
+                                //if (!string.IsNullOrEmpty(chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault()?.function?.name))
+                                //{
+                                //    tool_calls.Add(chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault());
+                                //}
+                                //else
+                                //{
+                                //    int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
+                                //    tool_calls[index].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
+
+
+                                //}
                                 //continue;
                             }
                             if (!string.IsNullOrEmpty(reasoning_content))
@@ -3485,7 +2460,7 @@ namespace ChatBot.Web.Services
                 messages.Add(new
                 {
                     role = msg.Role,
-                    content = msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content,
+                    content = msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content,
                     // 处理消息中的图片，如果Dify支持的话
                     image_url = msg.Images?.FirstOrDefault()
                 });
@@ -3602,1503 +2577,203 @@ namespace ChatBot.Web.Services
         }
 
 
-        #region 深度研究
-        //Claude 获取聊天消息搜索词
-        public async Task<string> ClaudeSearchtermAsync(ChatModelConfig modelconfg, string searchterm, [EnumeratorCancellation] CancellationToken cancellationToken)
+        #region 工具方法
+        // 创建工具列表
+        private List<object> PrepareOpenAiResponsesTools()
         {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            return new List<object>
             {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("x-api-key", $"{apiKey}");
-            client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-            // 准备请求内容
-            HttpResponseMessage response = null;
-            var contents = new List<object>();
-
-            contents.Add(new
-            {
-                role = "user",
-                content = (new StringBuilder()).Append("要深度研究：")
-                        .Append('\n')
-                        .Append(searchterm)
-                        .Append('\n')
-                        .Append(" ，需要联网搜索权威可信的资料， 要求只输出精准的搜索词并按重要性排序\r\n以 JSON 的形式输出，输出的 JSON 需遵守以下的格式：\r\n\r\n{\r\n\tsearch_terms:[\r\n\t  <搜索关键词>,\r\n\t  <搜索关键词>,\r\n\t]\r\n}").ToString()
-            });
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
+                new
                 {
+                    type = "function",
 
-                    model = modelconfg.Model,
-                    system = modelconfg.Systemprompt,
-                    messages = contents,
-
-                    stream = false,
-                    temperature = modelconfg.Temperature,
-                    max_tokens = modelconfg.MaxTokens,
-
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    system = modelconfg.Systemprompt,
-                    messages = contents,
-
-                    stream = false,
-
-                    max_tokens = modelconfg.MaxTokens,
-
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
-
-            }
-
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadLineAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
-
-                {
-                    var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                    var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                    if (!string.IsNullOrEmpty(content))
-                    {
-                        int beging = content.IndexOf("```json");
-                        if (beging >= 0)
+                        name = nameof(JinaAiSearch),
+                        description = "执行网页搜索并返回结果",
+                        parameters = new
                         {
-                            int end = content.IndexOf("```", 7 + beging);
-                            if (end > 0 && end > beging)
+                            type = "object",
+                            properties = new
                             {
-                                content = content.Substring(beging + 7, end - beging - 7);
-
-                            }
-                        }
-                        return await Task.FromResult(content);
-
-                    }
-                }
-            }
-            return await Task.FromResult(string.Empty);
-        }
-        public async IAsyncEnumerable<string> OpenAIDeepResearchAsync(ChatModelConfig modelconfg, ChatRequest request, List<object> toolsmessages, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            using (var client = _httpClientFactory.CreateClient())
-            {
-                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-                HttpResponseMessage response = null;
-                StringContent content1 = null;
-                List<object> tools = new List<object>();
-
-                var messages = ToMessagesOpenAi(request, modelconfg, generateSystemPrompt("", request.History[request.History.Count - 1].Content));
-                if (toolsmessages == null)
-                {
-                    toolsmessages = new List<object>();
-                }
-
-
-                messages.AddRange(toolsmessages);
-
-                if (request.EnableSearch)
-                {
-                    var Search = new
-                    {
-                        type = "function",
-                        function = new
-                        {
-                            name = nameof(JinaAiSearch),
-                            description = "执行网页搜索并返回结果",
-                            parameters = new
-                            {
-                                type = "object",
-                                properties = new
+                                query = new
                                 {
-                                    query = new
-                                    {
-                                        type = "string",
-                                        description = "搜索词"
+                                    type = "string",
+                                    description = "搜索词"
+                                }
+                            },
+                            required = new[] { "query" }
+                        }
 
-                                    }
+                },
+                new
+                {
+                    type = "function",
+
+                        name = nameof(GetWeather),
+                        description = "获取天气预报并返回结果",
+                        parameters = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                city = new
+                                {
+                                    type = "string",
+                                    description = "城市(用英文表示)"
+                                }
+                            },
+                            required = new[] { "city" }
+                        }
+
+                },
+                new
+                {
+                    type = "function",
+
+                        name = nameof(GetCurrentDataTime),
+                        description = "获取当前日期和时间。",
+                        parameters = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                  city = new
+                                {
+
+                                }
+                            },
+                             required = new[] { "city" }
+                        }
+
+                },
+                new
+                {
+                    type = "function",
+
+                        name = nameof(SearchTrainTicket),
+                        description = "获取指定日期的火车票、火车车次",
+                        parameters = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+
+                                    startingplace = new
+                                {
+                                    type = "string",
+                                    description = "起始城市"
                                 },
-                                required = new[] { "query" }
-                            }
-                        }
-                    };
-                    tools.Add(Search);
-                }
-                if (modelconfg.Temperature >= 0)
-                {
-                    if (request.EnableSearch)
-                    {
-                        var requestContent = new
-                        {
-
-                            model = modelconfg.Model,
-                            messages = messages,
-                            stream = modelconfg.Stream,
-                            temperature = modelconfg.Temperature,
-                            tool_choice = "auto",
-                            tools = tools,
-                        };
-                        content1 = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json");
-                    }
-                    else
-                    {
-                        var requestContent = new
-                        {
-
-                            model = modelconfg.Model,
-                            messages = messages,
-                            stream = modelconfg.Stream,
-                            temperature = modelconfg.Temperature,
-
-                        };
-                        content1 = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json");
-                    }
-
-                }
-                else
-                {
-                    if (request.EnableSearch)
-                    {
-                        var requestContent = new
-                        {
-
-                            model = modelconfg.Model,
-                            messages = messages,
-                            stream = modelconfg.Stream,
-                            tool_choice = "auto",
-                            tools = tools,
-
-                        };
-                        content1 = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json");
-                    }
-                    else
-                    {
-                        var requestContent = new
-                        {
-
-                            model = modelconfg.Model,
-                            messages = messages,
-                            stream = modelconfg.Stream,
-
-
-                        };
-                        content1 = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json");
-                    }
-                }
-                ;
-
-
-                using (response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
-                {
-                    Content = content1
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
-                {
-
-
-
-                    if (response.StatusCode != System.Net.HttpStatusCode.OK)
-                    {
-                        yield return "失败: StatusCode " + response.StatusCode.ToString();
-                        yield break;
-                    }
-                    response.EnsureSuccessStatusCode();
-
-                    using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-                    using var reader = new StreamReader(stream);
-                    bool beging = false;
-                    bool end = false;
-                    bool beging1 = false;
-                    bool end1 = false;
-                    List<tool_call> tool_calls = new();
-                    string content10 = string.Empty;
-                    while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-                    {
-
-                        if (modelconfg.Stream)
-                        {
-                            var line = await reader.ReadLineAsync(cancellationToken);
-                            if (string.IsNullOrEmpty(line)) continue;
-                            if (line.StartsWith("data: "))
-                            {
-                                line = line.Substring(6);
-                                if (line == "[DONE]") break;
-
-                                var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-                                var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
-                                var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
-                                content10 += content;
-                                if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
+                                      arrivalplace = new
                                 {
-                                    if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault()?.type == "function")
-                                    {
-                                        tool_calls.Add(chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault());
-                                    }
-                                    else
-                                    {
-                                        int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
-                                        tool_calls[index].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
+                                    type = "string",
+                                    description = "到达城市"
+                                },
 
-                                        //&& (chunk?.choices?.FirstOrDefault()?.finish_reason == "tool_calls")
-                                    }
-                                    //continue;
-                                }
-                                if (tool_calls.Count > 0 && (chunk?.choices?.FirstOrDefault()?.finish_reason == "tool_calls" || chunk?.choices?.FirstOrDefault()?.finish_reason == "stop"))
+                                  date = new
                                 {
-                                    List<object> tool_calls1 = new List<object>();
-                                    tool_calls1.AddRange(tool_calls);
-                                    toolsmessages.Add(new
-                                    {
-                                        role = "assistant",
-
-                                        content = content10,
-                                        tool_calls = tool_calls1
-                                    });
-
-                                    foreach (var pair in tool_calls)
-                                    {
-                                        string toolResult = string.Empty;
-                                        switch (pair.function.name)
-                                        {
-                                            case nameof(JinaAiSearch):
-                                                {
-                                                    using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                    bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-
-                                                    if (!query)
-                                                    {
-                                                        throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                    }
-                                                    toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
-                                                    break;
-                                                }
-                                            default:
-                                                {
-                                                    yield return "未知工具调用";
-                                                    break;
-                                                }
-                                        }
-
-                                        toolsmessages.Add(new
-                                        {
-                                            role = "tool",
-                                            tool_call_id = pair.id,
-                                            content = toolResult
-                                        });
-
-
-
-                                    }
-                                    content10 = string.Empty;
-                                    tool_calls.Clear();
-                                    response.Content.Dispose();
-                                    await foreach (var item in OpenAIDeepResearchAsync(modelconfg, request, toolsmessages, cancellationToken))
-                                    {
-                                        yield return item;
-                                    }
-                                    break;
-                                }
-
-                                if (!string.IsNullOrEmpty(reasoning_content))
-                                {
-                                    if (!beging)
-                                    {
-                                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
-                                        beging = true;
-                                    }
-                                    else
-                                    {
-                                        yield return reasoning_content;
-
-                                    }
-
-                                }
-                                if (!string.IsNullOrEmpty(content))
-                                {
-                                    if (beging && !end)
-                                    {
-                                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                                        end = true;
-                                    }
-                                    else
-                                    {
-                                        if (content == "<think>" && !beging1 && !end1)
-                                        {
-                                            yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
-                                            beging1 = true;
-                                        }
-                                        else
-                                        {
-                                            if (content == "</think>" && beging1 && !end1)
-                                            {
-                                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
-                                                end1 = true;
-                                            }
-                                            else
-                                            {
-                                                yield return content;
-                                            }
-
-                                        }
-
-                                    }
-
-                                }
-
-                            }
-                        }
-                        else
-                        {
-                            var line = await reader.ReadToEndAsync(cancellationToken);
-                            if (string.IsNullOrEmpty(line)) continue;
-                            var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                            var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                            var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
-                            content10 += content;
-                            if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
-                            {
-
-
-                                var toolCalls = chunk?.choices?.FirstOrDefault()?.message?.tool_calls;
-                                if (toolCalls != null)
-                                {
-                                    tool_calls.AddRange(toolCalls.Cast<tool_call>());
-                                }
-                                if (tool_calls.Count > 0)
-                                {
-                                    List<object> tool_calls1 = new List<object>();
-                                    tool_calls1.AddRange(tool_calls);
-                                    toolsmessages.Add(new
-                                    {
-                                        role = "assistant",
-
-                                        content = content10,
-                                        tool_calls = tool_calls1
-                                    });
-
-                                    foreach (var pair in tool_calls)
-                                    {
-                                        string toolResult = string.Empty;
-                                        switch (pair.function.name)
-                                        {
-                                            case nameof(JinaAiSearch):
-                                                {
-                                                    using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                    bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-
-                                                    if (!query)
-                                                    {
-                                                        throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                    }
-                                                    toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
-                                                    break;
-                                                }
-                                            default:
-                                                {
-                                                    yield return "未知工具调用";
-                                                    break;
-                                                }
-                                        }
-
-                                        toolsmessages.Add(new
-                                        {
-                                            role = "tool",
-                                            tool_call_id = pair.id,
-                                            content = toolResult
-                                        });
-
-
-
-                                    }
-                                    content10 = string.Empty;
-                                    tool_calls.Clear();
-                                    response.Content.Dispose();
-                                    await foreach (var item in OpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
-                                    {
-                                        yield return item;
-                                    }
-                                    break;
+                                    type = "string",
+                                    description = "出发日期(格式:YYYY-MM-DD)"
                                 }
                             }
-
-                            if (!string.IsNullOrEmpty(reasoning_content))
-                            {
-                                reasoning_content = "<think>" + reasoning_content + "</think>";
-                                reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                                reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                                yield return reasoning_content + content;
-                            }
-                            if (!string.IsNullOrEmpty(content))
-                            {
-                                content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                                content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                                yield return content;
-                            }
-                        }
-                    }
+                           },
+                             required = new[] { "startingplace", "arrivalplace", "date" }
                 }
-            }
+            };
         }
-        //OpenAI 获取聊天消息搜索词
-        public async Task<string> DeepseekOpenAISearchtermAsync(ChatModelConfig modelconfg, string searchterm, [EnumeratorCancellation] CancellationToken cancellationToken)
+        private List<object> PrepareOpenAiTools()
         {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            return new List<object>
+    {
+        new
+        {
+            type = "function",
+            function = new
             {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            string Search = string.Empty;
-
-
-            HttpResponseMessage response = null;
-            var contents = new List<object>();
-            contents.Add(new
-            {
-                role = "user",
-                content = (new StringBuilder()).Append("要深度研究：")
-                        .Append('\n')
-                        .Append(searchterm)
-                        .Append('\n')
-                        .Append(" ，需要联网搜索权威可信的资料， 要求只输出精准的搜索词并按重要性排序\r\n以 JSON 的形式输出，输出的 JSON 需遵守以下的格式：\r\n\r\n{\r\n\tsearch_terms:[\r\n\t  <搜索关键词>,\r\n\t  <搜索关键词>,\r\n\t]\r\n}").ToString()
-            });
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
+                name = nameof(JinaAiSearch),
+                description = "执行网页搜索并返回结果",
+                parameters = new
                 {
-
-                    model = modelconfg.Model,
-                    messages = contents,
-                    stream = false,
-                    temperature = modelconfg.Temperature,
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = contents,
-                    stream = false,
-
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
-
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadToEndAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
-
-
-                var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                if (!string.IsNullOrEmpty(content))
-                {
-
-                    int beging = content.IndexOf("```json");
-                    if (beging >= 0)
+                    type = "object",
+                    properties = new
                     {
-                        int end = content.IndexOf("```", 7 + beging);
-                        if (end > 0 && end > beging)
+                        query = new
                         {
-                            content = content.Substring(beging + 7, end - beging - 7);
-                            //return await Task.FromResult(content);
+                            type = "string",
+                            description = "搜索词"
                         }
-                    }
-                    return await Task.FromResult(content);
+                    },
+                    required = new[] { "query" }
                 }
-
             }
-            return await Task.FromResult(string.Empty);
-        }
-        //OpenAI 获取聊天消息搜索词
-        public async Task<string> OpenAISearchtermAsync(ChatModelConfig modelconfg, string searchterm, [EnumeratorCancellation] CancellationToken cancellationToken)
+        },
+        new
         {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            type = "function",
+            function = new
             {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            string Search = string.Empty;
-
-
-            HttpResponseMessage response = null;
-            var contents = new List<object>();
-            contents.Add(new
-            {
-                role = "user",
-                content = (new StringBuilder()).Append("要深度研究：")
-                        .Append('\n')
-                        .Append(searchterm)
-                        .Append('\n')
-                        .Append(" ，需要联网搜索权威可信的资料， 要求只输出精准的搜索词并按重要性排序\r\n以 JSON 的形式输出，输出的 JSON 需遵守以下的格式：\r\n\r\n{\r\n\tsearch_terms:[\r\n\t  <搜索关键词>,\r\n\t  <搜索关键词>,\r\n\t]\r\n}").ToString()
-            });
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
+                name = nameof(GetWeather),
+                description = "获取指定城市未来8天天气预报",
+                parameters = new
                 {
-
-                    model = modelconfg.Model,
-                    messages = contents,
-                    stream = false,
-                    temperature = modelconfg.Temperature,
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = contents,
-                    stream = false,
-
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
-
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadToEndAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
-
-
-                var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                if (!string.IsNullOrEmpty(content))
-                {
-
-                    int beging = content.IndexOf("```json");
-                    if (beging >= 0)
+                    type = "object",
+                    properties = new
                     {
-                        int end = content.IndexOf("```", 7 + beging);
-                        if (end > 0 && end > beging)
+                        city = new
                         {
-                            content = content.Substring(beging + 7, end - beging - 7);
-                            //return await Task.FromResult(content);
+                            type = "string",
+                            description = "城市(用英文表示)"
                         }
-                    }
-                    return await Task.FromResult(content);
+                    },
+                    required = new[] { "city" }
                 }
-
             }
-            return await Task.FromResult(string.Empty);
-        }
-        //OpenAI 提取相关信息
-        public async Task<string> OpenAIExtractAsync(ChatModelConfig modelconfg, string searchterm, string info, [EnumeratorCancellation] CancellationToken cancellationToken)
+        },
+        new
         {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            type = "function",
+            function = new
             {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            string Search = string.Empty;
-
-
-            HttpResponseMessage response = null;
-            var contents = new List<object>();
-            contents.Add(new
-            {
-                role = "user",
-                content = ((new StringBuilder()).Append("请提取 ")
-                .Append('\n')
-                .Append('[')
-                .Append(info)
-                .Append(']')
-                .Append('\n')
-                .Append(" 中与 ")
-                .Append('\n')
-                .Append('[')
-                .Append(searchterm)
-                .Append(']')
-                 .Append('\n')
-                .Append("相关的关键信息，不做其他操作。")
-                .ToString())
-            });
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
+                name = nameof(GetCurrentDataTime),
+                description = "获取当前日期和时间",
+                parameters = new
                 {
-
-                    model = modelconfg.Model,
-                    messages = contents,
-                    stream = true,
-                    temperature = modelconfg.Temperature,
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = contents,
-                    stream = false,
-
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
-
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadToEndAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
-
-
-                var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                if (!string.IsNullOrEmpty(content))
-                {
-
-                    return await Task.FromResult(content);
+                    type = "object",
+                    properties = new { }
                 }
-
             }
-            return await Task.FromResult(string.Empty);
-        }
-        //OpenAI 深度研究子项目
-        public async Task<string> OpenAIDeepResearchSubAsync(ChatModelConfig modelconfg, string searchterm, string info, [EnumeratorCancellation] CancellationToken cancellationToken)
+        },
+        new
         {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            type = "function",
+            function = new
             {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            string Search = string.Empty;
-
-            Search = generateSystemPrompt(info, searchterm);
-            HttpResponseMessage response = null;
-            var contents = new List<object>();
-            contents.Add(new
-            {
-                role = "user",
-                content = Search
-            });
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
+                name = nameof(SearchTrainTicket),
+                description = "获取指定日期的火车票、火车车次",
+                parameters = new
                 {
-
-                    model = modelconfg.Model,
-                    messages = contents,
-                    stream = true,
-                    temperature = modelconfg.Temperature,
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = contents,
-                    stream = false,
-
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
-
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadToEndAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
-
-
-                var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                if (!string.IsNullOrEmpty(content))
-                {
-
-                    return await Task.FromResult(content);
-                }
-
-            }
-            return await Task.FromResult(string.Empty);
-        }
-        //OpenAI 深度研究
-        public async IAsyncEnumerable<string> OpenAIDeepResearchAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            string Searchterm = await OpenAISearchtermAsync(modelconfg, request.History[request.History.Count - 1].Content, cancellationToken);
-            SearchTermsResponse Searchtermlist = null;
-            try
-            {
-                Searchtermlist = JsonSerializer.Deserialize<SearchTermsResponse>(Searchterm);
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogError(ex, "反序列化 Searchterm 失败");
-                // 根据需要处理异常，例如返回默认值或重新抛出
-            }
-            string Search = string.Empty;
-            List<JinaSearchResult> Searchlist = new List<JinaSearchResult>();
-            JinaSearch js = new JinaSearch(_httpClientFactory);
-            //if (Searchtermlist == null || Searchtermlist.SearchTerms.Count == 0)
-            //{
-            //    var list = await js.JinaAiSearch(request.History[request.History.Count - 1].Content);
-
-            //    Searchlist.Add(list);
-            //}
-            //else
-            //{
-
-            //    for (int i = 0; i < Searchtermlist.SearchTerms.Count; i++)
-            //    {
-            //        var list = await js.JinaAiSearch(Searchtermlist.SearchTerms[i]);
-
-            //        Searchlist.Add(list);
-            //    }
-            //}
-
-            Search = JsonSerializer.Serialize<List<JinaSearchResult>>(Searchlist, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
-
-            Search = generateSystemPrompt(Search, request.History.Last().Content);
-            int num1 = CalculateTokens(Search);
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-
-
-            HttpResponseMessage response = null;
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg, Search),
-                    stream = modelconfg.Stream,
-                    temperature = modelconfg.Temperature,
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg, Search),
-                    stream = modelconfg.Stream,
-
-
-                };
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                yield return "OpenAi 深度研究失败 StatusCode= " + response.StatusCode.ToString();
-                yield break;
-            }
-            response.EnsureSuccessStatusCode();
-
-            var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadLineAsync(cancellationToken);
-                if (string.IsNullOrEmpty(line)) continue;
-                if (modelconfg.Stream)
-                {
-                    if (line.StartsWith("data: "))
+                    type = "object",
+                    properties = new
                     {
-                        line = line.Substring(6);
-                        if (line == "[DONE]") break;
-
-                        var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-                        var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
-                        if (!string.IsNullOrEmpty(content))
+                        startingplace = new
                         {
-                            yield return content;
-                        }
-                    }
-                }
-                else
-                {
-                    var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                    var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                    if (!string.IsNullOrEmpty(content))
-                    {
-                        yield return content;
-                    }
-                }
-            }
-        }
-
-        //Gemini 获取聊天消息搜索词
-        public async Task<string> GeminiSearchtermAsync(ChatModelConfig modelconfg, string searchterm, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-            apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("配置缺失");
-            }
-
-            apiEndpoint = apiEndpoint + $":generateContent?key={apiKey}";
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-
-            HttpResponseMessage response = null;
-            var contents = new List<object>();
-            var contentlist = new List<object>();
-            contentlist.Add(new
-            {
-                text = (new StringBuilder()).Append("要深度研究：")
-                        .Append('\n')
-                        .Append(searchterm)
-                        .Append('\n')
-                        .Append(" ，需要联网搜索权威可信的资料， 要求只输出精准的搜索词并按重要性排序\r\n以 JSON 的形式输出，输出的 JSON 需遵守以下的格式：\r\n\r\n{\r\n\tsearch_terms:[\r\n\t  <搜索关键词>,\r\n\t  <搜索关键词>,\r\n\t]\r\n}").ToString()
-            });
-
-            contents.Add(new
-            {
-                role = "user",
-                parts = contentlist
-            });
-
-            if (modelconfg.Temperature >= 0)
-            {
-
-                var requestContent = new
-                {
-                    system_instruction = new
-                    {
-                        parts = new { text = "" }
-                    },
-                    contents = contents,
-                    generationConfig = new { temperature = modelconfg.Temperature }
-
-                };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            else
-            {
-                var requestContent = new
-                {
-                    system_instruction = new
-                    {
-                        parts = new { text = "" }
-                    },
-                    contents = contents,
-
-                };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
-
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-
-
-
-                var line = await reader.ReadToEndAsync(cancellationToken);
-
-                var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
-                var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
-
-                if (!string.IsNullOrEmpty(content))
-                {
-                    int beging = content.IndexOf("```json");
-                    if (beging >= 0)
-                    {
-                        int end = content.IndexOf("```", 7 + beging);
-                        if (end > 0 && end > beging)
+                            type = "string",
+                            description = "起始城市"
+                        },
+                        arrivalplace = new
                         {
-                            content = content.Substring(beging + 7, end - beging - 7);
-
-                        }
-                    }
-                    return await Task.FromResult(content);
-
-
-                }
-
-
-            }
-            return await Task.FromResult(string.Empty);
-        }
-        //Gemini 获取聊天消息搜索词
-        public async Task<string> GeminiExtractAsync(ChatModelConfig modelconfg, string searchterm, string info, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-            apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("配置缺失");
-            }
-
-            apiEndpoint = apiEndpoint + $":generateContent?key={apiKey}";
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-
-            HttpResponseMessage response = null;
-            var contents = new List<object>();
-            var contentlist = new List<object>();
-            contentlist.Add(new
-            {
-                text = ((new StringBuilder()).Append("请提取 ")
-                .Append('\n')
-                .Append('[')
-                .Append(info)
-                .Append(']')
-                .Append('\n')
-                .Append(" 中与 ")
-                .Append('\n')
-                .Append('[')
-                .Append(searchterm)
-                .Append(']')
-                 .Append('\n')
-                .Append("相关的关键信息，不做其他操作。")
-                .ToString())
-            });
-
-            contents.Add(new
-            {
-                role = "user",
-                parts = contentlist
-            });
-
-            if (modelconfg.Temperature >= 0)
-            {
-
-                var requestContent = new
-                {
-                    system_instruction = new
-                    {
-                        parts = new { text = "" }
-                    },
-                    contents = contents,
-                    generationConfig = new { temperature = modelconfg.Temperature }
-
-                };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            else
-            {
-                var requestContent = new
-                {
-                    system_instruction = new
-                    {
-                        parts = new { text = "" }
-                    },
-                    contents = contents,
-
-                };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
-
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadToEndAsync(cancellationToken);
-                var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
-                var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
-
-                if (!string.IsNullOrEmpty(content))
-                {
-
-                    return await Task.FromResult(content);
-
-                }
-
-
-            }
-            return await Task.FromResult(string.Empty);
-        }
-        public async Task<string> GeminiDeepResearchSubAsync(ChatModelConfig modelconfg, string searchterm, string info, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-            apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("配置缺失");
-            }
-
-            apiEndpoint = apiEndpoint + $":generateContent?key={apiKey}";
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            string Search = string.Empty;
-
-            Search = generateSystemPrompt(info, searchterm);
-
-            HttpResponseMessage response = null;
-            var contents = new List<object>();
-            var contentlist = new List<object>();
-            contentlist.Add(new
-            {
-                text = Search
-            });
-
-            contents.Add(new
-            {
-                role = "user",
-                parts = contentlist
-            });
-
-            if (modelconfg.Temperature >= 0)
-            {
-
-                var requestContent = new
-                {
-                    system_instruction = new
-                    {
-                        parts = new { text = "" }
-                    },
-                    contents = contents,
-                    generationConfig = new { temperature = modelconfg.Temperature }
-
-                };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            else
-            {
-                var requestContent = new
-                {
-                    system_instruction = new
-                    {
-                        parts = new { text = "" }
-                    },
-                    contents = contents,
-
-                };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                return await Task.FromResult("错误：StatusCode " + response.StatusCode.ToString());
-
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-                var line = await reader.ReadToEndAsync(cancellationToken);
-                var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
-                var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
-
-                if (!string.IsNullOrEmpty(content))
-                {
-
-                    return await Task.FromResult(content);
-
-                }
-
-
-            }
-            return await Task.FromResult(string.Empty);
-        }
-        //Gemini 深度研究
-        public async IAsyncEnumerable<string> GeminiDeepResearchAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-            apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
-
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("配置缺失");
-            }
-            if (modelconfg.Stream)
-            {
-                apiEndpoint = apiEndpoint + $":streamGenerateContent?alt=sse&key={apiKey}";
-
-            }
-            else
-            {
-                apiEndpoint = apiEndpoint + $":generateContent?key={apiKey}";
-            }
-
-            string Searchterm = await GeminiSearchtermAsync(modelconfg, request.History[request.History.Count - 1].Content, cancellationToken);
-            SearchTermsResponse Searchtermlist = null;
-            try
-            {
-                Searchtermlist = JsonSerializer.Deserialize<SearchTermsResponse>(Searchterm);
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogError(ex, "反序列化 Searchterm 失败");
-                // 根据需要处理异常，例如返回默认值或重新抛出
-            }
-            string Search = string.Empty;
-            List<JinaSearchResult> Searchlist = new List<JinaSearchResult>();
-            JinaSearch js = new JinaSearch(_httpClientFactory);
-            //if (Searchtermlist == null || Searchtermlist.SearchTerms.Count == 0)
-            //{
-            //    var list = await js.JinaAiSearch(request.History[request.History.Count - 1].Content);
-
-            //    Searchlist.Add(list);
-            //}
-            //else
-            //{
-
-            //    for (int i = 0; i < Searchtermlist.SearchTerms.Count; i++)
-            //    {
-            //        var list = await js.JinaAiSearch(Searchtermlist.SearchTerms[i]);
-
-            //        Searchlist.Add(list);
-            //    }
-            //}
-            StringBuilder sb = new StringBuilder();
-
-            //await foreach (var item in SearchResults(Searchlist, modelconfg, request.History[request.History.Count - 1].Content, sb, cancellationToken))
-            //{
-            //    yield return item;
-            //}
-            Search = sb.ToString();
-            Search = generateSystemPrompt(Search, request.History.Last().Content);
-            int num1 = CalculateTokens(Search);
-
-
-
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-
-            HttpResponseMessage response = null;
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
-                {
-                    system_instruction = new
-                    {
-                        parts = new { text = modelconfg.Systemprompt }
-                    },
-
-                    contents = ToMessagesGemini(request, modelconfg, Search),
-                    generationConfig = new { temperature = modelconfg.Temperature }
-
-
-                };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            }
-            else
-            {
-                var requestContent = new
-                {
-                    system_instruction = new
-                    {
-                        parts = new { text = modelconfg.Systemprompt }
-                    },
-
-                    contents = ToMessagesGemini(request, modelconfg, Search),
-
-
-
-                };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                yield return "Gemini 深度研究失败 StatusCode= " + response.StatusCode.ToString();
-                yield break;
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-            {
-
-                if (modelconfg.Stream)
-                {
-                    var line = await reader.ReadLineAsync(cancellationToken);
-                    if (string.IsNullOrEmpty(line)) continue;
-                    if (line.StartsWith("data: "))
-                    {
-                        line = line.Substring(6);
-
-                        var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
-                        var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
-
-                        if (!string.IsNullOrEmpty(content))
+                            type = "string",
+                            description = "到达城市"
+                        },
+                        date = new
                         {
-                            yield return content;
+                            type = "string",
+                            description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
                         }
-                    }
-                }
-                else
-                {
-                    var line = await reader.ReadToEndAsync(cancellationToken);
-
-                    var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
-                    var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
-
-                    if (!string.IsNullOrEmpty(content))
-                    {
-                        yield return content;
-                    }
-
+                    },
+                    required = new[] { "startingplace", "arrivalplace", "date" }
                 }
             }
+        }
+    };
         }
         #endregion
 
@@ -5122,7 +2797,7 @@ namespace ChatBot.Web.Services
                     messages.Add(new
                     {
                         role = msg.Role,
-                        content = new List<object> { new { text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) } }
+                        content = new List<object> { new { text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) } }
                     });
                 }
                 else
@@ -5130,7 +2805,7 @@ namespace ChatBot.Web.Services
                     messages.Add(new
                     {
                         role = msg.Role,
-                        content = new List<object> { new { image = msg.Images }, new { text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) } }
+                        content = new List<object> { new { image = msg.Images }, new { text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) } }
                     });
                 }
             }
@@ -5168,7 +2843,7 @@ namespace ChatBot.Web.Services
                     var contentlist = new List<object>();
 
 
-                    contentlist.Add(new { type = "input_text", text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
+                    contentlist.Add(new { type = "input_text", text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) });
 
                     foreach (var image in msg.Images)
                     {
@@ -5191,7 +2866,7 @@ namespace ChatBot.Web.Services
                     messages.Add(new
                     {
                         role = msg.Role,
-                        content = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content)
+                        content = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content)
                     });
 
                 }
@@ -5235,7 +2910,7 @@ namespace ChatBot.Web.Services
                     //}
                     //else
                     {
-                        contentlist.Add(new { type = "text", text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
+                        contentlist.Add(new { type = "text", text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) });
                     }
                     foreach (var image in msg.Images)
                     {
@@ -5266,7 +2941,7 @@ namespace ChatBot.Web.Services
                         messages.Add(new
                         {
                             role = msg.Role,
-                            content = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content)
+                            content = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content)
                         });
                     }
                 }
@@ -5295,7 +2970,7 @@ namespace ChatBot.Web.Services
                     }
                     else
                     {
-                        contentlist.Add(new { text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
+                        contentlist.Add(new { text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) });
                     }
                     foreach (var image in msg.Images)
                     {
@@ -5317,7 +2992,7 @@ namespace ChatBot.Web.Services
                     }
                     else
                     {
-                        contentlist.Add(new { text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
+                        contentlist.Add(new { text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) });
                     }
                     //contentlist.Add(new { text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content) });
                     contents.Add(new
@@ -5348,7 +3023,7 @@ namespace ChatBot.Web.Services
                         contentList.Add(new
                         {
                             type = "text",
-                            text = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content)
+                            text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content)
                         });
                     }
 
@@ -5379,7 +3054,7 @@ namespace ChatBot.Web.Services
                     messages.Add(new
                     {
                         role = msg.Role,
-                        content = (msg.Role == "assistant" ? delstr(msg.Content, "<think>", "</think>") : msg.Content)
+                        content = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content)
                     });
                 }
             }
@@ -5392,7 +3067,7 @@ namespace ChatBot.Web.Services
 
             if (request.History.Count > 0 && request.History[request.History.Count - 1].Role == "user")
             {
-                messages = (request.History[request.History.Count - 1].Role == "assistant" ? delstr(request.History[request.History.Count - 1].Content, "<think>", "</think>") : request.History[request.History.Count - 1].Content);
+                messages = (request.History[request.History.Count - 1].Role == "assistant" ? DelAllString(request.History[request.History.Count - 1].Content, "<think>", "</think>") : request.History[request.History.Count - 1].Content);
                 //messages = request.History[request.History.Count - 1].Content;
             }
 
@@ -5970,6 +3645,7 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
         {
             try
             {
+                content = DelAllString(content, "<think>", "</think>");
                 // 预处理内容，确保表头前有空行
                 content = PreprocessLatex(EnsureTableHeaderHasEmptyLine(content));
                 using (var ms = new MemoryStream())
@@ -6835,11 +4511,52 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
 
             return result;
         }
+        public static string DelAllString(string input, string beginDelimiter, string endDelimiter)
+        {
+            if (string.IsNullOrEmpty(input) || string.IsNullOrEmpty(beginDelimiter) || string.IsNullOrEmpty(endDelimiter) || !input.Contains(beginDelimiter) || !input.Contains(endDelimiter))
+                return input;
 
+            // 使用 Span<char> 进行更高效的字符串操作
+            var span = input.AsSpan();
+
+            var result = new System.Text.StringBuilder(input.Length);  // 使用 StringBuilder 来避免多次字符串拼接
+
+            while (true)
+            {
+                int Index = span.IndexOf(beginDelimiter);
+                if (Index >= 0)
+                {
+                    result.Append(span.Slice(0, Index));
+                    span = span.Slice(Index + beginDelimiter.Length);
+
+                    Index = span.IndexOf(endDelimiter);
+                    if (Index >= 0)
+                    {
+                        // 跳过分隔符之间的文本，并移动到结束分隔符之后
+                        span = span.Slice(Index + endDelimiter.Length);
+                    }
+                    else
+                    {
+                        result.Append(beginDelimiter);
+                        result.Append(span);
+                        break;
+                    }
+                }
+                else
+                {
+                    result.Append(span);
+                    break;
+                }
+
+            }
+
+            return result.ToString();
+        }
         public async Task<byte[]> ExportMessageToPdf(string content)
         {
             try
             {
+                content = DelAllString(content, "<think>", "</think>");
                 // 预处理内容，确保表头前有空行
                 content = PreprocessLatex(EnsureTableHeaderHasEmptyLine(content));
                 // 使用加强的Markdown流水线，特别是表格支持

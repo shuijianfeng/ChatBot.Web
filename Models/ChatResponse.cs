@@ -240,11 +240,11 @@ namespace ChatBot.Models
     // 响应类型
     public class OpenAIChunkResponse
     {
-        public choice[] choices { get; set; }
-        public string[] citations { get; set; }
+        public choice[] choices { get; set; } = Array.Empty<choice>();
+        public string[] citations { get; set; } = Array.Empty<string>();
         public class choice
         {
-            public delta delta { get; set; }
+            public delta delta { get; set; } = new delta();
             public int index { get; set; }
             public string finish_reason { get; set; } = string.Empty;
         }
@@ -253,9 +253,10 @@ namespace ChatBot.Models
         {
             public string content { get; set; } = string.Empty;
             public string reasoning_content { get; set; } = string.Empty;
+            public string reasoning { get; set; } = string.Empty;
             public string role { get; set; } = string.Empty;
-            public tool_call[] function_call { get; set; }
-            public tool_call[] tool_calls { get; set; }
+            public tool_call[] function_call { get; set; } = Array.Empty<tool_call>();
+            public tool_call[] tool_calls { get; set; } = Array.Empty<tool_call>();
 
 
         }

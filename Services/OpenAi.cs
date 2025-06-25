@@ -22,6 +22,7 @@ namespace ChatBot.Web.Services
         private readonly ChatCompletionOptions _options;
         private ChatModelConfig _chatModelConfig;
         private readonly JinaSearch _jinaSearch;
+        private readonly OpenWeather _openWeather;
         public OpenAIService(ChatModelConfig chatModelConfig, IHttpClientFactory httpClientFactory)
         {
             _chatModelConfig = chatModelConfig;
@@ -34,7 +35,7 @@ namespace ChatBot.Web.Services
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             };
             _jinaSearch = new JinaSearch(httpClientFactory);
-
+            _openWeather = new OpenWeather(_httpClientFactory);
             var apiKey = Environment.GetEnvironmentVariable(chatModelConfig.EnvironmentApikeyName);
             if (string.IsNullOrEmpty(apiKey))
             {
@@ -43,8 +44,8 @@ namespace ChatBot.Web.Services
             var apiEndpointUri = new Uri(chatModelConfig.ApiEndpoint);
 
             var openAIClientOptions = new OpenAI.OpenAIClientOptions();
+            //openAIClientOptions.Endpoint = apiEndpointUri;
             openAIClientOptions.Endpoint = apiEndpointUri;
-            
 
             _chatClient = new ChatClient(_chatModelConfig.Model, new ApiKeyCredential(apiKey), openAIClientOptions);
             
@@ -216,7 +217,7 @@ namespace ChatBot.Web.Services
                 {
                     if (!beging)
                     {
-                        yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
+                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
                         beging = true;
                     }
                     else
@@ -230,21 +231,21 @@ namespace ChatBot.Web.Services
                 {
                     if (beging && !end)
                     {
-                        yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                         end = true;
                     }
                     else
                     {
                         if (content == "<think>" && !beging1 && !end1)
                         {
-                            yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
+                            yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
                             beging1 = true;
                         }
                         else
                         {
                             if (content == "</think>" && beging1 && !end1)
                             {
-                                yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
+                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
                                 end1 = true;
                             }
                             else
@@ -293,7 +294,7 @@ namespace ChatBot.Web.Services
                 {
                     if (!beging)
                     {
-                        yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
+                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
                         beging = true;
                     }
                     else
@@ -307,21 +308,21 @@ namespace ChatBot.Web.Services
                 {
                     if (beging && !end)
                     {
-                        yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                         end = true;
                     }
                     else
                     {
                         if (content == "<think>" && !beging1 && !end1)
                         {
-                            yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
+                            yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
                             beging1 = true;
                         }
                         else
                         {
                             if (content == "</think>" && beging1 && !end1)
                             {
-                                yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
+                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
                                 end1 = true;
                             }
                             else
@@ -383,7 +384,7 @@ namespace ChatBot.Web.Services
                 {
                     if (!beging)
                     {
-                        yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
+                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
                         beging = true;
                     }
                     else
@@ -397,21 +398,21 @@ namespace ChatBot.Web.Services
                 {
                     if (beging && !end)
                     {
-                        yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                         end = true;
                     }
                     else
                     {
                         if (content == "<think>" && !beging1 && !end1)
                         {
-                            yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
+                            yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
                             beging1 = true;
                         }
                         else
                         {
                             if (content == "</think>" && beging1 && !end1)
                             {
-                                yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
+                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
                                 end1 = true;
                             }
                             else
@@ -477,7 +478,7 @@ namespace ChatBot.Web.Services
                 {
                     if (!beging)
                     {
-                        yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
+                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
                         beging = true;
                     }
                     else
@@ -491,21 +492,21 @@ namespace ChatBot.Web.Services
                 {
                     if (beging && !end)
                     {
-                        yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                         end = true;
                     }
                     else
                     {
                         if (content == "<think>" && !beging1 && !end1)
                         {
-                            yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
+                            yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
                             beging1 = true;
                         }
                         else
                         {
                             if (content == "</think>" && beging1 && !end1)
                             {
-                                yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
+                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
                                 end1 = true;
                             }
                             else
@@ -539,283 +540,411 @@ namespace ChatBot.Web.Services
                 messages.Add(new UserChatMessage(contentlist));
             }
             InitTool();
-
             bool requiresAction;
-            
-            do
+            if (_chatModelConfig.Stream)
             {
-                requiresAction = false;
-                StringBuilder contentBuilder = new();
-                StreamingChatToolCallsBuilder toolCallsBuilder = new();
+                
 
-                AsyncCollectionResult<StreamingChatCompletionUpdate> completionUpdates = _chatClient.CompleteChatStreamingAsync(messages, _options);
+                do
+                {
+                    requiresAction = false;
+                    StringBuilder contentBuilder = new();
+                    StreamingChatToolCallsBuilder toolCallsBuilder = new();
+
+                    AsyncCollectionResult<StreamingChatCompletionUpdate> completionUpdates = _chatClient.CompleteChatStreamingAsync(messages, _options);
+                    bool beging = false;
+                    bool end = false;
+                    bool beging1 = false;
+                    bool end1 = false;
+                    await foreach (StreamingChatCompletionUpdate completionUpdate in completionUpdates)
+                    {
+
+                        foreach (ChatMessageContentPart contentPart in completionUpdate.ContentUpdate)
+                        {
+                            contentBuilder.Append(contentPart.Text);
+                        }
+
+                        foreach (StreamingChatToolCallUpdate toolCallUpdate in completionUpdate.ToolCallUpdates)
+                        {
+                            toolCallsBuilder.Append(toolCallUpdate);
+                        }
+
+                        if (completionUpdate.ToolCallUpdates.Count == 0)
+                        {
+                            string content = string.Empty;
+                            string reasoning_content = string.Empty;
+
+                            if (completionUpdate.ContentUpdate.Count > 0)
+                            {
+                                content = completionUpdate.ContentUpdate[0].Text;
+
+                            }
+                            else
+                            {
+                                if (completionUpdate.ReasoningContentUpdate.Count > 0)
+                                {
+                                    reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
+
+                                }
+                                else
+                                {
+                                    //yield return string.Empty;
+                                    //break;
+                                }
+                            }
+                            if (!string.IsNullOrEmpty(reasoning_content))
+                            {
+                                if (!beging)
+                                {
+                                    yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
+                                    beging = true;
+                                }
+                                else
+                                {
+                                    yield return reasoning_content;
+
+                                }
+
+                            }
+                            if (!string.IsNullOrEmpty(content))
+                            {
+                                if (beging && !end)
+                                {
+                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                                    end = true;
+                                }
+                                else
+                                {
+                                    if (content == "<think>" && !beging1 && !end1)
+                                    {
+                                        yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
+                                        beging1 = true;
+                                    }
+                                    else
+                                    {
+                                        if (content == "</think>" && beging1 && !end1)
+                                        {
+                                            yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
+                                            end1 = true;
+                                        }
+                                        else
+                                        {
+                                            yield return content;
+                                        }
+
+                                    }
+
+                                }
+
+                            }
+                        }
+
+                        switch (completionUpdate.FinishReason)
+                        {
+                            case ChatFinishReason.Stop:
+                                {
+
+
+                                    messages.Add(new AssistantChatMessage(contentBuilder.ToString()));
+                                    break;
+                                }
+
+                            case ChatFinishReason.ToolCalls:
+                                {
+                                    IReadOnlyList<ChatToolCall> toolCalls = toolCallsBuilder.Build();
+
+                                    AssistantChatMessage assistantMessage = new(toolCalls);
+
+                                    if (contentBuilder.Length > 0)
+                                    {
+                                        assistantMessage.Content.Add(ChatMessageContentPart.CreateTextPart(contentBuilder.ToString()));
+                                    }
+
+                                    messages.Add(assistantMessage);
+
+                                    foreach (ChatToolCall toolCall in toolCalls)
+                                    {
+                                        switch (toolCall.FunctionName)
+                                        {
+                                            case nameof(GetCurrentDataTime):
+                                                {
+                                                    string toolResult = await GetCurrentDataTime();
+                                                    messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
+                                                    break;
+                                                }
+                                            case nameof(JinaAiSearch):
+                                                {
+                                                    using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
+                                                    bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
+
+                                                    if (!query)
+                                                    {
+                                                        throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                    }
+
+                                                    string toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+
+                                                    messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
+                                                    break;
+                                                }
+                                            case nameof(SearchTrainTicket):
+                                                {
+                                                    using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
+                                                    bool hasStartingPlace = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+                                                    bool hasArrivalPlace = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                    bool hasDate = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+
+                                                    if (!hasStartingPlace || !hasArrivalPlace || !hasDate)
+                                                    {
+                                                        throw new ArgumentNullException("Required parameters missing for train ticket search.");
+                                                    }
+
+                                                    string toolResult = await SearchTrainTicket(
+                                                        startingplace.GetString() ?? throw new ArgumentNullException(nameof(startingplace)),
+                                                        arrivalplace.GetString() ?? throw new ArgumentNullException(nameof(arrivalplace)),
+                                                        date.GetString() ?? throw new ArgumentNullException(nameof(date)));
+
+                                                    messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
+                                                    break;
+                                                }
+                                            case nameof(GetWeather):
+                                                {
+                                                    using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
+                                                    bool hasCity = argumentsJson.RootElement.TryGetProperty("city", out JsonElement city);
+
+                                                    if (!hasCity)
+                                                    {
+                                                        throw new ArgumentNullException(nameof(city), "The city parameter is required.");
+                                                    }
+
+                                                    string toolResult = await GetWeather(city.GetString() ?? throw new ArgumentNullException(nameof(city), "City cannot be null."));
+
+                                                    messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
+                                                    break;
+                                                }
+                                            default:
+                                                {
+                                                    throw new NotImplementedException($"Tool function '{toolCall.FunctionName}' is not implemented.");
+                                                }
+                                        }
+                                    }
+
+                                    requiresAction = true;
+                                    break;
+                                }
+
+                            case ChatFinishReason.Length:
+                                throw new NotImplementedException("Incomplete model output due to MaxTokens parameter or token limit exceeded.");
+
+                            case ChatFinishReason.ContentFilter:
+                                throw new NotImplementedException("Omitted content due to a content filter flag.");
+
+                            case ChatFinishReason.FunctionCall:
+                                throw new NotImplementedException("Deprecated in favor of tool calls.");
+
+                            case null:
+                                break;
+                        }
+
+
+                    }
+                } while (requiresAction);
+
+            }
+            else
+            {
                 bool beging = false;
                 bool end = false;
                 bool beging1 = false;
                 bool end1 = false;
-                await foreach (StreamingChatCompletionUpdate completionUpdate in completionUpdates)
+                await foreach (StreamingChatCompletionUpdate completionUpdate in _chatClient.CompleteChatStreamingAsync(messages, _options))
                 {
-                    
-                    foreach (ChatMessageContentPart contentPart in completionUpdate.ContentUpdate)
+                    string content = string.Empty;
+                    string reasoning_content = string.Empty;
+
+                    if (completionUpdate.ContentUpdate.Count > 0)
                     {
-                        contentBuilder.Append(contentPart.Text);
+                        content = completionUpdate.ContentUpdate[0].Text;
+
                     }
-
-                    foreach (StreamingChatToolCallUpdate toolCallUpdate in completionUpdate.ToolCallUpdates)
+                    else
                     {
-                        toolCallsBuilder.Append(toolCallUpdate);
-                    }
-
-                    if (completionUpdate.ToolCallUpdates.Count==0)
-                    {
-                        string content = string.Empty;
-                        string reasoning_content = string.Empty;
-
-                        if (completionUpdate.ContentUpdate.Count > 0)
+                        if (completionUpdate.ReasoningContentUpdate.Count > 0)
                         {
-                            content = completionUpdate.ContentUpdate[0].Text;
+                            reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
 
                         }
                         else
                         {
-                            if (completionUpdate.ReasoningContentUpdate.Count > 0)
-                            {
-                                reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
-
-                            }
-                            else
-                            {
-                                //yield return string.Empty;
-                                //break;
-                            }
+                            yield return string.Empty;
+                            break;
                         }
-                        if (!string.IsNullOrEmpty(reasoning_content))
+                    }
+                    if (!string.IsNullOrEmpty(reasoning_content))
+                    {
+                        if (!beging)
                         {
-                            if (!beging)
-                            {
-                                yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
-                                beging = true;
-                            }
-                            else
-                            {
-                                yield return reasoning_content;
-
-                            }
+                            yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
+                            beging = true;
+                        }
+                        else
+                        {
+                            yield return reasoning_content;
 
                         }
-                        if (!string.IsNullOrEmpty(content))
+
+                    }
+                    if (!string.IsNullOrEmpty(content))
+                    {
+                        if (beging && !end)
                         {
-                            if (beging && !end)
+                            yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+                            end = true;
+                        }
+                        else
+                        {
+                            if (content == "<think>" && !beging1 && !end1)
                             {
-                                yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                                end = true;
+                                yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
+                                beging1 = true;
                             }
                             else
                             {
-                                if (content == "<think>" && !beging1 && !end1)
+                                if (content == "</think>" && beging1 && !end1)
                                 {
-                                    yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
-                                    beging1 = true;
+                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
+                                    end1 = true;
                                 }
                                 else
                                 {
-                                    if (content == "</think>" && beging1 && !end1)
-                                    {
-                                        yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
-                                        end1 = true;
-                                    }
-                                    else
-                                    {
-                                        yield return content;
-                                    }
-
+                                    yield return content;
                                 }
 
                             }
 
                         }
+
                     }
-
-                    switch (completionUpdate.FinishReason)
-                    {
-                        case ChatFinishReason.Stop:
-                            {
-                                
-
-                                messages.Add(new AssistantChatMessage(contentBuilder.ToString()));
-                                break;
-                            }
-
-                        case ChatFinishReason.ToolCalls:
-                            {
-                                IReadOnlyList<ChatToolCall> toolCalls = toolCallsBuilder.Build();
-
-                                AssistantChatMessage assistantMessage = new(toolCalls);
-
-                                if (contentBuilder.Length > 0)
-                                {
-                                    assistantMessage.Content.Add(ChatMessageContentPart.CreateTextPart(contentBuilder.ToString()));
-                                }
-
-                                messages.Add(assistantMessage);
-
-                                foreach (ChatToolCall toolCall in toolCalls)
-                                {
-                                    switch (toolCall.FunctionName)
-                                    {
-
-                                        case nameof(JinaAiSearch):
-                                            {
-
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-
-                                                string toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
-
-                                                messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
-                                                break;
-                                            }
-
-                                        default:
-                                            {
-                                                throw new NotImplementedException();
-                                            }
-                                    }
-                                }
-
-                                requiresAction = true;
-                                break;
-                            }
-
-                        case ChatFinishReason.Length:
-                            throw new NotImplementedException("Incomplete model output due to MaxTokens parameter or token limit exceeded.");
-
-                        case ChatFinishReason.ContentFilter:
-                            throw new NotImplementedException("Omitted content due to a content filter flag.");
-
-                        case ChatFinishReason.FunctionCall:
-                            throw new NotImplementedException("Deprecated in favor of tool calls.");
-
-                        case null:
-                            break;
-                    }
-
-                   
                 }
-            } while (requiresAction);
-
-
-            //bool beging = false;
-            //bool end = false;
-            //bool beging1 = false;
-            //bool end1 = false;
-            //await foreach (StreamingChatCompletionUpdate completionUpdate in _chatClient.CompleteChatStreamingAsync(messages, _options))
-            //{
-            //    string content = string.Empty;
-            //    string reasoning_content = string.Empty;
-
-            //    if (completionUpdate.ContentUpdate.Count > 0)
-            //    {
-            //        content = completionUpdate.ContentUpdate[0].Text;
-
-            //    }
-            //    else
-            //    {
-            //        if (completionUpdate.ReasoningContentUpdate.Count > 0)
-            //        {
-            //            reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
-
-            //        }
-            //        else
-            //        {
-            //            yield return string.Empty;
-            //            break;
-            //        }
-            //    }
-            //    if (!string.IsNullOrEmpty(reasoning_content))
-            //    {
-            //        if (!beging)
-            //        {
-            //            yield return "<think>" + "\n" + "\n" + "```Thoughts" + "\n" + "\n" + reasoning_content;
-            //            beging = true;
-            //        }
-            //        else
-            //        {
-            //            yield return reasoning_content;
-
-            //        }
-
-            //    }
-            //    if (!string.IsNullOrEmpty(content))
-            //    {
-            //        if (beging && !end)
-            //        {
-            //            yield return "\n" + "\n" + "```" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-            //            end = true;
-            //        }
-            //        else
-            //        {
-            //            if (content == "<think>" && !beging1 && !end1)
-            //            {
-            //                yield return content + "\n" + "\n" + "```Thoughts" + "\n" + "\n";
-            //                beging1 = true;
-            //            }
-            //            else
-            //            {
-            //                if (content == "</think>" && beging1 && !end1)
-            //                {
-            //                    yield return "\n" + "\n" + "```" + "\n" + "\n" + content + "\n";
-            //                    end1 = true;
-            //                }
-            //                else
-            //                {
-            //                    yield return content;
-            //                }
-
-            //            }
-
-            //        }
-
-            //    }
-            //}
+            }
+            
         }
         private void InitTool()
         {
-           var tool= OpenAI.Chat.ChatTool.CreateFunctionTool(
+            // 添加网页搜索工具
+            var searchTool = OpenAI.Chat.ChatTool.CreateFunctionTool(
                 functionName: nameof(JinaAiSearch),
                 functionDescription: "执行网页搜索并返回结果",
                 functionParameters: BinaryData.FromBytes(
                 """
-                {
-                    "type": "object",
-                    "properties": {
-                        "query": { "type": "string" }
-                       
-                    },
-                    "required": [ "query" ]
+        {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "搜索词"
                 }
-
-                """u8.ToArray()
+            },
+            "required": [ "query" ]
+        }
+        """u8.ToArray()
                 )
             );
-            _options.Tools.Add(tool);
+            _options.Tools.Add(searchTool);
 
+            // 添加天气查询工具
+            var weatherTool = OpenAI.Chat.ChatTool.CreateFunctionTool(
+                functionName: nameof(GetWeather),
+                functionDescription: "获取指定城市未来8天天气预报",
+                functionParameters: BinaryData.FromBytes(
+                """
+        {
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "description": "城市(用英文表示)"
+                }
+            },
+            "required": [ "city" ]
+        }
+        """u8.ToArray()
+                )
+            );
+            _options.Tools.Add(weatherTool);
 
+            // 添加获取当前日期时间工具
+            var timeTool = OpenAI.Chat.ChatTool.CreateFunctionTool(
+                functionName: nameof(GetCurrentDataTime),
+                functionDescription: "获取当前日期和时间",
+                functionParameters: BinaryData.FromBytes(
+                """
+        {
+            "type": "object",
+            "properties": {}
+        }
+        """u8.ToArray()
+                )
+            );
+            _options.Tools.Add(timeTool);
+
+            // 添加火车票查询工具
+            var trainTool = OpenAI.Chat.ChatTool.CreateFunctionTool(
+                functionName: nameof(SearchTrainTicket),
+                functionDescription: "获取指定日期的火车票、火车车次",
+                functionParameters: BinaryData.FromBytes(
+                """
+        {
+            "type": "object",
+            "properties": {
+                "startingplace": {
+                    "type": "string",
+                    "description": "起始城市"
+                },
+                "arrivalplace": {
+                    "type": "string",
+                    "description": "到达城市"
+                },
+                "date": {
+                    "type": "string",
+                    "description": "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
+                }
+            },
+            "required": [ "startingplace", "arrivalplace", "date" ]
+        }
+        """u8.ToArray()
+                )
+            );
+            _options.Tools.Add(trainTool);
         }
         public ChatModelConfig ChatModelConfig { get => _chatModelConfig; set => _chatModelConfig = value; }
 
         private async Task<string>? JinaAiSearch(string query)
         {
-            var result = await   _jinaSearch.Search(query);
+            var result = await _jinaSearch.Search(query);
             return await Task.FromResult(result);
         }
-       
+
+        private async Task<string>? GetWeather(string query)
+        {
+            var result = await _openWeather.GetWeatherAsync(query);
+            return await Task.FromResult(result);
+        }
+
+        private async Task<string>? SearchTrainTicket(string startingplace, string arrivalplace, string date)
+        {
+            var result = await _jinaSearch.SearchTrainTicket(startingplace, arrivalplace, date);
+            return await Task.FromResult(result);
+        }
+
+        private async Task<string>? GetCurrentDataTime()
+        {
+
+            var result = DateTime.Now.ToString(" 日期: yyyy年M月dd日 dddd 时间：HH:mm:ss ");
+
+            return await Task.FromResult(result);
+        }
+
 
         // 修改 ConvertUrlToBase64 方法，使用 ImageSharp 库进行图片压缩
         private  string ConvertUrlToBase64(string imageUrl)

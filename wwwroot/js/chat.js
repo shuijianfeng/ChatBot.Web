@@ -1443,6 +1443,11 @@ class ChatUI {
         const renderer = new marked.Renderer();
         const originalCode = renderer.code.bind(renderer);
         
+        // 添加预处理函数，用于处理连续的引用链接
+        this.preprocessMarkdown = (content) => {
+            // 在连续的引用链接之间添加空格，如 [2][3][8] -> [2] [3] [8]
+            return content.replace(/(\[\d+\])(?=\[\d+\])/g, '$1 ');
+        };
 
         // 修改链接渲染器，增加对引用式链接的支持
         renderer.link = (href, title, text) => {
@@ -1782,7 +1787,7 @@ class ChatUI {
                     contentDiv.dataset.rawContent = '';
                 }
                 contentDiv.dataset.rawContent = content;
-
+                contentDiv.dataset.rawContent=this.preprocessMarkdown(contentDiv.dataset.rawContent)
                 // 更新内存中最后一条消息的内容
                 if (this.messages.length > 0) {
                     this.messages[this.messages.length - 1].content = contentDiv.dataset.rawContent;
@@ -1855,7 +1860,7 @@ class ChatUI {
                 contentDiv.dataset.rawContent = '';
             }
             contentDiv.dataset.rawContent += content;
-
+            contentDiv.dataset.rawContent = this.preprocessMarkdown(contentDiv.dataset.rawContent)
             // 更新内存中最后一条消息的内容
             if (this.messages.length > 0) {
                 this.messages[this.messages.length - 1].content = contentDiv.dataset.rawContent;
