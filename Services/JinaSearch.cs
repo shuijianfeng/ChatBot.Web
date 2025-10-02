@@ -98,9 +98,9 @@ namespace ChatBot.Web.Services
             return originalQuery;
         }
 
-        public async Task<string?> Search(string query, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
+        public async Task<string?> Search(string query, int searchCount = 3, bool isNoCache = false, bool isdirect = true)
         {
-            query = await ExpandQuery(query);
+            //query = await ExpandQuery(query);
             _result.Data.Clear();
             var google = await Search(query, "", searchCount, isNoCache, isdirect);
             //var bing = await Search(query, "bing.com ", searchCount, isNoCache, isdirect);
@@ -180,7 +180,7 @@ namespace ChatBot.Web.Services
             return await Task.FromResult(str);
         }
 
-        public async Task<JinaSearchResult?> Search(string query, string site, int searchCount = 5, bool isNoCache = false, bool isdirect = true)
+        public async Task<JinaSearchResult?> Search(string query, string site, int searchCount = 3, bool isNoCache = false, bool isdirect = true)
         {
             var apiKey = Environment.GetEnvironmentVariable("JinaAiApi");
             var apiEndpoint = $"https://s.jina.ai";
@@ -423,7 +423,7 @@ namespace ChatBot.Web.Services
             _result.Data.RemoveAll(x => string.IsNullOrWhiteSpace(x.Content));
 
         }
-        public async Task Rerank(string query, int rerankCount = 10)
+        public async Task Rerank(string query, int rerankCount = 5)
         {
             for (int i = _result.Data.Count - 1; i >= 0; i--)
             {
@@ -552,22 +552,23 @@ namespace ChatBot.Web.Services
                 if (string.IsNullOrWhiteSpace(item.Content)) return;
 
                 var contents = new List<object>();
-                contents.Add(new { role = "system", content = "你是一个优秀的资料整理专家。" });
+                contents.Add(new { role = "system", content = "你是一个优秀的资料整理专家，能够准确提取与特定查询相关的信息。" });
                 contents.Add(new
                 {
                     role = "user",
-                    content = ((new StringBuilder()).Append("在<info></info>中摘要和")
-                     .Append(query)
-                    .Append("相关的信息，如果没有摘要信息则回答:[NOT]")
+                    content = new StringBuilder()
+                    .Append("请从以下<info></info>中提取与查询\"")
+                    .Append(query)
+                    .Append("\"相关信息,保持尽可能多的原始信息和细节")
+                    .Append("。如果内容与查询无关，请回答: [NOT]")
                     .Append('\n')
                     .Append('\n')
                     .Append("<info>")
-                     .Append('\n')
-                     .Append(item.Content)
+                    .Append('\n')
+                    .Append(item.Content)
                     .Append('\n')
                     .Append("</info>")
-
-                    .ToString())
+                    .ToString()
                 });
 
                 var requestContent = new
@@ -682,7 +683,7 @@ namespace ChatBot.Web.Services
 
                 var requestContent = new
                 {
-                    model = "gemini-2.5-flash-lite-preview-06-17",
+                    model = "gemini-flash-lite-latest",
                    
                     messages = contents,
                     temperature = 0.1,
@@ -736,7 +737,7 @@ namespace ChatBot.Web.Services
 
             var apiKey = Environment.GetEnvironmentVariable("GeminiKey");
             var apiEndpoint = $"https://cdsjf.xyz/gemini/v1beta/openai/chat/completions";
-
+            
             var client = _httpClientFactory.CreateClient();
             client.Timeout = TimeSpan.FromMinutes(30);
 
@@ -781,8 +782,8 @@ namespace ChatBot.Web.Services
 
             var requestContent = new
             {
-                //model = "gemini-2.5-flash-lite-preview-06-17",
-                model = "gemini-2.0-flash-lite",
+                model = "gemini-flash-lite-latest",
+                
                 messages = contents,
                 temperature = 0.1,
 

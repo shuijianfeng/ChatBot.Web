@@ -1,32 +1,25 @@
-﻿using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using ChatBot.Models;
-using System.Runtime.CompilerServices;
-using Microsoft.Extensions.Options;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-
-using SixLabors.ImageSharp.Processing;
-
-using System.Data;
-
+﻿using ChatBot.Models;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Office2013.Excel;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
-
-
-using DocumentFormat.OpenXml;
-
-using System.Text.RegularExpressions;
-
-using Npgsql;
-
-using Markdig;
-
 using iText.Html2pdf;
 using iText.Layout.Font;
-using HtmlConverter = HtmlToOpenXml.HtmlConverter;
+using Markdig;
+using Microsoft.Extensions.Options;
+using Npgsql;
+
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
+using System.Data;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Color = DocumentFormat.OpenXml.Wordprocessing.Color;
+using HtmlConverter = HtmlToOpenXml.HtmlConverter;
 
 
 
@@ -443,7 +436,7 @@ namespace ChatBot.Web.Services
                 input = messages,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-                
+               
                 tools = tools,
             };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
@@ -811,7 +804,7 @@ namespace ChatBot.Web.Services
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 //response_format = ToOpenAischema(),
                 tools = tools,
-               
+
 
             };
             //var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
@@ -3639,8 +3632,66 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
             return tokens;
         }
 
+//        public async Task<string> ExportMessageTo(string content)
+//        {
+//            try
+//            {
+                
 
+//                // 使用Chrome或Edge WebDriver进行渲染
+//                // 需添加包：Selenium.WebDriver和适当的浏览器驱动
+//                using (var driver = new OpenQA.Selenium.Chrome.ChromeDriver())
+//                {
+//                    // 创建临时HTML文件
+//                    var tempHtmlPath = Path.GetTempFileName() + ".html";
+//                    File.WriteAllText(tempHtmlPath, content);
 
+//                    // 加载HTML并等待MathJax完成渲染
+//                    driver.Navigate().GoToUrl("file://" + tempHtmlPath);
+//                    driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(5);
+
+//                    // 等待MathJax完成渲染
+//                    WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
+//                    //wait.Until(d => (bool)((IJavaScriptExecutor)d).ExecuteScript(
+//                    //    "return !!window.MathJax && !!MathJax.startup && MathJax.startup.promise.state() === 1"
+//                    //));
+//                    wait.Until(d => (bool)((IJavaScriptExecutor)d).ExecuteScript(
+//    "return !!window.MathJax && !!MathJax.startup && (typeof MathJax.typesetPromise === 'function' || document.querySelectorAll('.mjx-math, .MathJax').length > 0)"
+//));
+//                    // 获取完全渲染后的HTML
+//                    string renderedHtml = (string)((IJavaScriptExecutor)driver).ExecuteScript(
+//                        "return document.documentElement.outerHTML"
+//                    );
+
+//                    return renderedHtml;
+//                }
+//            }
+//            catch (Exception ex)
+//            {
+//                _logger.LogError($"PDF生成失败: {ex.Message}");
+//                throw;
+//            }
+//        }
+//        private string PreprocessHtmlForWordExport(string html)
+//        {
+//            // 创建HTML解析器处理实例
+//            var parser = new AngleSharp.Html.Parser.HtmlParser();
+//            var document = parser.ParseDocument(html);
+
+//            // 查找所有MathML元素
+//            var mathElements = document.QuerySelectorAll("math");
+//            foreach (var mathElement in mathElements)
+//            {
+//                // 获取MathML的文本内容
+//                string mathContent = mathElement.TextContent;
+
+//                // 用普通文本替换数学元素
+//                var textNode = document.CreateTextNode($"[数学公式: {mathContent}]");
+//                mathElement.Parent?.ReplaceChild(textNode, mathElement);
+//            }
+
+//            return document.DocumentElement.OuterHtml;
+//        }
         public async Task<byte[]> ExportMessageToDocx(string content)
         {
             try
@@ -3690,6 +3741,7 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
         <html lang=""zh-CN"">
         <head>
             <meta charset=""utf-8""/>
+
             <style>
                 body {{ 
                     font-family: 'SimSun', 'Microsoft YaHei', 'Arial Unicode MS', Arial, sans-serif; 
@@ -3745,6 +3797,9 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
 
                         try
                         {
+                            // Update the line causing the error by awaiting the Task<string> result.
+                            //htmlContent = await ExportMessageTo(htmlContent);
+                            //htmlContent = PreprocessHtmlForWordExport(htmlContent);
                             // 创建HTML转换器 - 注意这里不使用不存在的HtmlConverterSettings
                             var converter = new HtmlConverter(mainPart);
 
@@ -4588,6 +4643,7 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
 <html lang=""zh-CN"">
 <head>
     <meta charset=""utf-8""/>
+
     <style>
         @page {{ 
             margin: 2.5cm 1.5cm;
@@ -4658,7 +4714,8 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
 </head>
 <body>{htmlContent}</body>
 </html>";
-
+                //htmlContent = await ExportMessageTo(htmlContent);
+                //htmlContent = PreprocessHtmlForWordExport(htmlContent);
                 using (var ms = new MemoryStream())
                 {
                     using (var htmlms = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(htmlContent)))
@@ -4676,7 +4733,7 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
                             var fontPaths = new[]
                             {
                         "simsun.ttc",    // 宋体
-                        
+                        "Seguiemj.ttf", // Segoe UI Emoji
                         "msyh.ttc",      // 微软雅黑
                         "simkai.ttf",    // 楷体
                         "simfang.ttf",   // 仿宋，增加一种字体支持
@@ -5093,6 +5150,203 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
 
                         // 增加转换时的内存限制
                         //properties.SetTagWorkerFactory(new iText.Html2pdf.AttachmentTagWorkerFactory());
+
+                        // 优化表格处理
+                        properties.SetBaseUri("");
+
+                        // 提高文档处理能力 - 增加设备宽度，提高复杂布局处理能力
+                        iText.StyledXmlParser.Css.Media.MediaDeviceDescription mediaDeviceDescription =
+                            new iText.StyledXmlParser.Css.Media.MediaDeviceDescription(
+                                iText.StyledXmlParser.Css.Media.MediaType.SCREEN);
+                        mediaDeviceDescription.SetWidth(1600); // 增加宽度以适应复杂表格
+                        properties.SetMediaDeviceDescription(mediaDeviceDescription);
+
+                        // 转换HTML到PDF，使用异常处理捕获详细错误信息
+                        try
+                        {
+                            iText.Html2pdf.HtmlConverter.ConvertToPdf(htmlms, ms, properties);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"HTML转PDF失败，详细错误: {ex.Message}, 堆栈: {ex.StackTrace}");
+                            throw new Exception($"转换PDF时发生错误: {ex.Message}", ex);
+                        }
+
+                        return ms.ToArray();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"PDF生成失败: {ex.Message}, 堆栈: {ex.StackTrace}");
+                throw new Exception($"PDF生成失败: {ex.Message}", ex);
+            }
+        }
+        public async Task<byte[]> ExportMessageToPdf2(string content)
+        {
+            try
+            {
+                content = DelAllString(content, "<think>", "</think>");
+                // 预处理内容，确保表头前有空行
+                content = PreprocessLatex(EnsureTableHeaderHasEmptyLine(content));
+                // 使用加强的Markdown流水线，特别是表格支持
+                var pipeline = new MarkdownPipelineBuilder()
+                               .UseAdvancedExtensions()
+                               .UseBootstrap() // 使用Bootstrap扩展改善表格渲染
+                               .UsePipeTables() // 确保支持管道表格
+                               .UseGridTables() // 支持网格表格
+                               .UseEmphasisExtras() // 支持更多强调语法
+                               .UseTaskLists() // 支持任务列表
+                               .UseAutoIdentifiers() // 自动添加表格ID
+                               .UseCustomContainers() // 支持自定义容器
+                               .UseDefinitionLists() // 支持定义列表
+                               .UseFootnotes() // 支持脚注
+                               .UseAutoLinks() // 自动检测链接
+                               .UseListExtras() // 增强列表功能
+                               .UseMediaLinks() // 支持媒体链接
+                               .UseFigures() // 支持图表
+                               .UseGenericAttributes() // 支持通用属性
+                               .UseYamlFrontMatter() // 支持YAML前置元数据
+                               .Build();
+
+                // 将Markdown转换为HTML
+                var htmlContent = Markdig.Markdown.ToHtml(content, pipeline);
+
+                // 注册编码和字体，增强表格样式，添加Emoji支持
+                htmlContent = $@"
+<!DOCTYPE html>
+<html lang=""zh-CN"">
+<head>
+    <meta charset=""utf-8""/>
+    <style>
+        @page {{ 
+            margin: 2.5cm 1.5cm;
+            size: A4;
+        }}
+        body {{ 
+            font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', 'SimSun', 'Microsoft YaHei', 'Arial Unicode MS', Arial, sans-serif; 
+            padding: 20px;
+        }}
+        /* Emoji特定样式 */
+        .emoji {{
+            font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
+            color: inherit;
+            font-style: normal;
+        }}
+        /* 增强表格样式，提高表格稳定性和兼容性 */
+        table {{ 
+            border-collapse: collapse; 
+            width: 100%;
+            margin-bottom: 1.5em;
+            page-break-inside: auto;
+            max-width: 100%;
+            table-layout: fixed;
+        }}
+        table, th, td {{ 
+            border: 1px solid #000; 
+        }}
+        th, td {{ 
+            padding: 6px; 
+            text-align: left;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
+        }}
+        th {{ 
+            background-color: #f2f2f2; 
+            font-weight: bold;
+        }}
+        tr {{ 
+            page-break-inside: avoid;
+        }}
+        /* 确保表格内容不会溢出 */
+        table, tr, td, th, tbody, thead, tfoot {{
+            page-break-inside: avoid !important;
+        }}
+        /* 代码样式 */
+        code {{ 
+            font-family: Consolas, Monaco, 'Courier New', monospace;
+            background-color: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-size: 90%;
+        }}
+        pre {{ 
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }}
+        blockquote {{
+            border-left: 4px solid #ddd;
+            padding-left: 15px;
+            margin-left: 0;
+            color: #666;
+        }}
+        /* 使内容适应页面 */
+        img {{
+            max-width: 100%;
+        }}
+    </style>
+    <!-- 添加基本Emoji支持的脚本 -->
+    
+</head>
+<body>{htmlContent}</body>
+</html>";
+
+                using (var ms = new MemoryStream())
+                {
+                    using (var htmlms = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(htmlContent)))
+                    {
+                        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+                        var properties = new ConverterProperties();
+                        var fontProvider = new FontProvider();
+
+                        // 添加默认字体
+                        fontProvider.AddStandardPdfFonts();
+
+                        // 添加支持Emoji的字体
+                        try
+                        {
+                            var fontPaths = new[]
+                            {
+                        "simsun.ttc",     // 宋体
+                        "Seguiemj.ttf",   // Segoe UI Emoji - 关键的Emoji字体
+                        "segoeui.ttf",    // Segoe UI - 基本Unicode支持
+                        "msjh.ttc",       // 微软正黑体 - 更好的CJK支持
+                        "msyh.ttc",       // 微软雅黑
+                        "simkai.ttf",     // 楷体
+                        "simfang.ttf",    // 仿宋
+                        "SIMLI.TTF",      // 隶书
+                        "STKAITI.TTF",    // 楷体
+                        "STFANGSO.TTF",   // 仿宋
+                        "seguisym.ttf",   // Segoe UI Symbol - 支持更多符号
+                        "NotoColorEmoji.ttf" // 如果系统有Noto Color Emoji
+                    };
+
+                            var fontDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+                            foreach (var font in fontPaths)
+                            {
+                                var path = Path.Combine(fontDir, font);
+                                if (File.Exists(path))
+                                {
+                                    fontProvider.AddFont(path);
+                                    _logger.LogInformation($"已加载字体: {font}");
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // 如果加载系统字体失败，记录错误但继续使用标准字体
+                            _logger.LogWarning($"加载系统字体失败: {ex.Message}");
+                        }
+
+                        // 设置字体提供程序使用更广泛的字体选择
+                        properties.SetFontProvider(fontProvider);
+
+                        // 配置字体解析器以支持彩色Emoji
+                        properties.SetFontProvider(fontProvider);
 
                         // 优化表格处理
                         properties.SetBaseUri("");

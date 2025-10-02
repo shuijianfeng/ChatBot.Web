@@ -39,8 +39,8 @@ namespace ChatBot.Web.Services
         public async Task<List<GeocodingResponse>> GetGeocodingAsync(string city)
         {
             var apiKey = Environment.GetEnvironmentVariable("OpenWeatherKey");
-
-            var url = $"https://cdsjf.xyz/openweathermap/geo/1.0/direct?" +
+            //var url = $"http://cdsjf.xyz/openweathermap/geo/1.0/direct?" +
+            var url = $"https://api.openweathermap.org/geo/1.0/direct?" +
                       $"appid={apiKey}&" +
                       $"q={Uri.EscapeDataString(city)}&" +
                       $"limit=5";
@@ -66,8 +66,8 @@ namespace ChatBot.Web.Services
             }
 
             var apiKey = Environment.GetEnvironmentVariable("OpenWeatherKey");
-
-            var url = $"https://cdsjf.xyz/openweathermap/data/3.0/onecall?" +
+            //var url = $"https://cdsjf.xyz/openweathermap/data/3.0/onecall?" +
+            var url = $"https://api.openweathermap.org/data/3.0/onecall?" +
                       $"appid={apiKey}&" +
                       $"lat={response.lat}&" +
                       $"lon={response.lon}&" +

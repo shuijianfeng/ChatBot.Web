@@ -11,15 +11,15 @@
       "destination": "wwwroot/lib/highlight.js/"
     },
     {
-      "library": "bootstrap@5.3.3",
+      "library": "bootstrap@5.3.8",
       "destination": "wwwroot/lib/bootstrap/"
     },
     {
-      "library": "bootstrap-icons@1.11.3",
+      "library": "bootstrap-icons@1.13.1",
       "destination": "wwwroot/lib/bootstrap-icons/"
     },
     {
-      "library": "marked@15.0.6",
+      "library": "marked@16.3.0",
       "destination": "wwwroot/lib/marked/"
     },
     {
@@ -28,12 +28,11 @@
     },
     {
       "provider": "unpkg",
-      "library": "@primer/octicons@19.14.0",
+      "library": "@primer/octicons@19.18.0",
       "destination": "wwwroot/lib/primer/octicons/"
     },
-    
     {
-      "library": "mathjax@3.2.2",
+      "library": "mathjax@4.0.0",
       "destination": "wwwroot/lib/mathjax/"
     },
     {
@@ -47,7 +46,7 @@
     },
     {
       "provider": "cdnjs",
-      "library": "mermaid@11.4.0",
+      "library": "mermaid@11.12.0",
       "destination": "wwwroot/lib/mermaid/"
     }
   ]

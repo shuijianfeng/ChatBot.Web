@@ -30,8 +30,8 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-//app.UseStaticFiles();
-app.MapStaticAssets();
+app.UseStaticFiles();
+//app.MapStaticAssets();
 app.UseRouting();
 app.MapControllers();
 app.MapDefaultControllerRoute();
