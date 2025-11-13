@@ -12,8 +12,6 @@ using SixLabors.ImageSharp.Processing;
 
 namespace ChatBot.Web.Services
 {
-
-
     public class OpenAIService
     {
         private readonly ChatClient _chatClient;
@@ -23,6 +21,7 @@ namespace ChatBot.Web.Services
         private ChatModelConfig _chatModelConfig;
         private readonly JinaSearch _jinaSearch;
         private readonly OpenWeather _openWeather;
+
         public OpenAIService(ChatModelConfig chatModelConfig, IHttpClientFactory httpClientFactory)
         {
             _chatModelConfig = chatModelConfig;
@@ -43,15 +42,16 @@ namespace ChatBot.Web.Services
             }
             var apiEndpointUri = new Uri(chatModelConfig.ApiEndpoint);
 
-            var openAIClientOptions = new OpenAI.OpenAIClientOptions();
-            //openAIClientOptions.Endpoint = apiEndpointUri;
-            openAIClientOptions.Endpoint = apiEndpointUri;
+            var openAIClientOptions = new OpenAI.OpenAIClientOptions
+            {
+                Endpoint = apiEndpointUri
+            };
 
             _chatClient = new ChatClient(_chatModelConfig.Model, new ApiKeyCredential(apiKey), openAIClientOptions);
-            
+
             _options = new ChatCompletionOptions();
-            
         }
+
         public async IAsyncEnumerable<string> CompleteChatAsync(string str)
         {
             await foreach (var item in CompleteChatAsync(str, _chatModelConfig.Stream))
@@ -59,6 +59,7 @@ namespace ChatBot.Web.Services
                 yield return item;
             }
         }
+
         public async IAsyncEnumerable<string> CompleteChatAsync(List<OpenAI.Chat.ChatMessage> messages)
         {
             await foreach (var item in CompleteChatAsync(messages, _chatModelConfig.Stream))
@@ -66,6 +67,7 @@ namespace ChatBot.Web.Services
                 yield return item;
             }
         }
+
         public async IAsyncEnumerable<string> CompleteChatAsync(HistoryMessage historyMessage)
         {
             await foreach (var item in CompleteChatAsync(historyMessage, _chatModelConfig.Stream))
@@ -73,6 +75,7 @@ namespace ChatBot.Web.Services
                 yield return item;
             }
         }
+
         public async IAsyncEnumerable<string> CompleteChatAsync(List<HistoryMessage> historyMessages)
         {
             await foreach (var item in CompleteChatAsync(historyMessages, _chatModelConfig.Stream))
@@ -82,7 +85,6 @@ namespace ChatBot.Web.Services
         }
 
         public async IAsyncEnumerable<string> CompleteChatAsync(string str, bool isStream)
-
         {
             if (isStream)
             {
@@ -97,13 +99,11 @@ namespace ChatBot.Web.Services
                 {
                     new UserChatMessage(str)
                 };
-                yield return await Task.FromResult((await _chatClient.CompleteChatAsync(messages, _options)).Value.Content[0].Text);
+                yield return (await _chatClient.CompleteChatAsync(messages, _options)).Value.Content[0].Text;
             }
-
-
         }
-        public async IAsyncEnumerable<string> CompleteChatAsync(List<OpenAI.Chat.ChatMessage> messages, bool isStream)
 
+        public async IAsyncEnumerable<string> CompleteChatAsync(List<OpenAI.Chat.ChatMessage> messages, bool isStream)
         {
             if (isStream)
             {
@@ -114,11 +114,10 @@ namespace ChatBot.Web.Services
             }
             else
             {
-                yield return await Task.FromResult((await _chatClient.CompleteChatAsync(messages, _options)).Value.Content[0].Text);
+                yield return (await _chatClient.CompleteChatAsync(messages, _options)).Value.Content[0].Text;
             }
-
-
         }
+
         public async IAsyncEnumerable<string> CompleteChatAsync(HistoryMessage historyMessage, bool isStream)
         {
             if (isStream)
@@ -130,24 +129,11 @@ namespace ChatBot.Web.Services
             }
             else
             {
-                List<ChatMessageContentPart> contentlist = new List<ChatMessageContentPart>();
-
-                contentlist.Add(ChatMessageContentPart.CreateTextPart(historyMessage.Content));
-                foreach (var image in historyMessage.Images)
-                {
-                    contentlist.Add(ChatMessageContentPart.CreateImagePart(new BinaryData(ConvertUrlToBase64(image)), "image/jpeg"));
-
-                }
-                var messages = new List<OpenAI.Chat.ChatMessage>
-            {
-                new UserChatMessage(contentlist)
-            };
-
-
-                yield return await Task.FromResult((await _chatClient.CompleteChatAsync(messages, _options)).Value.Content[0].Text);
+                var messages = await BuildMessagesFromHistoryAsync(new List<HistoryMessage> { historyMessage });
+                yield return (await _chatClient.CompleteChatAsync(messages, _options)).Value.Content[0].Text;
             }
-
         }
+
         public async IAsyncEnumerable<string> CompleteChatAsync(List<HistoryMessage> historyMessages, bool isStream)
         {
             if (isStream)
@@ -159,24 +145,8 @@ namespace ChatBot.Web.Services
             }
             else
             {
-                var messages = new List<OpenAI.Chat.ChatMessage>();
-                if (!string.IsNullOrWhiteSpace(_chatModelConfig.Systemprompt))
-                {
-                    messages.Add(new SystemChatMessage(_chatModelConfig.Systemprompt));
-                }
-                foreach (var message in historyMessages)
-                {
-                    List<ChatMessageContentPart> contentlist = new List<ChatMessageContentPart>();
-                    contentlist.Add(ChatMessageContentPart.CreateTextPart(message.Content));
-                    foreach (var image in message.Images)
-                    {
-                        contentlist.Add(ChatMessageContentPart.CreateImagePart(new BinaryData(ConvertUrl(image)), "image/jpeg"));
-                    }
-
-                    messages.Add(new UserChatMessage(contentlist));
-                }
-
-                yield return await Task.FromResult((await _chatClient.CompleteChatAsync(messages, _options)).Value.Content[0].Text);
+                var messages = await BuildMessagesFromHistoryAsync(historyMessages);
+                yield return (await _chatClient.CompleteChatAsync(messages, _options)).Value.Content[0].Text;
             }
         }
 
@@ -186,271 +156,46 @@ namespace ChatBot.Web.Services
             {
                 new UserChatMessage(str)
             };
-            bool beging = false;
-            bool end = false;
-            bool beging1 = false;
-            bool end1 = false;
-            await foreach (StreamingChatCompletionUpdate completionUpdate in _chatClient.CompleteChatStreamingAsync(messages, _options))
+            await foreach (var item in ProcessStreamingResponseAsync(messages))
             {
-                string content = string.Empty;
-                string reasoning_content = string.Empty;
-
-                if (completionUpdate.ContentUpdate.Count > 0)
-                {
-                    content = completionUpdate.ContentUpdate[0].Text;
-
-                }
-                else
-                {
-                    if (completionUpdate.ReasoningContentUpdate.Count > 0)
-                    {
-                        reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
-
-                    }
-                    else
-                    {
-                        yield return string.Empty;
-                        break;
-                    }
-                }
-                if (!string.IsNullOrEmpty(reasoning_content))
-                {
-                    if (!beging)
-                    {
-                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
-                        beging = true;
-                    }
-                    else
-                    {
-                        yield return reasoning_content;
-
-                    }
-
-                }
-                if (!string.IsNullOrEmpty(content))
-                {
-                    if (beging && !end)
-                    {
-                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                        end = true;
-                    }
-                    else
-                    {
-                        if (content == "<think>" && !beging1 && !end1)
-                        {
-                            yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
-                            beging1 = true;
-                        }
-                        else
-                        {
-                            if (content == "</think>" && beging1 && !end1)
-                            {
-                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
-                                end1 = true;
-                            }
-                            else
-                            {
-                                yield return content;
-                            }
-
-                        }
-
-                    }
-
-                }
+                yield return item;
             }
         }
+
         public async IAsyncEnumerable<string> CompleteChatStreamingAsync(List<OpenAI.Chat.ChatMessage> messages)
         {
-
-            bool beging = false;
-            bool end = false;
-            bool beging1 = false;
-            bool end1 = false;
-            await foreach (StreamingChatCompletionUpdate completionUpdate in _chatClient.CompleteChatStreamingAsync(messages, _options))
+            await foreach (var item in ProcessStreamingResponseAsync(messages))
             {
-                string content = string.Empty;
-                string reasoning_content = string.Empty;
-
-                if (completionUpdate.ContentUpdate.Count > 0)
-                {
-                    content = completionUpdate.ContentUpdate[0].Text;
-
-                }
-                else
-                {
-                    if (completionUpdate.ReasoningContentUpdate.Count > 0)
-                    {
-                        reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
-
-                    }
-                    else
-                    {
-                        yield return string.Empty;
-                        break;
-                    }
-                }
-                if (!string.IsNullOrEmpty(reasoning_content))
-                {
-                    if (!beging)
-                    {
-                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
-                        beging = true;
-                    }
-                    else
-                    {
-                        yield return reasoning_content;
-
-                    }
-
-                }
-                if (!string.IsNullOrEmpty(content))
-                {
-                    if (beging && !end)
-                    {
-                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                        end = true;
-                    }
-                    else
-                    {
-                        if (content == "<think>" && !beging1 && !end1)
-                        {
-                            yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
-                            beging1 = true;
-                        }
-                        else
-                        {
-                            if (content == "</think>" && beging1 && !end1)
-                            {
-                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
-                                end1 = true;
-                            }
-                            else
-                            {
-                                yield return content;
-                            }
-
-                        }
-
-                    }
-
-                }
+                yield return item;
             }
         }
-        
+
         public async IAsyncEnumerable<string> CompleteChatStreamingAsync(HistoryMessage historyMessage)
         {
-            List<ChatMessageContentPart> contentlist = new List<ChatMessageContentPart>();
-
-            contentlist.Add(ChatMessageContentPart.CreateTextPart(historyMessage.Content));
-            foreach (var image in historyMessage.Images)
+            var messages = await BuildMessagesFromHistoryAsync(new List<HistoryMessage> { historyMessage });
+            await foreach (var item in ProcessStreamingResponseAsync(messages))
             {
-                contentlist.Add(ChatMessageContentPart.CreateImagePart(new BinaryData(ConvertUrl(image)), "image/jpeg"));
-
-            }
-            var messages = new List<OpenAI.Chat.ChatMessage>
-            {
-                new UserChatMessage(contentlist)
-            };
-
-            bool beging = false;
-            bool end = false;
-            bool beging1 = false;
-            bool end1 = false;
-            await foreach (StreamingChatCompletionUpdate completionUpdate in _chatClient.CompleteChatStreamingAsync(messages, _options))
-            {
-                string content = string.Empty;
-                string reasoning_content = string.Empty;
-
-                if (completionUpdate.ContentUpdate.Count > 0)
-                {
-                    content = completionUpdate.ContentUpdate[0].Text;
-
-                }
-                else
-                {
-                    if (completionUpdate.ReasoningContentUpdate.Count > 0)
-                    {
-                        reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
-
-                    }
-                    else
-                    {
-                        yield return string.Empty;
-                        break;
-                    }
-                }
-                if (!string.IsNullOrEmpty(reasoning_content))
-                {
-                    if (!beging)
-                    {
-                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
-                        beging = true;
-                    }
-                    else
-                    {
-                        yield return reasoning_content;
-
-                    }
-
-                }
-                if (!string.IsNullOrEmpty(content))
-                {
-                    if (beging && !end)
-                    {
-                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                        end = true;
-                    }
-                    else
-                    {
-                        if (content == "<think>" && !beging1 && !end1)
-                        {
-                            yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
-                            beging1 = true;
-                        }
-                        else
-                        {
-                            if (content == "</think>" && beging1 && !end1)
-                            {
-                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
-                                end1 = true;
-                            }
-                            else
-                            {
-                                yield return content;
-                            }
-
-                        }
-
-                    }
-
-                }
+                yield return item;
             }
         }
+
         public async IAsyncEnumerable<string> CompleteChatStreamingAsync(List<HistoryMessage> historyMessages)
         {
-            var messages = new List<OpenAI.Chat.ChatMessage>();
-            if (!string.IsNullOrWhiteSpace(_chatModelConfig.Systemprompt))
+            var messages = await BuildMessagesFromHistoryAsync(historyMessages);
+            await foreach (var item in ProcessStreamingResponseAsync(messages))
             {
-                messages.Add(new SystemChatMessage(_chatModelConfig.Systemprompt));
+                yield return item;
             }
-            foreach (var message in historyMessages)
-            {
-                List<ChatMessageContentPart> contentlist = new List<ChatMessageContentPart>();
-                contentlist.Add(ChatMessageContentPart.CreateTextPart(message.Content));
-                foreach (var image in message.Images)
-                {
-                    contentlist.Add(ChatMessageContentPart.CreateImagePart(new BinaryData(ConvertUrl(image)), "image/jpeg"));
-                }
+        }
 
-                messages.Add(new UserChatMessage(contentlist));
-            }
-
-            
+        // 提取重复的流处理逻辑
+        private async IAsyncEnumerable<string> ProcessStreamingResponseAsync(List<OpenAI.Chat.ChatMessage> messages)
+        {
             bool beging = false;
             bool end = false;
             bool beging1 = false;
             bool end1 = false;
+
             await foreach (StreamingChatCompletionUpdate completionUpdate in _chatClient.CompleteChatStreamingAsync(messages, _options))
             {
                 string content = string.Empty;
@@ -459,21 +204,17 @@ namespace ChatBot.Web.Services
                 if (completionUpdate.ContentUpdate.Count > 0)
                 {
                     content = completionUpdate.ContentUpdate[0].Text;
-                    
+                }
+                else if (completionUpdate.ReasoningContentUpdate.Count > 0)
+                {
+                    reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
                 }
                 else
                 {
-                    if (completionUpdate.ReasoningContentUpdate.Count > 0)
-                    {
-                        reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
-                        
-                    }
-                    else
-                    {
-                        yield return string.Empty;
-                        break;
-                    }
+                    yield return string.Empty;
+                    break;
                 }
+
                 if (!string.IsNullOrEmpty(reasoning_content))
                 {
                     if (!beging)
@@ -484,10 +225,9 @@ namespace ChatBot.Web.Services
                     else
                     {
                         yield return reasoning_content;
-
                     }
-
                 }
+
                 if (!string.IsNullOrEmpty(content))
                 {
                     if (beging && !end)
@@ -502,49 +242,56 @@ namespace ChatBot.Web.Services
                             yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
                             beging1 = true;
                         }
+                        else if (content == "</think>" && beging1 && !end1)
+                        {
+                            yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
+                            end1 = true;
+                        }
                         else
                         {
-                            if (content == "</think>" && beging1 && !end1)
-                            {
-                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
-                                end1 = true;
-                            }
-                            else
-                            {
-                                yield return content;
-                            }
-
+                            yield return content;
                         }
-
                     }
-
                 }
             }
         }
-        public async IAsyncEnumerable<string> CompleteChatStreamingAsync1(List<HistoryMessage> historyMessages)
+
+        // 辅助方法:从历史消息构建聊天消息列表
+        private async Task<List<OpenAI.Chat.ChatMessage>> BuildMessagesFromHistoryAsync(List<HistoryMessage> historyMessages)
         {
             var messages = new List<OpenAI.Chat.ChatMessage>();
             if (!string.IsNullOrWhiteSpace(_chatModelConfig.Systemprompt))
             {
                 messages.Add(new SystemChatMessage(_chatModelConfig.Systemprompt));
             }
+
             foreach (var message in historyMessages)
             {
-                List<ChatMessageContentPart> contentlist = new List<ChatMessageContentPart>();
-                contentlist.Add(ChatMessageContentPart.CreateTextPart(message.Content));
+                List<ChatMessageContentPart> contentlist = new List<ChatMessageContentPart>
+                {
+                    ChatMessageContentPart.CreateTextPart(message.Content)
+                };
+
                 foreach (var image in message.Images)
                 {
-                    contentlist.Add(ChatMessageContentPart.CreateImagePart(new BinaryData(ConvertUrl(image)), "image/jpeg"));
+                    var imageBytes = await ConvertUrlAsync(image);
+                    contentlist.Add(ChatMessageContentPart.CreateImagePart(new BinaryData(imageBytes), "image/jpeg"));
                 }
 
                 messages.Add(new UserChatMessage(contentlist));
             }
+
+            return messages;
+        }
+
+        public async IAsyncEnumerable<string> CompleteChatStreamingAsync1(List<HistoryMessage> historyMessages)
+        {
+            var messages = await BuildMessagesFromHistoryAsync(historyMessages);
             InitTool();
             bool requiresAction;
+
             if (_chatModelConfig.Stream)
             {
-                
-
                 do
                 {
                     requiresAction = false;
@@ -556,9 +303,9 @@ namespace ChatBot.Web.Services
                     bool end = false;
                     bool beging1 = false;
                     bool end1 = false;
+
                     await foreach (StreamingChatCompletionUpdate completionUpdate in completionUpdates)
                     {
-
                         foreach (ChatMessageContentPart contentPart in completionUpdate.ContentUpdate)
                         {
                             contentBuilder.Append(contentPart.Text);
@@ -577,21 +324,12 @@ namespace ChatBot.Web.Services
                             if (completionUpdate.ContentUpdate.Count > 0)
                             {
                                 content = completionUpdate.ContentUpdate[0].Text;
-
                             }
-                            else
+                            else if (completionUpdate.ReasoningContentUpdate.Count > 0)
                             {
-                                if (completionUpdate.ReasoningContentUpdate.Count > 0)
-                                {
-                                    reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
-
-                                }
-                                else
-                                {
-                                    //yield return string.Empty;
-                                    //break;
-                                }
+                                reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
                             }
+
                             if (!string.IsNullOrEmpty(reasoning_content))
                             {
                                 if (!beging)
@@ -602,10 +340,9 @@ namespace ChatBot.Web.Services
                                 else
                                 {
                                     yield return reasoning_content;
-
                                 }
-
                             }
+
                             if (!string.IsNullOrEmpty(content))
                             {
                                 if (beging && !end)
@@ -613,125 +350,33 @@ namespace ChatBot.Web.Services
                                     yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
                                     end = true;
                                 }
+                                else if (content == "<think>" && !beging1 && !end1)
+                                {
+                                    yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
+                                    beging1 = true;
+                                }
+                                else if (content == "</think>" && beging1 && !end1)
+                                {
+                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
+                                    end1 = true;
+                                }
                                 else
                                 {
-                                    if (content == "<think>" && !beging1 && !end1)
-                                    {
-                                        yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
-                                        beging1 = true;
-                                    }
-                                    else
-                                    {
-                                        if (content == "</think>" && beging1 && !end1)
-                                        {
-                                            yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
-                                            end1 = true;
-                                        }
-                                        else
-                                        {
-                                            yield return content;
-                                        }
-
-                                    }
-
+                                    yield return content;
                                 }
-
                             }
                         }
 
                         switch (completionUpdate.FinishReason)
                         {
                             case ChatFinishReason.Stop:
-                                {
-
-
-                                    messages.Add(new AssistantChatMessage(contentBuilder.ToString()));
-                                    break;
-                                }
+                                messages.Add(new AssistantChatMessage(contentBuilder.ToString()));
+                                break;
 
                             case ChatFinishReason.ToolCalls:
-                                {
-                                    IReadOnlyList<ChatToolCall> toolCalls = toolCallsBuilder.Build();
-
-                                    AssistantChatMessage assistantMessage = new(toolCalls);
-
-                                    if (contentBuilder.Length > 0)
-                                    {
-                                        assistantMessage.Content.Add(ChatMessageContentPart.CreateTextPart(contentBuilder.ToString()));
-                                    }
-
-                                    messages.Add(assistantMessage);
-
-                                    foreach (ChatToolCall toolCall in toolCalls)
-                                    {
-                                        switch (toolCall.FunctionName)
-                                        {
-                                            case nameof(GetCurrentDataTime):
-                                                {
-                                                    string toolResult = await GetCurrentDataTime();
-                                                    messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
-                                                    break;
-                                                }
-                                            case nameof(JinaAiSearch):
-                                                {
-                                                    using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
-                                                    bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-                                                    if (!query)
-                                                    {
-                                                        throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                    }
-
-                                                    string toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
-
-                                                    messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
-                                                    break;
-                                                }
-                                            case nameof(SearchTrainTicket):
-                                                {
-                                                    using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
-                                                    bool hasStartingPlace = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
-                                                    bool hasArrivalPlace = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
-                                                    bool hasDate = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
-
-                                                    if (!hasStartingPlace || !hasArrivalPlace || !hasDate)
-                                                    {
-                                                        throw new ArgumentNullException("Required parameters missing for train ticket search.");
-                                                    }
-
-                                                    string toolResult = await SearchTrainTicket(
-                                                        startingplace.GetString() ?? throw new ArgumentNullException(nameof(startingplace)),
-                                                        arrivalplace.GetString() ?? throw new ArgumentNullException(nameof(arrivalplace)),
-                                                        date.GetString() ?? throw new ArgumentNullException(nameof(date)));
-
-                                                    messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
-                                                    break;
-                                                }
-                                            case nameof(GetWeather):
-                                                {
-                                                    using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
-                                                    bool hasCity = argumentsJson.RootElement.TryGetProperty("city", out JsonElement city);
-
-                                                    if (!hasCity)
-                                                    {
-                                                        throw new ArgumentNullException(nameof(city), "The city parameter is required.");
-                                                    }
-
-                                                    string toolResult = await GetWeather(city.GetString() ?? throw new ArgumentNullException(nameof(city), "City cannot be null."));
-
-                                                    messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
-                                                    break;
-                                                }
-                                            default:
-                                                {
-                                                    throw new NotImplementedException($"Tool function '{toolCall.FunctionName}' is not implemented.");
-                                                }
-                                        }
-                                    }
-
-                                    requiresAction = true;
-                                    break;
-                                }
+                                await ProcessToolCallsAsync(messages, contentBuilder, toolCallsBuilder);
+                                requiresAction = true;
+                                break;
 
                             case ChatFinishReason.Length:
                                 throw new NotImplementedException("Incomplete model output due to MaxTokens parameter or token limit exceeded.");
@@ -745,90 +390,84 @@ namespace ChatBot.Web.Services
                             case null:
                                 break;
                         }
-
-
                     }
                 } while (requiresAction);
-
             }
             else
             {
-                bool beging = false;
-                bool end = false;
-                bool beging1 = false;
-                bool end1 = false;
-                await foreach (StreamingChatCompletionUpdate completionUpdate in _chatClient.CompleteChatStreamingAsync(messages, _options))
+                await foreach (var item in ProcessStreamingResponseAsync(messages))
                 {
-                    string content = string.Empty;
-                    string reasoning_content = string.Empty;
-
-                    if (completionUpdate.ContentUpdate.Count > 0)
-                    {
-                        content = completionUpdate.ContentUpdate[0].Text;
-
-                    }
-                    else
-                    {
-                        if (completionUpdate.ReasoningContentUpdate.Count > 0)
-                        {
-                            reasoning_content = completionUpdate.ReasoningContentUpdate[0].Text;
-
-                        }
-                        else
-                        {
-                            yield return string.Empty;
-                            break;
-                        }
-                    }
-                    if (!string.IsNullOrEmpty(reasoning_content))
-                    {
-                        if (!beging)
-                        {
-                            yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
-                            beging = true;
-                        }
-                        else
-                        {
-                            yield return reasoning_content;
-
-                        }
-
-                    }
-                    if (!string.IsNullOrEmpty(content))
-                    {
-                        if (beging && !end)
-                        {
-                            yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                            end = true;
-                        }
-                        else
-                        {
-                            if (content == "<think>" && !beging1 && !end1)
-                            {
-                                yield return content + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n";
-                                beging1 = true;
-                            }
-                            else
-                            {
-                                if (content == "</think>" && beging1 && !end1)
-                                {
-                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + content + "\n";
-                                    end1 = true;
-                                }
-                                else
-                                {
-                                    yield return content;
-                                }
-
-                            }
-
-                        }
-
-                    }
+                    yield return item;
                 }
             }
-            
         }
+
+        // 提取工具调用处理逻辑
+        private async Task ProcessToolCallsAsync(List<OpenAI.Chat.ChatMessage> messages, StringBuilder contentBuilder, StreamingChatToolCallsBuilder toolCallsBuilder)
+        {
+            IReadOnlyList<ChatToolCall> toolCalls = toolCallsBuilder.Build();
+            AssistantChatMessage assistantMessage = new(toolCalls);
+
+            if (contentBuilder.Length > 0)
+            {
+                assistantMessage.Content.Add(ChatMessageContentPart.CreateTextPart(contentBuilder.ToString()));
+            }
+
+            messages.Add(assistantMessage);
+
+            foreach (ChatToolCall toolCall in toolCalls)
+            {
+                string toolResult = toolCall.FunctionName switch
+                {
+                    nameof(GetCurrentDataTime) => await GetCurrentDataTime(),
+                    nameof(JinaAiSearch) => await ProcessJinaSearchAsync(toolCall),
+                    nameof(SearchTrainTicket) => await ProcessTrainTicketSearchAsync(toolCall),
+                    nameof(GetWeather) => await ProcessWeatherAsync(toolCall),
+                    _ => throw new NotImplementedException($"Tool function '{toolCall.FunctionName}' is not implemented.")
+                };
+
+                messages.Add(new ToolChatMessage(toolCall.Id, toolResult));
+            }
+        }
+
+        private async Task<string> ProcessJinaSearchAsync(ChatToolCall toolCall)
+        {
+            using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
+            if (!argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery))
+            {
+                throw new ArgumentNullException("query", "The query argument is required.");
+            }
+            return await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException("query", "Query cannot be null."));
+        }
+
+        private async Task<string> ProcessTrainTicketSearchAsync(ChatToolCall toolCall)
+        {
+            using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
+            bool hasStartingPlace = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+            bool hasArrivalPlace = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+            bool hasDate = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+
+            if (!hasStartingPlace || !hasArrivalPlace || !hasDate)
+            {
+                throw new ArgumentNullException("Required parameters missing for train ticket search.");
+            }
+
+            return await SearchTrainTicket(
+                startingplace.GetString() ?? throw new ArgumentNullException(nameof(startingplace)),
+                arrivalplace.GetString() ?? throw new ArgumentNullException(nameof(arrivalplace)),
+                date.GetString() ?? throw new ArgumentNullException(nameof(date)));
+        }
+
+        private async Task<string> ProcessWeatherAsync(ChatToolCall toolCall)
+        {
+            using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
+            if (!argumentsJson.RootElement.TryGetProperty("city", out JsonElement city))
+            {
+                throw new ArgumentNullException("city", "The city parameter is required.");
+            }
+            return await GetWeather(city.GetString() ?? throw new ArgumentNullException("city", "City cannot be null."));
+        }
+
         private void InitTool()
         {
             // 添加网页搜索工具
@@ -917,137 +556,91 @@ namespace ChatBot.Web.Services
             );
             _options.Tools.Add(trainTool);
         }
+
         public ChatModelConfig ChatModelConfig { get => _chatModelConfig; set => _chatModelConfig = value; }
 
-        private async Task<string>? JinaAiSearch(string query)
+        private async Task<string> JinaAiSearch(string query)
         {
-            var result = await _jinaSearch.Search(query);
-            return await Task.FromResult(result);
+            return await _jinaSearch.Search(query);
         }
 
-        private async Task<string>? GetWeather(string query)
+        private async Task<string> GetWeather(string query)
         {
-            var result = await _openWeather.GetWeatherAsync(query);
-            return await Task.FromResult(result);
+            return await _openWeather.GetWeatherAsync(query);
         }
 
-        private async Task<string>? SearchTrainTicket(string startingplace, string arrivalplace, string date)
+        private async Task<string> SearchTrainTicket(string startingplace, string arrivalplace, string date)
         {
-            var result = await _jinaSearch.SearchTrainTicket(startingplace, arrivalplace, date);
-            return await Task.FromResult(result);
+            return await _jinaSearch.SearchTrainTicket(startingplace, arrivalplace, date);
         }
 
-        private async Task<string>? GetCurrentDataTime()
+        private Task<string> GetCurrentDataTime()
         {
-
             var result = DateTime.Now.ToString(" 日期: yyyy年M月dd日 dddd 时间：HH:mm:ss ");
-
-            return await Task.FromResult(result);
+            return Task.FromResult(result);
         }
 
-
-        // 修改 ConvertUrlToBase64 方法，使用 ImageSharp 库进行图片压缩
-        private  string ConvertUrlToBase64(string imageUrl)
+        // 修复: 异步方法,避免 .Result 阻塞
+        private async Task<string> ConvertUrlToBase64Async(string imageUrl)
         {
-            // 下载并压缩图片
-            using (var client = _httpClientFactory.CreateClient())
+            using var client = _httpClientFactory.CreateClient();
+            byte[] imageBytesOriginal = await client.GetByteArrayAsync(imageUrl);
+
+            using var ms = new MemoryStream(imageBytesOriginal);
+            using var image = await SixLabors.ImageSharp.Image.LoadAsync(ms);
+
+            // 调整图片尺寸
+            int maxWidth = 1024;
+            if (image.Width > maxWidth)
             {
-                byte[] imageBytesOriginal = client.GetByteArrayAsync(imageUrl).Result;
-
-                using (var ms = new MemoryStream(imageBytesOriginal))
-                {
-                    // 加载图片
-                    using (var image = SixLabors.ImageSharp.Image.Load(ms))
-                    {
-                        // 可选：调整图片尺寸
-                        int maxWidth = 1024;
-                        if (image.Width > maxWidth)
-                        {
-                            var ratio = (double)maxWidth / image.Width;
-                            int newHeight = (int)(image.Height * ratio);
-                            image.Mutate(x => x.Resize(maxWidth, newHeight));
-                        }
-
-                        //// 设置压缩质量和选择编码器
-                        //var encoder = image.Metadata.DecodedImageFormat.Name switch
-                        //{
-                        //    "JPEG" => (IImageEncoder)new JpegEncoder { Quality = 80 }, // 压缩质量，范围0-100
-                        //    "PNG" => new PngEncoder { CompressionLevel = PngCompressionLevel.Level6 },
-                        //    "GIF" => new GifEncoder(), // 支持 GIF 格式
-                        //    "WEBP" => new WebpEncoder(), // 支持 WEBP 格式
-                        //    _ => new JpegEncoder { Quality = 80 } // 默认使用 JPEG 编码
-                        //};
-                        // 设置压缩质量
-                        var encoder = new JpegEncoder
-                        {
-                            Quality = 80 // 压缩质量，范围0-100
-                        };
-
-                        using (var msCompressed = new MemoryStream())
-                        {
-                            // 保存压缩后的图片到内存流
-                            image.Save(msCompressed, encoder);
-
-                            // 转换为Base64字符串
-                            return Convert.ToBase64String(msCompressed.ToArray());
-                        }
-                    }
-                }
+                var ratio = (double)maxWidth / image.Width;
+                int newHeight = (int)(image.Height * ratio);
+                image.Mutate(x => x.Resize(maxWidth, newHeight));
             }
+
+            var encoder = new JpegEncoder { Quality = 80 };
+            using var msCompressed = new MemoryStream();
+            await image.SaveAsync(msCompressed, encoder);
+            return Convert.ToBase64String(msCompressed.ToArray());
         }
 
-        // 修改 ConvertUrlToBase64 方法，使用 ImageSharp 库进行图片压缩
-        private  byte[] ConvertUrl(string imageUrl)
+        // 修复: 异步方法,避免 .Result 阻塞
+        private async Task<byte[]> ConvertUrlAsync(string imageUrl)
         {
-            // 下载并压缩图片
-            using (var client = _httpClientFactory.CreateClient())
+            using var client = _httpClientFactory.CreateClient();
+            byte[] imageBytesOriginal = await client.GetByteArrayAsync(imageUrl);
+
+            using var ms = new MemoryStream(imageBytesOriginal);
+            using var image = await SixLabors.ImageSharp.Image.LoadAsync(ms);
+
+            // 调整图片尺寸
+            int maxWidth = 1024;
+            if (image.Width > maxWidth)
             {
-                byte[] imageBytesOriginal = client.GetByteArrayAsync(imageUrl).Result;
-
-                using (var ms = new MemoryStream(imageBytesOriginal))
-                {
-                    // 加载图片
-                    using (var image = SixLabors.ImageSharp.Image.Load(ms))
-                    {
-                        // 可选：调整图片尺寸
-                        int maxWidth = 1024;
-                        if (image.Width > maxWidth)
-                        {
-                            var ratio = (double)maxWidth / image.Width;
-                            int newHeight = (int)(image.Height * ratio);
-                            image.Mutate(x => x.Resize(maxWidth, newHeight));
-                        }
-
-                        //// 设置压缩质量和选择编码器
-                        //var encoder = image.Metadata.DecodedImageFormat.Name switch
-                        //{
-                        //    "JPEG" => (IImageEncoder)new JpegEncoder { Quality = 80 }, // 压缩质量，范围0-100
-                        //    "PNG" => new PngEncoder { CompressionLevel = PngCompressionLevel.Level6 },
-                        //    "GIF" => new GifEncoder(), // 支持 GIF 格式
-                        //    "WEBP" => new WebpEncoder(), // 支持 WEBP 格式
-                        //    _ => new JpegEncoder { Quality = 80 } // 默认使用 JPEG 编码
-                        //};
-                        // 设置压缩质量
-                        var encoder = new JpegEncoder
-                        {
-                            Quality = 80 // 压缩质量，范围0-100
-                        };
-
-                        using (var msCompressed = new MemoryStream())
-                        {
-                            // 保存压缩后的图片到内存流
-                            image.Save(msCompressed, encoder);
-
-                            // 转换为Base64字符串
-                            return msCompressed.ToArray();
-                        }
-                    }
-                }
+                var ratio = (double)maxWidth / image.Width;
+                int newHeight = (int)(image.Height * ratio);
+                image.Mutate(x => x.Resize(maxWidth, newHeight));
             }
+
+            var encoder = new JpegEncoder { Quality = 80 };
+            using var msCompressed = new MemoryStream();
+            await image.SaveAsync(msCompressed, encoder);
+            return msCompressed.ToArray();
+        }
+
+        // 保留同步版本以保持向后兼容(如果需要)
+        private string ConvertUrlToBase64(string imageUrl)
+        {
+            return ConvertUrlToBase64Async(imageUrl).GetAwaiter().GetResult();
+        }
+
+        private byte[] ConvertUrl(string imageUrl)
+        {
+            return ConvertUrlAsync(imageUrl).GetAwaiter().GetResult();
         }
     }
 
-    // 辅助类
+    // 其他辅助类保持不变...
     public class OpenAiSearchArgs
     {
         public string Query { get; set; }
@@ -1068,20 +661,16 @@ namespace ChatBot.Web.Services
 
         public void Append(StreamingChatToolCallUpdate toolCallUpdate)
         {
-            // Keep track of which tool call ID belongs to this update index.
             if (toolCallUpdate.ToolCallId != null)
             {
                 _indexToToolCallId[toolCallUpdate.Index] = toolCallUpdate.ToolCallId;
             }
 
-            // Keep track of which function name belongs to this update index.
             if (toolCallUpdate.FunctionName != null)
             {
                 _indexToFunctionName[toolCallUpdate.Index] = toolCallUpdate.FunctionName;
             }
 
-            // Keep track of which function arguments belong to this update index,
-            // and accumulate the arguments as new updates arrive.
             if (toolCallUpdate.FunctionArgumentsUpdate != null && !toolCallUpdate.FunctionArgumentsUpdate.ToMemory().IsEmpty)
             {
                 if (!_indexToFunctionArguments.TryGetValue(toolCallUpdate.Index, out SequenceBuilder<byte> argumentsBuilder))
@@ -1113,6 +702,7 @@ namespace ChatBot.Web.Services
             return toolCalls;
         }
     }
+
     public class SequenceBuilder<T>
     {
         Segment _first;

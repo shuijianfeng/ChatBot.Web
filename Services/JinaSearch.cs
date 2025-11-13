@@ -88,7 +88,7 @@ namespace ChatBot.Web.Services
 
                 var requestContent = new
                 {
-                    model = "gemini-2.5-flash-lite-preview-06-17",
+                    model = "gemini-flash-lite-latest",
                     messages = new[]
                     {
                         new { role = "system", content = "你是一个优秀的搜索查询优化专家。请将用户的查询扩展为更详细的搜索词，保持原始查询的核心意图，不超过5个词。直接返回扩展后的查询词，不要包含任何解释或其他文本。" },
@@ -133,7 +133,7 @@ namespace ChatBot.Web.Services
             // 并行执行搜索，减少等待时间
             var searchTasks = new []
             {
-                SearchSite(query, "", searchCount, isNoCache, isdirect),           // Google
+                //SearchSite(query, "", searchCount, isNoCache, isdirect),           // Google
                 SearchSite(query, "baidu.com ", searchCount, isNoCache, isdirect), // Baidu
                 SearchSite(query, "ctrip.com ", searchCount, isNoCache, isdirect), // Ctrip
                 SearchSite(query, "dianping.com ", searchCount, isNoCache, isdirect) // Dianping

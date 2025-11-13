@@ -1523,7 +1523,7 @@ class ChatUI {
         // 6. 在内容更新后触发渲染
         const renderMath = (element) => {
             if (this.MathJax && this.MathJax.typesetPromise) {
-                
+
                 this.MathJax.typesetPromise([element])
                     .catch(err => console.error('MathJax 渲染错误:', err));
             } else if (window.MathJax && window.MathJax.typesetPromise) {
@@ -1531,6 +1531,7 @@ class ChatUI {
                 window.MathJax.typesetPromise([element])
                     .catch(err => console.error('备用 MathJax 渲染错误:', err));
             }
+            
         };
 
         // 导出renderMath方法供外部使用
@@ -2075,8 +2076,12 @@ class ChatUI {
 
 
             if (this.currentMessageElement) {
-                //渲染数学公式
-                this.renderMath(this.currentMessageElement);
+                try {
+                    // 等待数学公式渲染完成
+                    await this.renderMath(this.currentMessageElement);
+                } catch (error) {
+                    console.error('MathJax 渲染错误:', error);
+                }
                 // 查找并渲染所有 mermaid 图表
                 const mermaidCharts = this.currentMessageElement.querySelectorAll('.mermaid-chart');
                 if (mermaidCharts.length > 0) {
