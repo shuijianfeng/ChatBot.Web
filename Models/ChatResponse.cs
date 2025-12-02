@@ -286,6 +286,17 @@ namespace ChatBot.Models
         public string arguments { get; set; } = string.Empty;
 
     }
+
+    public class GeminiToolCall
+    {
+        public string id { get; set; }
+        
+        public string name { get; set; } = string.Empty;
+        //public string args  { get; set; } = string.Empty;
+
+        public  object args { get; set; } 
+
+    }
     // 响应类型
     public class GeminiChunkResponse
     {
@@ -294,20 +305,20 @@ namespace ChatBot.Models
         public class candidate
         {
             public content content { get; set; }
-
+            public string finishReason { get; set; }
 
         }
         public class content
         {
-            public parts[] parts { get; set; }
+            public part[] parts { get; set; }
 
 
         }
 
-        public class parts
+        public class part
         {
             public string text { get; set; }
-
+            public GeminiToolCall functionCall { get; set; } = new GeminiToolCall();
         }
     }
 

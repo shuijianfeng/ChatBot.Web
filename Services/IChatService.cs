@@ -3,6 +3,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Office2013.Excel;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using iText.Commons.Utils;
 using iText.Html2pdf;
 using iText.Layout.Font;
 using Markdig;
@@ -110,7 +111,7 @@ namespace ChatBot.Web.Services
 
             return $"<js_command>{JsonSerializer.Serialize(command)}</js_command>";
         }
-        
+
 
         #endregion
 
@@ -202,7 +203,7 @@ namespace ChatBot.Web.Services
                             }
                             break;
                         }
-                    
+
                     case ChatModelType.Dify:
                         // 添加对Dify的支持
 
@@ -242,7 +243,7 @@ namespace ChatBot.Web.Services
             }
         }
 
-        
+
         // 阿里平台流式输出 - DashScope 百练应用调用方式
         public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -436,7 +437,7 @@ namespace ChatBot.Web.Services
                 input = messages,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-               
+
                 tools = tools,
             };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
@@ -784,6 +785,7 @@ namespace ChatBot.Web.Services
             {
                 client.Timeout = TimeSpan.FromMinutes(30);
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
             }
 
             var messages = ToMessagesOpenAi(request, modelconfg);
@@ -894,7 +896,7 @@ namespace ChatBot.Web.Services
                                     int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
                                     if (tool_calls.Count > 0)
                                     {
-                                        tool_calls[tool_calls.Count-1].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
+                                        tool_calls[tool_calls.Count - 1].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
                                     }
 
                                 }
@@ -1025,7 +1027,7 @@ namespace ChatBot.Web.Services
                                     });
 
 
-                                   
+
                                 }
                                 contentBuilder.Clear();
                                 tool_calls.Clear();
@@ -1861,13 +1863,12 @@ namespace ChatBot.Web.Services
             }
         }
         //Gemini
-        public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+        public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
         {
             // 验证配置
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
             apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
-
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
@@ -1876,17 +1877,21 @@ namespace ChatBot.Web.Services
             if (modelconfg.Stream)
             {
                 apiEndpoint = apiEndpoint + $":streamGenerateContent?alt=sse&key={apiKey}";
-
             }
             else
             {
                 apiEndpoint = apiEndpoint + $":generateContent?key={apiKey}";
             }
 
-            string Search = string.Empty;
-            
             // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
+            HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
+
+            var messages = ToMessagesGemini(request, modelconfg);
+            toolsmessages ??= new List<object>();
+            messages.AddRange(toolsmessages);
+
+            // 准备工具定义
+            List<object> tools = request.EnableSearch ? PrepareGeminiTools() : null;
 
             HttpResponseMessage response = null;
             if (modelconfg.Temperature >= 0)
@@ -1895,15 +1900,13 @@ namespace ChatBot.Web.Services
                 {
                     system_instruction = new
                     {
-                        parts = new { text = modelconfg.Systemprompt + Search }
+                        parts = new { text = modelconfg.Systemprompt }
                     },
-
-                    contents = ToMessagesGemini(request, modelconfg),
-                    generationConfig = new { temperature = modelconfg.Temperature }
-
-
+                    contents = messages,
+                    generationConfig = new { temperature = modelconfg.Temperature },
+                    tools = tools
                 };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+
                 response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
@@ -1915,20 +1918,18 @@ namespace ChatBot.Web.Services
                 {
                     system_instruction = new
                     {
-                        parts = new { text = modelconfg.Systemprompt + Search }
+                        parts = new { text = modelconfg.Systemprompt }
                     },
-
-                    contents = ToMessagesGemini(request, modelconfg),
-
-
-
+                    contents = messages,
+                    tools = tools
                 };
-                var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+
                 response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
                 {
                     Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
                 }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
+
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
             {
                 yield return "失败: StatusCode " + response.StatusCode.ToString();
@@ -1938,10 +1939,11 @@ namespace ChatBot.Web.Services
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
-
+            var contentBuilder = new StringBuilder();
+            //List<GeminiFunctionCall> functionCalls = new();
+            List<GeminiToolCall> tool_calls = new();
             while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
             {
-
                 if (modelconfg.Stream)
                 {
                     var line = await reader.ReadLineAsync(cancellationToken);
@@ -1951,11 +1953,71 @@ namespace ChatBot.Web.Services
                         line = line.Substring(6);
 
                         var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
-                        var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
+                        var candidate = chunk?.candidates?.FirstOrDefault();
 
-                        if (!string.IsNullOrEmpty(content))
+                        if (candidate?.content?.parts != null)
                         {
-                            yield return content;
+                            foreach (var part in candidate.content.parts)
+                            {
+
+                                if (part.functionCall != null)
+                                {
+                                    if (!string.IsNullOrEmpty(part.functionCall.name))
+                                    {
+                                        tool_calls.Add(part.functionCall);
+                                    }
+                                   
+                                    //continue;
+                                }
+
+                                // 处理文本内容
+                                if (!string.IsNullOrEmpty(part.text))
+                                {
+                                    contentBuilder.Append(part.text);
+                                    yield return part.text;
+                                }
+
+                            }
+                        }
+
+                        // 检查是否完成且有函数调用
+                        if (candidate?.finishReason == "STOP" && tool_calls.Count > 0)
+                        {
+                            // 执行函数调用
+                            var functionResults = new List<object>();
+
+                            foreach (var funcCall in tool_calls)
+                            {
+                                string toolResult = await ExecuteFunctionCall(funcCall);
+
+                                functionResults.Add(new
+                                {
+                                    role = "function",
+                                    parts = new[]
+                                    {
+                                new
+                                {
+                                    functionResponse = new
+                                    {
+                                        name = funcCall.name,
+                                        response = new { result = toolResult }
+                                    }
+                                }
+                            }
+                                });
+                            }
+
+                            toolsmessages.AddRange(functionResults);
+                            tool_calls.Clear();
+                            contentBuilder.Clear();
+                            response.Content.Dispose();
+
+                            // 递归调用以获取最终响应
+                            await foreach (var item in GeminiAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                            {
+                                yield return item;
+                            }
+                            break;
                         }
                     }
                 }
@@ -1964,15 +2026,230 @@ namespace ChatBot.Web.Services
                     var line = await reader.ReadToEndAsync(cancellationToken);
 
                     var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
-                    var content = chunk?.candidates?.FirstOrDefault()?.content?.parts?.FirstOrDefault()?.text;
+                    var candidate = chunk?.candidates?.FirstOrDefault();
 
-                    if (!string.IsNullOrEmpty(content))
+                    if (candidate?.content?.parts != null)
                     {
-                        yield return content;
+                        foreach (var part in candidate.content.parts)
+                        {
+                            if (part.functionCall != null)
+                            {
+                                if (!string.IsNullOrEmpty(part.functionCall.name))
+                                {
+                                    tool_calls.Add(part.functionCall);
+                                }
+
+                                //continue;
+                            }
+
+                            // 处理文本内容
+                            if (!string.IsNullOrEmpty(part.text))
+                            {
+                                contentBuilder.Append(part.text);
+                                yield return part.text;
+                            }
+                        }
                     }
 
+                    // 如果有函数调用，执行并重新请求
+                    // 检查是否完成且有函数调用
+                    if (candidate?.finishReason == "STOP" && tool_calls.Count > 0)
+                    {
+                        // 执行函数调用
+                        var functionResults = new List<object>();
+
+                        foreach (var funcCall in tool_calls)
+                        {
+                            string toolResult = await ExecuteFunctionCall(funcCall);
+
+                            functionResults.Add(new
+                            {
+                                role = "function",
+                                parts = new[]
+                                {
+                                new
+                                {
+                                    functionResponse = new
+                                    {
+                                        name = funcCall.name,
+                                        response = new { result = toolResult }
+                                    }
+                                }
+                            }
+                            });
+                        }
+
+                        toolsmessages.AddRange(functionResults);
+                        tool_calls.Clear();
+                        contentBuilder.Clear();
+                        response.Content.Dispose();
+
+                        // 递归调用以获取最终响应
+                        await foreach (var item in GeminiAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                        {
+                            yield return item;
+                        }
+                    }
                 }
             }
+        }
+
+        // 添加辅助方法：准备 Gemini 格式的工具定义
+        private List<object> PrepareGeminiTools()
+        {
+            return new List<object>
+    {
+        new
+        {
+            functionDeclarations = new List<object>
+            {
+                new
+                {
+                    name = nameof(JinaAiSearch),
+                    description = "执行网页搜索并返回结果",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            query = new
+                            {
+                                type = "string",
+                                description = "搜索词"
+                            }
+                        },
+                        required = new[] { "query" }
+                    }
+                },
+                new
+                {
+                    name = nameof(GetWeather),
+                    description = "获取指定城市未来8天天气预报",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            city = new
+                            {
+                                type = "string",
+                                description = "城市(用英文表示)"
+                            }
+                        },
+                        required = new[] { "city" }
+                    }
+                },
+                new
+                {
+                    name = nameof(GetCurrentDataTime),
+                    description = "获取当前日期和时间",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new { }
+                    }
+                },
+                new
+                {
+                    name = nameof(SearchTrainTicket),
+                    description = "获取指定日期的火车票、火车车次",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            startingplace = new
+                            {
+                                type = "string",
+                                description = "起始城市"
+                            },
+                            arrivalplace = new
+                            {
+                                type = "string",
+                                description = "到达城市"
+                            },
+                            date = new
+                            {
+                                type = "string",
+                                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
+                            }
+                        },
+                        required = new[] { "startingplace", "arrivalplace", "date" }
+                    }
+                }
+            }
+        }
+    };
+        }
+
+        // 添加辅助方法：执行函数调用
+        private async Task<string> ExecuteFunctionCall(GeminiToolCall funcCall)
+        {
+            string toolResult = string.Empty;
+
+            // 将 args 转换为 JsonElement 以便访问属性
+            JsonElement argsJson;
+
+            // 如果 args 已经是 JsonElement
+            if (funcCall.args is JsonElement element)
+            {
+                argsJson = element;
+            }
+            // 如果 args 是字符串,需要解析它
+            else if (funcCall.args is string argsStr)
+            {
+                using var doc = JsonDocument.Parse(argsStr);
+                argsJson = doc.RootElement.Clone();
+            }
+            // 如果是其他类型,尝试序列化再解析
+            else
+            {
+                var argsStr1 = JsonSerializer.Serialize(funcCall.args);
+                using var doc = JsonDocument.Parse(argsStr1);
+                argsJson = doc.RootElement.Clone();
+            }
+
+            switch (funcCall.name)
+            {
+                case nameof(GetCurrentDataTime):
+                    toolResult = await GetCurrentDataTime();
+                    break;
+
+                case nameof(JinaAiSearch):
+                    if (argsJson.TryGetProperty("query", out var queryValue))
+                    {
+                        string query = queryValue.GetString() ?? throw new ArgumentNullException(nameof(queryValue), "Query cannot be null.");
+                        toolResult = await JinaAiSearch(query);
+                    }
+                    break;
+
+                case nameof(SearchTrainTicket):
+                    if (argsJson.TryGetProperty("startingplace", out var startValue) &&
+                        argsJson.TryGetProperty("arrivalplace", out var arrivalValue) &&
+                        argsJson.TryGetProperty("date", out var dateValue))
+                    {
+                        toolResult = await SearchTrainTicket(
+                            startValue.GetString(),
+                            arrivalValue.GetString(),
+                            dateValue.GetString()
+                        );
+                    }
+                    break;
+
+                case nameof(GetWeather):
+                    if (argsJson.TryGetProperty("city", out var cityValue))
+                    {
+                        string city = cityValue.GetString() ?? throw new ArgumentNullException(nameof(cityValue), "City cannot be null.");
+                        toolResult = await GetWeather(city);
+                    }
+                    break;
+
+                default:
+                    toolResult = "未知工具调用";
+                    break;
+            }
+
+            return toolResult;
         }
         //Deepseek OpenAI 兼容方式
 
@@ -1994,6 +2271,7 @@ namespace ChatBot.Web.Services
             {
                 client.Timeout = TimeSpan.FromMinutes(30);
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
             }
 
             var messages = ToMessagesOpenAi(request, modelconfg);
@@ -2012,19 +2290,12 @@ namespace ChatBot.Web.Services
                 messages = messages,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-                //response_format = ToOpenAischema(),
-                tools = tools,
-                provider= new
-                {
-                    order = new List<string>
-                    {
-                        "fireworks"
-                    }
-                }        
-    
 
-        };
-            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+                tools = tools,
+
+
+            };
+
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
@@ -2048,6 +2319,7 @@ namespace ChatBot.Web.Services
                 bool end1 = false;
                 List<tool_call> tool_calls = new();
                 var contentBuilder = new StringBuilder();
+                var reasoningcontentBuilder = new StringBuilder();
                 bool iscitations = false;
                 string citationsstring = string.Empty;
                 while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
@@ -2060,41 +2332,27 @@ namespace ChatBot.Web.Services
                         if (line.StartsWith("data: "))
                         {
                             line = line.Substring(6);
-                            if (line == "[DONE]") break;
+                            if (line == "[DONE]")
+                            {
+                                break;
+                            }
 
 
                             var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
 
-                            var citations = chunk?.citations;
-                            if (citations != null && citations.Length > 0 && !iscitations)
-                            {
-                                StringBuilder sb = new StringBuilder();
-                                sb.AppendLine("");
-                                for (int i = 0; i < citations.Length; i++)
-                                {
-                                    sb.AppendLine("[" + (i + 1).ToString() + "]: " + citations[i]);
-
-                                }
-                                sb.AppendLine("");
-                                citationsstring = sb.ToString();
-                                iscitations = true;
-                            }
                             var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
                             var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
-                            var reasoning = chunk?.choices?.FirstOrDefault()?.delta?.reasoning;
-                            if (string.IsNullOrEmpty(reasoning_content))
-                            {
-                                reasoning_content = reasoning;
-                            }
+
+
                             if (!string.IsNullOrEmpty(content))
                             {
-                                //content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+
 
                                 contentBuilder.Append(content);
                             }
                             if (!string.IsNullOrEmpty(reasoning_content))
                             {
-                                //reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+                                reasoningcontentBuilder.Append(reasoning_content);
                             }
 
                             if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
@@ -2112,24 +2370,20 @@ namespace ChatBot.Web.Services
                                     }
 
                                 }
-                                //if (!string.IsNullOrEmpty(chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault()?.function?.name))
-                                //{
-                                //    tool_calls.Add(chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault());
-                                //}
-                                //else
-                                //{
-                                //    int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
-                                //    tool_calls[index].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
-
-
-                                //}
                                 //continue;
                             }
                             if (!string.IsNullOrEmpty(reasoning_content))
                             {
                                 if (!beging)
                                 {
-                                    yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
+                                    if (toolsmessages.Count > 0)
+                                    {
+                                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n"+"<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
+                                    }
+                                    else
+                                    {
+                                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
+                                    }
                                     beging = true;
                                 }
                                 else
@@ -2180,9 +2434,10 @@ namespace ChatBot.Web.Services
                                     role = "assistant",
 
                                     content = contentBuilder.ToString(),
+                                    reasoning_content = reasoningcontentBuilder.ToString(),
                                     tool_calls = tool_calls1
                                 });
-                                //var pair=tool_calls.First();
+
                                 foreach (var pair in tool_calls)
                                 {
                                     string toolResult = string.Empty;
@@ -2253,6 +2508,7 @@ namespace ChatBot.Web.Services
 
                                 }
                                 contentBuilder.Clear();
+                                reasoningcontentBuilder.Clear();
                                 tool_calls.Clear();
                                 response.Content.Dispose();
                                 await foreach (var item in DeepseekOpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
@@ -2290,12 +2546,12 @@ namespace ChatBot.Web.Services
                         var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
                         if (!string.IsNullOrEmpty(content))
                         {
-                            content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+
                             contentBuilder.Append(content);
                         }
                         if (!string.IsNullOrEmpty(reasoning_content))
                         {
-                            reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+
                         }
 
                         if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
@@ -2569,7 +2825,7 @@ namespace ChatBot.Web.Services
 
         }
 
-
+      
         #region 工具方法
         // 创建工具列表
         private List<object> PrepareOpenAiResponsesTools()
@@ -2897,14 +3153,11 @@ namespace ChatBot.Web.Services
                 {
 
                     var contentlist = new List<object>();
-                    //if (msg == request.History.Last() && msg.Role == "user" && !string.IsNullOrEmpty(generateSystemPrompt))
-                    //{
-                    //    contentlist.Add(new { type = "text", text = generateSystemPrompt });
-                    //}
-                    //else
-                    {
-                        contentlist.Add(new { type = "text", text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) });
-                    }
+                    
+                    
+                    contentlist.Add(new { type = "text", text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) });
+                    
+
                     foreach (var image in msg.Images)
                     {
 
@@ -2921,20 +3174,13 @@ namespace ChatBot.Web.Services
                 else
                 {
 
-                    //if (msg == request.History.Last() && msg.Role == "user" && !string.IsNullOrEmpty(generateSystemPrompt))
-                    //{
-                    //    messages.Add(new
-                    //    {
-                    //        role = msg.Role,
-                    //        content = generateSystemPrompt
-                    //    });
-                    //}
-                    //else
+                   
                     {
                         messages.Add(new
                         {
                             role = msg.Role,
                             content = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content)
+                            
                         });
                     }
                 }
@@ -3632,66 +3878,66 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
             return tokens;
         }
 
-//        public async Task<string> ExportMessageTo(string content)
-//        {
-//            try
-//            {
-                
+        //        public async Task<string> ExportMessageTo(string content)
+        //        {
+        //            try
+        //            {
 
-//                // 使用Chrome或Edge WebDriver进行渲染
-//                // 需添加包：Selenium.WebDriver和适当的浏览器驱动
-//                using (var driver = new OpenQA.Selenium.Chrome.ChromeDriver())
-//                {
-//                    // 创建临时HTML文件
-//                    var tempHtmlPath = Path.GetTempFileName() + ".html";
-//                    File.WriteAllText(tempHtmlPath, content);
 
-//                    // 加载HTML并等待MathJax完成渲染
-//                    driver.Navigate().GoToUrl("file://" + tempHtmlPath);
-//                    driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(5);
+        //                // 使用Chrome或Edge WebDriver进行渲染
+        //                // 需添加包：Selenium.WebDriver和适当的浏览器驱动
+        //                using (var driver = new OpenQA.Selenium.Chrome.ChromeDriver())
+        //                {
+        //                    // 创建临时HTML文件
+        //                    var tempHtmlPath = Path.GetTempFileName() + ".html";
+        //                    File.WriteAllText(tempHtmlPath, content);
 
-//                    // 等待MathJax完成渲染
-//                    WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
-//                    //wait.Until(d => (bool)((IJavaScriptExecutor)d).ExecuteScript(
-//                    //    "return !!window.MathJax && !!MathJax.startup && MathJax.startup.promise.state() === 1"
-//                    //));
-//                    wait.Until(d => (bool)((IJavaScriptExecutor)d).ExecuteScript(
-//    "return !!window.MathJax && !!MathJax.startup && (typeof MathJax.typesetPromise === 'function' || document.querySelectorAll('.mjx-math, .MathJax').length > 0)"
-//));
-//                    // 获取完全渲染后的HTML
-//                    string renderedHtml = (string)((IJavaScriptExecutor)driver).ExecuteScript(
-//                        "return document.documentElement.outerHTML"
-//                    );
+        //                    // 加载HTML并等待MathJax完成渲染
+        //                    driver.Navigate().GoToUrl("file://" + tempHtmlPath);
+        //                    driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(5);
 
-//                    return renderedHtml;
-//                }
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError($"PDF生成失败: {ex.Message}");
-//                throw;
-//            }
-//        }
-//        private string PreprocessHtmlForWordExport(string html)
-//        {
-//            // 创建HTML解析器处理实例
-//            var parser = new AngleSharp.Html.Parser.HtmlParser();
-//            var document = parser.ParseDocument(html);
+        //                    // 等待MathJax完成渲染
+        //                    WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(10));
+        //                    //wait.Until(d => (bool)((IJavaScriptExecutor)d).ExecuteScript(
+        //                    //    "return !!window.MathJax && !!MathJax.startup && MathJax.startup.promise.state() === 1"
+        //                    //));
+        //                    wait.Until(d => (bool)((IJavaScriptExecutor)d).ExecuteScript(
+        //    "return !!window.MathJax && !!MathJax.startup && (typeof MathJax.typesetPromise === 'function' || document.querySelectorAll('.mjx-math, .MathJax').length > 0)"
+        //));
+        //                    // 获取完全渲染后的HTML
+        //                    string renderedHtml = (string)((IJavaScriptExecutor)driver).ExecuteScript(
+        //                        "return document.documentElement.outerHTML"
+        //                    );
 
-//            // 查找所有MathML元素
-//            var mathElements = document.QuerySelectorAll("math");
-//            foreach (var mathElement in mathElements)
-//            {
-//                // 获取MathML的文本内容
-//                string mathContent = mathElement.TextContent;
+        //                    return renderedHtml;
+        //                }
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                _logger.LogError($"PDF生成失败: {ex.Message}");
+        //                throw;
+        //            }
+        //        }
+        //        private string PreprocessHtmlForWordExport(string html)
+        //        {
+        //            // 创建HTML解析器处理实例
+        //            var parser = new AngleSharp.Html.Parser.HtmlParser();
+        //            var document = parser.ParseDocument(html);
 
-//                // 用普通文本替换数学元素
-//                var textNode = document.CreateTextNode($"[数学公式: {mathContent}]");
-//                mathElement.Parent?.ReplaceChild(textNode, mathElement);
-//            }
+        //            // 查找所有MathML元素
+        //            var mathElements = document.QuerySelectorAll("math");
+        //            foreach (var mathElement in mathElements)
+        //            {
+        //                // 获取MathML的文本内容
+        //                string mathContent = mathElement.TextContent;
 
-//            return document.DocumentElement.OuterHtml;
-//        }
+        //                // 用普通文本替换数学元素
+        //                var textNode = document.CreateTextNode($"[数学公式: {mathContent}]");
+        //                mathElement.Parent?.ReplaceChild(textNode, mathElement);
+        //            }
+
+        //            return document.DocumentElement.OuterHtml;
+        //        }
         public async Task<byte[]> ExportMessageToDocx(string content)
         {
             try
@@ -4457,7 +4703,8 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
             processedHtml = Regex.Replace(
                 processedHtml,
                 @"<(td|th)[^>]*>",
-                match => {
+                match =>
+                {
                     var tag = match.Value;
                     if (!tag.Contains("style"))
                         return tag.Insert(tag.Length - 1, " style='border:1px solid black; padding:4px;'");
@@ -4487,7 +4734,8 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
             return Regex.Replace(
                 content,
                 @"(\S[^\r\n]*(?<!\|))(\r?\n)((?:\|[^\r\n]+\|[^\r\n]*)+)",
-                m => {
+                m =>
+                {
                     // 检查前一行是否已经是空行（应该是一个非空行才需要添加空行）
                     if (string.IsNullOrWhiteSpace(m.Groups[1].Value))
                         return m.Value; // 已有空行，不做改变
@@ -5379,7 +5627,17 @@ Important: Do not use phrases like "Source 1" or "According to Source 2".Instead
                 throw new Exception($"PDF生成失败: {ex.Message}", ex);
             }
         }
+
+
     }
 
-
+    // 在 ChatService 类中添加此扩展方法
+    public static class TypeExtensions
+    {
+        public static bool IsAnonymousType(this Type type)
+        {
+            return type.Name.StartsWith("<>")
+                && type.GetCustomAttributes(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false).Length > 0;
+        }
+    }
 }
