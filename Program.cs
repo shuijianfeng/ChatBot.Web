@@ -8,7 +8,7 @@ using System.IO;
 var builder = WebApplication.CreateBuilder(args);
 
 
-// °ó¶¨ ChatModels ÅäÖÃ
+// ç»‘å®š ChatModels é…ç½®
 builder.Services.Configure<ChatModelSettings>(builder.Configuration.GetSection("ChatModels"));
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();

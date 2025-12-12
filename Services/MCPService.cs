@@ -14,7 +14,7 @@ using Microsoft.Extensions.Logging;
 namespace ChatBot.Web.Services
 {
     /// <summary>
-    /// MCP (Model Context Protocol) ·şÎñÊµÏÖ
+    /// MCP (Model Context Protocol) æœåŠ¡å®ç°
     /// </summary>
     public class MCPService
     {
@@ -39,7 +39,7 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
-        /// ³õÊ¼»¯ MCP Á¬½Ó
+        /// åˆå§‹åŒ– MCP è¿æ¥
         /// </summary>
         public async Task<MCPResponse?> InitializeAsync(string endpoint, string apiKey)
         {
@@ -67,7 +67,7 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
-        /// ·¢ËÍÁÄÌìÇëÇó£¨Ö§³ÖÁ÷Ê½Êä³ö£©
+        /// å‘é€èŠå¤©è¯·æ±‚ï¼ˆæ”¯æŒæµå¼è¾“å‡ºï¼‰
         /// </summary>
         public async IAsyncEnumerable<string> SendChatStreamAsync(
             ChatModelConfig config,
@@ -77,11 +77,11 @@ namespace ChatBot.Web.Services
             var apiKey = Environment.GetEnvironmentVariable(config.EnvironmentApikeyName);
             if (string.IsNullOrEmpty(apiKey))
             {
-                yield return "´íÎó: MCP APIÃÜÔ¿Î´ÅäÖÃ";
+                yield return "é”™è¯¯: MCP APIå¯†é’¥æœªé…ç½®";
                 yield break;
             }
 
-            // ¹¹½¨ MCP ²ÉÑùÇëÇó
+            // æ„å»º MCP é‡‡æ ·è¯·æ±‚
             var samplingParams = new MCPSamplingParams
             {
                 Messages = ConvertToMCPMessages(chatRequest.History),
@@ -108,7 +108,7 @@ namespace ChatBot.Web.Services
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             client.Timeout = TimeSpan.FromMinutes(10);
 
-            // Ê¹ÓÃ¸¨Öú·½·¨´¦ÀíÊµ¼ÊµÄHTTPÇëÇóºÍÏìÓ¦
+            // ä½¿ç”¨è¾…åŠ©æ–¹æ³•å¤„ç†å®é™…çš„HTTPè¯·æ±‚å’Œå“åº”
             await foreach (var item in SendChatStreamInternalAsync(client, config, request, cancellationToken))
             {
                 yield return item;
@@ -116,7 +116,7 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
-        /// ÄÚ²¿·½·¨£ºÊµ¼ÊÖ´ĞĞHTTPÇëÇóºÍ´¦ÀíÏìÓ¦£¨²»°üº¬Òì³£´¦Àí£¬ÈÃÒì³£×ÔÈ»´«²¥£©
+        /// å†…éƒ¨æ–¹æ³•ï¼šå®é™…æ‰§è¡ŒHTTPè¯·æ±‚å’Œå¤„ç†å“åº”ï¼ˆä¸åŒ…å«å¼‚å¸¸å¤„ç†ï¼Œè®©å¼‚å¸¸è‡ªç„¶ä¼ æ’­ï¼‰
         /// </summary>
         private async IAsyncEnumerable<string> SendChatStreamInternalAsync(
             HttpClient client,
@@ -132,12 +132,12 @@ namespace ChatBot.Web.Services
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError($"MCPÇëÇóÊ§°Ü: {response.StatusCode}, ÄÚÈİ: {errorContent}");
-                yield return $"´íÎó: HTTP {response.StatusCode}";
+                _logger.LogError($"MCPè¯·æ±‚å¤±è´¥: {response.StatusCode}, å†…å®¹: {errorContent}");
+                yield return $"é”™è¯¯: HTTP {response.StatusCode}";
                 yield break;
             }
 
-            // ´¦ÀíÁ÷Ê½ÏìÓ¦
+            // å¤„ç†æµå¼å“åº”
             if (config.Stream)
             {
                 await foreach (var chunk in ReadStreamResponseAsync(response, cancellationToken))
@@ -150,13 +150,13 @@ namespace ChatBot.Web.Services
             }
             else
             {
-                // ·ÇÁ÷Ê½ÏìÓ¦
+                // éæµå¼å“åº”
                 var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
                 var mcpResponse = JsonSerializer.Deserialize<MCPResponse>(responseContent, _jsonOptions);
 
                 if (mcpResponse?.Error != null)
                 {
-                    yield return $"´íÎó: {mcpResponse.Error.Message}";
+                    yield return $"é”™è¯¯: {mcpResponse.Error.Message}";
                 }
                 else if (mcpResponse?.Result?.Content != null)
                 {
@@ -172,7 +172,7 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
-        /// ¶ÁÈ¡Á÷Ê½ÏìÓ¦
+        /// è¯»å–æµå¼å“åº”
         /// </summary>
         private async IAsyncEnumerable<string> ReadStreamResponseAsync(
             HttpResponseMessage response,
@@ -187,27 +187,27 @@ namespace ChatBot.Web.Services
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
 
-                // ´¦Àí Server-Sent Events (SSE) ¸ñÊ½
+                // å¤„ç† Server-Sent Events (SSE) æ ¼å¼
                 if (line.StartsWith("data: "))
                 {
                     var data = line.Substring(6);
                     if (data == "[DONE]")
                         break;
 
-                    // ³¢ÊÔ½âÎöÎª MCPStreamChunk - Èç¹ûÊ§°ÜÔò¼ÇÂ¼ÈÕÖ¾²¢¼ÌĞø
+                    // å°è¯•è§£æä¸º MCPStreamChunk - å¦‚æœå¤±è´¥åˆ™è®°å½•æ—¥å¿—å¹¶ç»§ç»­
                     var chunk = TryDeserialize<MCPStreamChunk>(data);
                     
-                    // ¸ù¾İ MCP Ğ­Òé´¦ÀíÁ÷Ê½Êı¾İ
-                    // ÕâÀïĞèÒª¸ù¾İÊµ¼ÊµÄ MCP ·şÎñÆ÷ÊµÏÖÀ´µ÷Õû
+                    // æ ¹æ® MCP åè®®å¤„ç†æµå¼æ•°æ®
+                    // è¿™é‡Œéœ€è¦æ ¹æ®å®é™…çš„ MCP æœåŠ¡å™¨å®ç°æ¥è°ƒæ•´
                     if (chunk != null)
                     {
-                        // ÌáÈ¡ÎÄ±¾ÄÚÈİ
-                        yield return data; // ÁÙÊ±·µ»ØÔ­Ê¼Êı¾İ£¬ĞèÒª¸ù¾İÊµ¼Ê¸ñÊ½µ÷Õû
+                        // æå–æ–‡æœ¬å†…å®¹
+                        yield return data; // ä¸´æ—¶è¿”å›åŸå§‹æ•°æ®ï¼Œéœ€è¦æ ¹æ®å®é™…æ ¼å¼è°ƒæ•´
                     }
                 }
                 else
                 {
-                    // ¿ÉÄÜÊÇÆäËû¸ñÊ½µÄÏìÓ¦
+                    // å¯èƒ½æ˜¯å…¶ä»–æ ¼å¼çš„å“åº”
                     var mcpResponse = TryDeserialize<MCPResponse>(line);
 
                     if (mcpResponse?.Result?.Content != null)
@@ -225,7 +225,7 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
-        /// ³¢ÊÔ·´ĞòÁĞ»¯ JSON£¬Ê§°ÜÊ±·µ»Ø null
+        /// å°è¯•ååºåˆ—åŒ– JSONï¼Œå¤±è´¥æ—¶è¿”å› null
         /// </summary>
         private T? TryDeserialize<T>(string json) where T : class
         {
@@ -235,13 +235,13 @@ namespace ChatBot.Web.Services
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning($"½âÎö JSON Ê§°Ü: {ex.Message}");
+                _logger.LogWarning($"è§£æ JSON å¤±è´¥: {ex.Message}");
                 return null;
             }
         }
 
         /// <summary>
-        /// ·¢ËÍ MCP ÇëÇó
+        /// å‘é€ MCP è¯·æ±‚
         /// </summary>
         private async Task<MCPResponse?> SendRequestAsync(string endpoint, string apiKey, MCPRequest request)
         {
@@ -261,13 +261,13 @@ namespace ChatBot.Web.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "MCPÇëÇóÊ§°Ü");
+                _logger.LogError(ex, "MCPè¯·æ±‚å¤±è´¥");
                 return null;
             }
         }
 
         /// <summary>
-        /// ½«ÁÄÌìÀúÊ·×ª»»Îª MCP ÏûÏ¢¸ñÊ½
+        /// å°†èŠå¤©å†å²è½¬æ¢ä¸º MCP æ¶ˆæ¯æ ¼å¼
         /// </summary>
         private List<MCPMessage> ConvertToMCPMessages(List<HistoryMessage> history)
         {
@@ -292,7 +292,7 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
-        /// ÁĞ³ö¿ÉÓÃµÄ¹¤¾ß
+        /// åˆ—å‡ºå¯ç”¨çš„å·¥å…·
         /// </summary>
         public async Task<List<MCPTool>?> ListToolsAsync(string endpoint, string apiKey)
         {
@@ -306,8 +306,8 @@ namespace ChatBot.Web.Services
             
             if (response?.Result != null)
             {
-                // ĞèÒª¸ù¾İÊµ¼ÊµÄ MCP ÏìÓ¦¸ñÊ½À´½âÎö¹¤¾ßÁĞ±í
-                // ÕâÀï·µ»Ø null£¬Êµ¼ÊÊ¹ÓÃÊ±ĞèÒªÊµÏÖ
+                // éœ€è¦æ ¹æ®å®é™…çš„ MCP å“åº”æ ¼å¼æ¥è§£æå·¥å…·åˆ—è¡¨
+                // è¿™é‡Œè¿”å› nullï¼Œå®é™…ä½¿ç”¨æ—¶éœ€è¦å®ç°
                 return null;
             }
 
@@ -315,7 +315,7 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
-        /// µ÷ÓÃ¹¤¾ß
+        /// è°ƒç”¨å·¥å…·
         /// </summary>
         public async Task<string?> CallToolAsync(
             string endpoint,
@@ -338,11 +338,11 @@ namespace ChatBot.Web.Services
 
             if (response?.Error != null)
             {
-                _logger.LogError($"¹¤¾ßµ÷ÓÃÊ§°Ü: {response.Error.Message}");
+                _logger.LogError($"å·¥å…·è°ƒç”¨å¤±è´¥: {response.Error.Message}");
                 return null;
             }
 
-            // ¸ù¾İÊµ¼ÊµÄ MCP ÏìÓ¦¸ñÊ½ÌáÈ¡½á¹û
+            // æ ¹æ®å®é™…çš„ MCP å“åº”æ ¼å¼æå–ç»“æœ
             return response?.Result?.Content?.FirstOrDefault()?.Text;
         }
     }

@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.ClientModel;
 using System.Diagnostics;
 using System.Text;

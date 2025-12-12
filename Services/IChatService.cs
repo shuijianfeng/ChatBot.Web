@@ -1,4 +1,4 @@
-﻿using ChatBot.Models;
+using ChatBot.Models;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Office2013.Excel;
 using DocumentFormat.OpenXml.Packaging;
@@ -171,14 +171,14 @@ namespace ChatBot.Web.Services
 
                 switch (config.ChatModelType)
                 {
-                    case ChatModelType.DeepSeek:
-                        {
-                            await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
-                            {
-                                yield return item;
-                            }
-                            break;
-                        }
+                    //case ChatModelType.DeepSeek:
+                    //    {
+                    //        await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
+                    //        {
+                    //            yield return item;
+                    //        }
+                    //        break;
+                    //    }
                     case ChatModelType.Deepbricks:
                         {
                             await foreach (var item in DeepbricksOpenAIAsync(config, request, cancellationToken))
@@ -767,436 +767,436 @@ namespace ChatBot.Web.Services
 
             }
         }
-        public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
-        {
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
+        //public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
+        //{
+        //    var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
+        //    var apiEndpoint = modelconfg.ApiEndpoint;
 
 
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("API配置缺失");
-            }
+        //    if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+        //    {
+        //        throw new InvalidOperationException("API配置缺失");
+        //    }
 
 
-            // 创建HTTP客户端
-            HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
-            if (inputclient == null)
-            {
-                client.Timeout = TimeSpan.FromMinutes(30);
-                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        //    // 创建HTTP客户端
+        //    HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
+        //    if (inputclient == null)
+        //    {
+        //        client.Timeout = TimeSpan.FromMinutes(30);
+        //        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
-            }
+        //    }
 
-            var messages = ToMessagesOpenAi(request, modelconfg);
-            toolsmessages ??= new List<object>();
-            messages.AddRange(toolsmessages);
-            //toolsmessages.Clear();
-            List<object> tools = request.EnableSearch
-        ? PrepareOpenAiTools()
-        : null;
-
-
-            var requestContent = new
-            {
-
-                model = modelconfg.Model,
-                messages = messages,
-                stream = modelconfg.Stream,
-                temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-                //response_format = ToOpenAischema(),
-                tools = tools,
+        //    var messages = ToMessagesOpenAi(request, modelconfg);
+        //    toolsmessages ??= new List<object>();
+        //    messages.AddRange(toolsmessages);
+        //    //toolsmessages.Clear();
+        //    List<object> tools = request.EnableSearch
+        //? PrepareOpenAiTools()
+        //: null;
 
 
-            };
-            //var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
-            using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
-            {
+        //    var requestContent = new
+        //    {
+
+        //        model = modelconfg.Model,
+        //        messages = messages,
+        //        stream = modelconfg.Stream,
+        //        temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
+        //        //response_format = ToOpenAischema(),
+        //        tools = tools,
 
 
-
-                if (response.StatusCode != System.Net.HttpStatusCode.OK)
-                {
-                    yield return "失败: StatusCode " + response.StatusCode.ToString();
-                    yield break;
-                }
-                response.EnsureSuccessStatusCode();
-
-                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-                using var reader = new StreamReader(stream);
-                bool beging = false;
-                bool end = false;
-                bool beging1 = false;
-                bool end1 = false;
-                List<tool_call> tool_calls = new();
-                var contentBuilder = new StringBuilder();
-                bool iscitations = false;
-                string citationsstring = string.Empty;
-                while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-                {
-
-                    if (modelconfg.Stream)
-                    {
-                        var line = await reader.ReadLineAsync(cancellationToken);
-                        if (string.IsNullOrEmpty(line)) continue;
-                        if (line.StartsWith("data: "))
-                        {
-                            line = line.Substring(6);
-                            if (line == "[DONE]")
-                            {
-                                break;
-                            }
-
-
-                            var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-
-                            var citations = chunk?.citations;
-                            if (citations != null && citations.Length > 0 && !iscitations)
-                            {
-                                StringBuilder sb = new StringBuilder();
-                                sb.AppendLine("");
-                                for (int i = 0; i < citations.Length; i++)
-                                {
-                                    sb.AppendLine("[" + (i + 1).ToString() + "]: " + citations[i]);
-
-                                }
-                                sb.AppendLine("");
-                                citationsstring = sb.ToString();
-                                iscitations = true;
-                            }
-                            var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
-                            var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
-                            var reasoning = chunk?.choices?.FirstOrDefault()?.delta?.reasoning;
-                            if (string.IsNullOrEmpty(reasoning_content))
-                            {
-                                reasoning_content = reasoning;
-                            }
-                            if (!string.IsNullOrEmpty(content))
-                            {
-                                //content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
-
-                                contentBuilder.Append(content);
-                            }
-                            if (!string.IsNullOrEmpty(reasoning_content))
-                            {
-                                //reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
-                            }
-
-                            if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
-                            {
-                                if (!string.IsNullOrEmpty(chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault()?.function?.name))
-                                {
-                                    tool_calls.Add(chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault());
-                                }
-                                else
-                                {
-                                    int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
-                                    if (tool_calls.Count > 0)
-                                    {
-                                        tool_calls[tool_calls.Count - 1].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
-                                    }
-
-                                }
-                                //continue;
-                            }
-                            if (!string.IsNullOrEmpty(reasoning_content))
-                            {
-                                if (!beging)
-                                {
-                                    yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
-                                    beging = true;
-                                }
-                                else
-                                {
-                                    yield return reasoning_content;
-
-                                }
-
-                            }
-                            if (!string.IsNullOrEmpty(content))
-                            {
-                                if (beging && !end)
-                                {
-                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                                    end = true;
-                                }
-                                else
-                                {
-                                    if (content.Contains("<think>") && !beging1 && !end1)
-                                    {
-                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                                        beging1 = true;
-                                    }
-                                    else
-                                    {
-                                        if (content.Contains("</think>") && beging1 && !end1)
-                                        {
-
-                                            yield return content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                                            end1 = true;
-                                        }
-                                        else
-                                        {
-                                            yield return content;
-                                        }
-
-                                    }
-
-                                }
-
-                            }
-                            if (tool_calls.Count > 0 && (chunk?.choices?.FirstOrDefault()?.finish_reason == "tool_calls" || chunk?.choices?.FirstOrDefault()?.finish_reason == "stop"))
-                            {
-                                List<object> tool_calls1 = new List<object>();
-                                tool_calls1.AddRange(tool_calls);
-                                toolsmessages.Add(new
-                                {
-                                    role = "assistant",
-
-                                    content = contentBuilder.ToString(),
-                                    tool_calls = tool_calls1
-                                });
-
-                                foreach (var pair in tool_calls)
-                                {
-                                    string toolResult = string.Empty;
-                                    switch (pair.function.name)
-                                    {
-                                        case nameof(GetCurrentDataTime):
-                                            {
-
-
-                                                toolResult = await GetCurrentDataTime();
-                                                break;
-                                            }
-                                        case nameof(JinaAiSearch):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
-                                                break;
-                                            }
-                                        case nameof(SearchTrainTicket):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
-
-                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
-                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
-                                                break;
-                                            }
-                                        case nameof(GetWeather):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
-
-
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
-                                                break;
-                                            }
-                                        default:
-                                            {
-                                                yield return "未知工具调用";
-                                                break;
-                                            }
-                                    }
-
-                                    toolsmessages.Add(new
-                                    {
-                                        role = "tool",
-                                        tool_call_id = pair.id,
-                                        content = toolResult
-                                    });
+        //    };
+        //    //var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+        //    using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
+        //    {
+        //        Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+        //    }, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
+        //    {
 
 
 
-                                }
-                                contentBuilder.Clear();
-                                tool_calls.Clear();
-                                response.Content.Dispose();
-                                await foreach (var item in OpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
-                                {
-                                    yield return item;
-                                }
-                                break;
-                            }
+        //        if (response.StatusCode != System.Net.HttpStatusCode.OK)
+        //        {
+        //            yield return "失败: StatusCode " + response.StatusCode.ToString();
+        //            yield break;
+        //        }
+        //        response.EnsureSuccessStatusCode();
+
+        //        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        //        using var reader = new StreamReader(stream);
+        //        bool beging = false;
+        //        bool end = false;
+        //        bool beging1 = false;
+        //        bool end1 = false;
+        //        List<tool_call> tool_calls = new();
+        //        var contentBuilder = new StringBuilder();
+        //        bool iscitations = false;
+        //        string citationsstring = string.Empty;
+        //        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+        //        {
+
+        //            if (modelconfg.Stream)
+        //            {
+        //                var line = await reader.ReadLineAsync(cancellationToken);
+        //                if (string.IsNullOrEmpty(line)) continue;
+        //                if (line.StartsWith("data: "))
+        //                {
+        //                    line = line.Substring(6);
+        //                    if (line == "[DONE]")
+        //                    {
+        //                        break;
+        //                    }
+
+
+        //                    var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
+
+        //                    var citations = chunk?.citations;
+        //                    if (citations != null && citations.Length > 0 && !iscitations)
+        //                    {
+        //                        StringBuilder sb = new StringBuilder();
+        //                        sb.AppendLine("");
+        //                        for (int i = 0; i < citations.Length; i++)
+        //                        {
+        //                            sb.AppendLine("[" + (i + 1).ToString() + "]: " + citations[i]);
+
+        //                        }
+        //                        sb.AppendLine("");
+        //                        citationsstring = sb.ToString();
+        //                        iscitations = true;
+        //                    }
+        //                    var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
+        //                    var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
+        //                    var reasoning = chunk?.choices?.FirstOrDefault()?.delta?.reasoning;
+        //                    if (string.IsNullOrEmpty(reasoning_content))
+        //                    {
+        //                        reasoning_content = reasoning;
+        //                    }
+        //                    if (!string.IsNullOrEmpty(content))
+        //                    {
+        //                        //content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+
+        //                        contentBuilder.Append(content);
+        //                    }
+        //                    if (!string.IsNullOrEmpty(reasoning_content))
+        //                    {
+        //                        //reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+        //                    }
+
+        //                    if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
+        //                    {
+        //                        if (!string.IsNullOrEmpty(chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault()?.function?.name))
+        //                        {
+        //                            tool_calls.Add(chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault());
+        //                        }
+        //                        else
+        //                        {
+        //                            int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
+        //                            if (tool_calls.Count > 0)
+        //                            {
+        //                                tool_calls[tool_calls.Count - 1].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
+        //                            }
+
+        //                        }
+        //                        //continue;
+        //                    }
+        //                    if (!string.IsNullOrEmpty(reasoning_content))
+        //                    {
+        //                        if (!beging)
+        //                        {
+        //                            yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
+        //                            beging = true;
+        //                        }
+        //                        else
+        //                        {
+        //                            yield return reasoning_content;
+
+        //                        }
+
+        //                    }
+        //                    if (!string.IsNullOrEmpty(content))
+        //                    {
+        //                        if (beging && !end)
+        //                        {
+        //                            yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+        //                            end = true;
+        //                        }
+        //                        else
+        //                        {
+        //                            if (content.Contains("<think>") && !beging1 && !end1)
+        //                            {
+        //                                yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+        //                                beging1 = true;
+        //                            }
+        //                            else
+        //                            {
+        //                                if (content.Contains("</think>") && beging1 && !end1)
+        //                                {
+
+        //                                    yield return content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
+        //                                    end1 = true;
+        //                                }
+        //                                else
+        //                                {
+        //                                    yield return content;
+        //                                }
+
+        //                            }
+
+        //                        }
+
+        //                    }
+        //                    if (tool_calls.Count > 0 && (chunk?.choices?.FirstOrDefault()?.finish_reason == "tool_calls" || chunk?.choices?.FirstOrDefault()?.finish_reason == "stop"))
+        //                    {
+        //                        List<object> tool_calls1 = new List<object>();
+        //                        tool_calls1.AddRange(tool_calls);
+        //                        toolsmessages.Add(new
+        //                        {
+        //                            role = "assistant",
+
+        //                            content = contentBuilder.ToString(),
+        //                            tool_calls = tool_calls1
+        //                        });
+
+        //                        foreach (var pair in tool_calls)
+        //                        {
+        //                            string toolResult = string.Empty;
+        //                            switch (pair.function.name)
+        //                            {
+        //                                case nameof(GetCurrentDataTime):
+        //                                    {
+
+
+        //                                        toolResult = await GetCurrentDataTime();
+        //                                        break;
+        //                                    }
+        //                                case nameof(JinaAiSearch):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
+
+
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+        //                                        break;
+        //                                    }
+        //                                case nameof(SearchTrainTicket):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+        //                                        query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+        //                                        query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+        //                                        break;
+        //                                    }
+        //                                case nameof(GetWeather):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
+
+
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
+        //                                        break;
+        //                                    }
+        //                                default:
+        //                                    {
+        //                                        yield return "未知工具调用";
+        //                                        break;
+        //                                    }
+        //                            }
+
+        //                            toolsmessages.Add(new
+        //                            {
+        //                                role = "tool",
+        //                                tool_call_id = pair.id,
+        //                                content = toolResult
+        //                            });
 
 
 
-                        }
-                    }
-                    else
-                    {
-                        var line = await reader.ReadToEndAsync(cancellationToken);
-                        if (string.IsNullOrEmpty(line)) continue;
-                        var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                        var citations = chunk?.citations;
-                        if (citations != null && citations.Length > 0 && !iscitations)
-                        {
-                            StringBuilder sb = new StringBuilder();
-                            sb.Append('\n');
-                            sb.Append('\n');
-                            for (int i = 0; i < citations.Length; i++)
-                            {
-                                sb.AppendLine("[" + (i + 1).ToString() + "]: " + citations[i]);
-
-                            }
-                            sb.Append('\n');
-                            citationsstring = sb.ToString();
-                            iscitations = true;
-                        }
-                        var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                        var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
-                        if (!string.IsNullOrEmpty(content))
-                        {
-                            //content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
-                            contentBuilder.Append(content);
-                        }
-                        if (!string.IsNullOrEmpty(reasoning_content))
-                        {
-                            //reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
-                        }
-
-                        if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
-                        {
-
-
-                            var toolCalls = chunk?.choices?.FirstOrDefault()?.message?.tool_calls;
-                            if (toolCalls != null)
-                            {
-                                tool_calls.AddRange(toolCalls.Cast<tool_call>());
-                            }
-                            if (tool_calls.Count > 0)
-                            {
-                                List<object> tool_calls1 = new List<object>();
-                                tool_calls1.AddRange(tool_calls);
-                                toolsmessages.Add(new
-                                {
-                                    role = "assistant",
-
-                                    content = contentBuilder.ToString(),
-                                    tool_calls = tool_calls1
-                                });
-
-                                foreach (var pair in tool_calls)
-                                {
-                                    string toolResult = string.Empty;
-                                    switch (pair.function.name)
-                                    {
-                                        case nameof(GetCurrentDataTime):
-                                            {
-
-
-                                                toolResult = await GetCurrentDataTime();
-                                                break;
-                                            }
-                                        case nameof(JinaAiSearch):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
-                                                break;
-                                            }
-                                        case nameof(SearchTrainTicket):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
-
-                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
-                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
-                                                break;
-                                            }
-                                        case nameof(GetWeather):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
-
-
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
-                                                break;
-                                            }
-                                        default:
-                                            {
-                                                yield return "未知工具调用";
-                                                break;
-                                            }
-                                    }
-
-                                    toolsmessages.Add(new
-                                    {
-                                        role = "tool",
-                                        tool_call_id = pair.id,
-                                        content = toolResult
-                                    });
+        //                        }
+        //                        contentBuilder.Clear();
+        //                        tool_calls.Clear();
+        //                        response.Content.Dispose();
+        //                        await foreach (var item in OpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+        //                        {
+        //                            yield return item;
+        //                        }
+        //                        break;
+        //                    }
 
 
 
-                                }
-                                contentBuilder.Clear();
-                                tool_calls.Clear();
-                                response.Content.Dispose();
-                                await foreach (var item in OpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
-                                {
-                                    yield return item;
-                                }
-                                break;
-                            }
-                        }
+        //                }
+        //            }
+        //            else
+        //            {
+        //                var line = await reader.ReadToEndAsync(cancellationToken);
+        //                if (string.IsNullOrEmpty(line)) continue;
+        //                var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
+        //                var citations = chunk?.citations;
+        //                if (citations != null && citations.Length > 0 && !iscitations)
+        //                {
+        //                    StringBuilder sb = new StringBuilder();
+        //                    sb.Append('\n');
+        //                    sb.Append('\n');
+        //                    for (int i = 0; i < citations.Length; i++)
+        //                    {
+        //                        sb.AppendLine("[" + (i + 1).ToString() + "]: " + citations[i]);
 
-                        if (!string.IsNullOrEmpty(reasoning_content))
-                        {
-                            reasoning_content = "<think>" + reasoning_content + "</think>";
-                            reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                            reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                            yield return reasoning_content + content;
-                        }
-                        if (!string.IsNullOrEmpty(content))
-                        {
-                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                            content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                            yield return content;
-                        }
-                    }
-                }
-                if (!string.IsNullOrEmpty(citationsstring))
-                {
-                    yield return "\n\n" + citationsstring;
-                }
-            }
-        }
+        //                    }
+        //                    sb.Append('\n');
+        //                    citationsstring = sb.ToString();
+        //                    iscitations = true;
+        //                }
+        //                var content = chunk?.choices?.FirstOrDefault()?.message?.content;
+        //                var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
+        //                if (!string.IsNullOrEmpty(content))
+        //                {
+        //                    //content = Regex.Replace(content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+        //                    contentBuilder.Append(content);
+        //                }
+        //                if (!string.IsNullOrEmpty(reasoning_content))
+        //                {
+        //                    //reasoning_content = Regex.Replace(reasoning_content, @"(\[\d+\])(?=\[\d+\])", "$1 ");
+        //                }
+
+        //                if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
+        //                {
+
+
+        //                    var toolCalls = chunk?.choices?.FirstOrDefault()?.message?.tool_calls;
+        //                    if (toolCalls != null)
+        //                    {
+        //                        tool_calls.AddRange(toolCalls.Cast<tool_call>());
+        //                    }
+        //                    if (tool_calls.Count > 0)
+        //                    {
+        //                        List<object> tool_calls1 = new List<object>();
+        //                        tool_calls1.AddRange(tool_calls);
+        //                        toolsmessages.Add(new
+        //                        {
+        //                            role = "assistant",
+
+        //                            content = contentBuilder.ToString(),
+        //                            tool_calls = tool_calls1
+        //                        });
+
+        //                        foreach (var pair in tool_calls)
+        //                        {
+        //                            string toolResult = string.Empty;
+        //                            switch (pair.function.name)
+        //                            {
+        //                                case nameof(GetCurrentDataTime):
+        //                                    {
+
+
+        //                                        toolResult = await GetCurrentDataTime();
+        //                                        break;
+        //                                    }
+        //                                case nameof(JinaAiSearch):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
+
+
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+        //                                        break;
+        //                                    }
+        //                                case nameof(SearchTrainTicket):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+        //                                        query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+        //                                        query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+        //                                        break;
+        //                                    }
+        //                                case nameof(GetWeather):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
+
+
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
+        //                                        break;
+        //                                    }
+        //                                default:
+        //                                    {
+        //                                        yield return "未知工具调用";
+        //                                        break;
+        //                                    }
+        //                            }
+
+        //                            toolsmessages.Add(new
+        //                            {
+        //                                role = "tool",
+        //                                tool_call_id = pair.id,
+        //                                content = toolResult
+        //                            });
+
+
+
+        //                        }
+        //                        contentBuilder.Clear();
+        //                        tool_calls.Clear();
+        //                        response.Content.Dispose();
+        //                        await foreach (var item in OpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+        //                        {
+        //                            yield return item;
+        //                        }
+        //                        break;
+        //                    }
+        //                }
+
+        //                if (!string.IsNullOrEmpty(reasoning_content))
+        //                {
+        //                    reasoning_content = "<think>" + reasoning_content + "</think>";
+        //                    reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+        //                    reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
+        //                    yield return reasoning_content + content;
+        //                }
+        //                if (!string.IsNullOrEmpty(content))
+        //                {
+        //                    content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+        //                    content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
+        //                    yield return content;
+        //                }
+        //            }
+        //        }
+        //        if (!string.IsNullOrEmpty(citationsstring))
+        //        {
+        //            yield return "\n\n" + citationsstring;
+        //        }
+        //    }
+        //}
         //Claude 
         public async IAsyncEnumerable<string> ClaudeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
         {
@@ -1865,8 +1865,9 @@ namespace ChatBot.Web.Services
         //Gemini
         public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
         {
-            // 验证配置
+            // 验证配置AQ.Ab8RN6LQoXO75Ty1A9x4EEogc0XS97bVZPZwz-ytddNBxMvvrg
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
+            //var apiKey = "AQ.Ab8RN6LQoXO75Ty1A9x4EEogc0XS97bVZPZwz-ytddNBxMvvrg";
             var apiEndpoint = modelconfg.ApiEndpoint;
             apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
 
@@ -2253,429 +2254,430 @@ namespace ChatBot.Web.Services
         }
         //Deepseek OpenAI 兼容方式
 
-        public async IAsyncEnumerable<string> DeepseekOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
-        {
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
+        //public async IAsyncEnumerable<string> DeepseekOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
+        //{
+        //    var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
+        //    var apiEndpoint = modelconfg.ApiEndpoint;
 
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-
-            // 创建HTTP客户端
-            HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
-            if (inputclient == null)
-            {
-                client.Timeout = TimeSpan.FromMinutes(30);
-                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            }
-
-            var messages = ToMessagesOpenAi(request, modelconfg);
-            toolsmessages ??= new List<object>();
-            messages.AddRange(toolsmessages);
-            //toolsmessages.Clear();
-            List<object> tools = request.EnableSearch
-        ? PrepareOpenAiTools()
-        : null;
-
-
-            var requestContent = new
-            {
-
-                model = modelconfg.Model,
-                messages = messages,
-                stream = modelconfg.Stream,
-                temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-
-                tools = tools,
-
-
-            };
-
-            using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
-            {
-
-
-
-                if (response.StatusCode != System.Net.HttpStatusCode.OK)
-                {
-                    yield return "失败: StatusCode " + response.StatusCode.ToString();
-                    yield break;
-                }
-                response.EnsureSuccessStatusCode();
-
-                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-                using var reader = new StreamReader(stream);
-                bool beging = false;
-                bool end = false;
-                bool beging1 = false;
-                bool end1 = false;
-                List<tool_call> tool_calls = new();
-                var contentBuilder = new StringBuilder();
-                var reasoningcontentBuilder = new StringBuilder();
-                bool iscitations = false;
-                string citationsstring = string.Empty;
-                while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-                {
-
-                    if (modelconfg.Stream)
-                    {
-                        var line = await reader.ReadLineAsync(cancellationToken);
-                        if (string.IsNullOrEmpty(line)) continue;
-                        if (line.StartsWith("data: "))
-                        {
-                            line = line.Substring(6);
-                            if (line == "[DONE]")
-                            {
-                                break;
-                            }
-
-
-                            var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-
-                            var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
-                            var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
-
-
-                            if (!string.IsNullOrEmpty(content))
-                            {
-
-
-                                contentBuilder.Append(content);
-                            }
-                            if (!string.IsNullOrEmpty(reasoning_content))
-                            {
-                                reasoningcontentBuilder.Append(reasoning_content);
-                            }
-
-                            if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
-                            {
-                                if (!string.IsNullOrEmpty(chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault()?.function?.name))
-                                {
-                                    tool_calls.Add(chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault());
-                                }
-                                else
-                                {
-                                    int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
-                                    if (tool_calls.Count > 0)
-                                    {
-                                        tool_calls[tool_calls.Count - 1].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
-                                    }
-
-                                }
-                                //continue;
-                            }
-                            if (!string.IsNullOrEmpty(reasoning_content))
-                            {
-                                if (!beging)
-                                {
-                                    if (toolsmessages.Count > 0)
-                                    {
-                                        yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n"+"<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
-                                    }
-                                    else
-                                    {
-                                        yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
-                                    }
-                                    beging = true;
-                                }
-                                else
-                                {
-                                    yield return reasoning_content;
-
-                                }
-
-                            }
-                            if (!string.IsNullOrEmpty(content))
-                            {
-                                if (beging && !end)
-                                {
-                                    yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                                    end = true;
-                                }
-                                else
-                                {
-                                    if (content.Contains("<think>") && !beging1 && !end1)
-                                    {
-                                        yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                                        beging1 = true;
-                                    }
-                                    else
-                                    {
-                                        if (content.Contains("</think>") && beging1 && !end1)
-                                        {
-
-                                            yield return content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                                            end1 = true;
-                                        }
-                                        else
-                                        {
-                                            yield return content;
-                                        }
-
-                                    }
-
-                                }
-
-                            }
-                            if (tool_calls.Count > 0 && (chunk?.choices?.FirstOrDefault()?.finish_reason == "tool_calls" || chunk?.choices?.FirstOrDefault()?.finish_reason == "stop"))
-                            {
-                                List<object> tool_calls1 = new List<object>();
-                                tool_calls1.AddRange(tool_calls);
-                                toolsmessages.Add(new
-                                {
-                                    role = "assistant",
-
-                                    content = contentBuilder.ToString(),
-                                    reasoning_content = reasoningcontentBuilder.ToString(),
-                                    tool_calls = tool_calls1
-                                });
-
-                                foreach (var pair in tool_calls)
-                                {
-                                    string toolResult = string.Empty;
-                                    switch (pair.function.name)
-                                    {
-                                        case nameof(GetCurrentDataTime):
-                                            {
-
-
-                                                toolResult = await GetCurrentDataTime();
-                                                break;
-                                            }
-                                        case nameof(JinaAiSearch):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
-                                                break;
-                                            }
-                                        case nameof(SearchTrainTicket):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
-
-                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
-                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
-                                                break;
-                                            }
-                                        case nameof(GetWeather):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
-
-
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
-                                                break;
-                                            }
-                                        default:
-                                            {
-                                                yield return "未知工具调用";
-                                                break;
-                                            }
-                                    }
-
-                                    toolsmessages.Add(new
-                                    {
-                                        role = "tool",
-                                        tool_call_id = pair.id,
-                                        content = toolResult
-                                    });
-
-
-
-                                }
-                                contentBuilder.Clear();
-                                reasoningcontentBuilder.Clear();
-                                tool_calls.Clear();
-                                response.Content.Dispose();
-                                await foreach (var item in DeepseekOpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
-                                {
-                                    yield return item;
-                                }
-                                break;
-                            }
-
-
-
-                        }
-                    }
-                    else
-                    {
-                        var line = await reader.ReadToEndAsync(cancellationToken);
-                        if (string.IsNullOrEmpty(line)) continue;
-                        var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                        var citations = chunk?.citations;
-                        if (citations != null && citations.Length > 0 && !iscitations)
-                        {
-                            StringBuilder sb = new StringBuilder();
-                            sb.Append('\n');
-                            sb.Append('\n');
-                            for (int i = 0; i < citations.Length; i++)
-                            {
-                                sb.AppendLine("[" + (i + 1).ToString() + "]: " + citations[i]);
-
-                            }
-                            sb.Append('\n');
-                            citationsstring = sb.ToString();
-                            iscitations = true;
-                        }
-                        var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                        var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
-                        if (!string.IsNullOrEmpty(content))
-                        {
-
-                            contentBuilder.Append(content);
-                        }
-                        if (!string.IsNullOrEmpty(reasoning_content))
-                        {
-
-                        }
-
-                        if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
-                        {
-
-
-                            var toolCalls = chunk?.choices?.FirstOrDefault()?.message?.tool_calls;
-                            if (toolCalls != null)
-                            {
-                                tool_calls.AddRange(toolCalls.Cast<tool_call>());
-                            }
-                            if (tool_calls.Count > 0)
-                            {
-                                List<object> tool_calls1 = new List<object>();
-                                tool_calls1.AddRange(tool_calls);
-                                toolsmessages.Add(new
-                                {
-                                    role = "assistant",
-
-                                    content = contentBuilder.ToString(),
-                                    tool_calls = tool_calls1
-                                });
-
-                                foreach (var pair in tool_calls)
-                                {
-                                    string toolResult = string.Empty;
-                                    switch (pair.function.name)
-                                    {
-                                        case nameof(GetCurrentDataTime):
-                                            {
-
-
-                                                toolResult = await GetCurrentDataTime();
-                                                break;
-                                            }
-                                        case nameof(JinaAiSearch):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
-                                                break;
-                                            }
-                                        case nameof(SearchTrainTicket):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
-
-                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
-                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
-                                                break;
-                                            }
-                                        case nameof(GetWeather):
-                                            {
-                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                                                bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
-
-
-                                                if (!query)
-                                                {
-                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
-                                                }
-                                                toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
-                                                break;
-                                            }
-                                        default:
-                                            {
-                                                yield return "未知工具调用";
-                                                break;
-                                            }
-                                    }
-
-                                    toolsmessages.Add(new
-                                    {
-                                        role = "tool",
-                                        tool_call_id = pair.id,
-                                        content = toolResult
-                                    });
-
-
-
-                                }
-                                contentBuilder.Clear();
-                                tool_calls.Clear();
-                                response.Content.Dispose();
-                                await foreach (var item in DeepseekOpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
-                                {
-                                    yield return item;
-                                }
-                                break;
-                            }
-                        }
-
-                        if (!string.IsNullOrEmpty(reasoning_content))
-                        {
-                            reasoning_content = "<think>" + reasoning_content + "</think>";
-                            reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                            reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                            yield return reasoning_content + content;
-                        }
-                        if (!string.IsNullOrEmpty(content))
-                        {
-                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                            content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                            yield return content;
-                        }
-                    }
-                }
-                if (!string.IsNullOrEmpty(citationsstring))
-                {
-                    yield return "\n\n" + citationsstring;
-                }
-            }
-        }
+
+        //    if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+        //    {
+        //        throw new InvalidOperationException("API配置缺失");
+        //    }
+
+
+        //    // 创建HTTP客户端
+        //    HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
+        //    if (inputclient == null)
+        //    {
+        //        client.Timeout = TimeSpan.FromMinutes(30);
+        //        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+        //    }
+
+        //    var messages = ToMessagesOpenAi(request, modelconfg);
+        //    toolsmessages ??= new List<object>();
+        //    messages.AddRange(toolsmessages);
+        //    //toolsmessages.Clear();
+        //    List<object> tools = request.EnableSearch
+        //? PrepareOpenAiTools()
+        //: null;
+
+
+        //    var requestContent = new
+        //    {
+
+        //        model = modelconfg.Model,
+        //        messages = messages,
+        //        stream = modelconfg.Stream,
+        //        temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
+
+        //        tools = tools,
+
+
+        //    };
+
+        //    using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
+        //    {
+        //        Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+        //    }, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
+        //    {
+
+
+
+        //        if (response.StatusCode != System.Net.HttpStatusCode.OK)
+        //        {
+        //            yield return "失败: StatusCode " + response.StatusCode.ToString();
+        //            yield break;
+        //        }
+        //        response.EnsureSuccessStatusCode();
+
+        //        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        //        using var reader = new StreamReader(stream);
+        //        bool beging = false;
+        //        bool end = false;
+        //        bool beging1 = false;
+        //        bool end1 = false;
+        //        List<tool_call> tool_calls = new();
+        //        var contentBuilder = new StringBuilder();
+        //        var reasoningcontentBuilder = new StringBuilder();
+        //        bool iscitations = false;
+        //        string citationsstring = string.Empty;
+        //        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+        //        {
+
+        //            if (modelconfg.Stream)
+        //            {
+        //                var line = await reader.ReadLineAsync(cancellationToken);
+        //                if (string.IsNullOrEmpty(line)) continue;
+        //                if (line.StartsWith("data: "))
+        //                {
+        //                    line = line.Substring(6);
+        //                    if (line == "[DONE]")
+        //                    {
+        //                        break;
+        //                    }
+
+
+        //                    var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
+
+        //                    var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
+        //                    var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
+
+
+        //                    if (!string.IsNullOrEmpty(content))
+        //                    {
+
+
+        //                        contentBuilder.Append(content);
+        //                    }
+        //                    if (!string.IsNullOrEmpty(reasoning_content))
+        //                    {
+        //                        reasoningcontentBuilder.Append(reasoning_content);
+        //                    }
+
+        //                    if (chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault() != null)
+        //                    {
+        //                        if (!string.IsNullOrEmpty(chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault()?.function?.name))
+        //                        {
+        //                            tool_calls.Add(chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault());
+        //                        }
+        //                        else
+        //                        {
+        //                            int index = chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().index;
+        //                            if (tool_calls.Count > 0)
+        //                            {
+        //                                tool_calls[tool_calls.Count - 1].function.arguments += chunk.choices.FirstOrDefault().delta.tool_calls.FirstOrDefault().function?.arguments;
+        //                            }
+
+        //                        }
+        //                        //continue;
+        //                    }
+        //                    if (!string.IsNullOrEmpty(reasoning_content))
+        //                    {
+        //                        if (!beging)
+        //                        {
+        //                            if (toolsmessages.Count > 0)
+        //                            {
+        //                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n"+"<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
+        //                            }
+        //                            else
+        //                            {
+        //                                yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + reasoning_content;
+        //                            }
+        //                            beging = true;
+        //                        }
+        //                        else
+        //                        {
+        //                            yield return reasoning_content;
+
+        //                        }
+
+        //                    }
+        //                    if (!string.IsNullOrEmpty(content))
+        //                    {
+        //                        if (beging && !end)
+        //                        {
+        //                            yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
+        //                            end = true;
+        //                            //beging = false;
+        //                        }
+        //                        else
+        //                        {
+        //                            if (content.Contains("<think>") && !beging1 && !end1)
+        //                            {
+        //                                yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+        //                                beging1 = true;
+        //                            }
+        //                            else
+        //                            {
+        //                                if (content.Contains("</think>") && beging1 && !end1)
+        //                                {
+
+        //                                    yield return content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
+        //                                    end1 = true;
+        //                                }
+        //                                else
+        //                                {
+        //                                    yield return content;
+        //                                }
+
+        //                            }
+
+        //                        }
+
+        //                    }
+        //                    if (tool_calls.Count > 0 && (chunk?.choices?.FirstOrDefault()?.finish_reason == "tool_calls" || chunk?.choices?.FirstOrDefault()?.finish_reason == "stop"))
+        //                    {
+        //                        List<object> tool_calls1 = new List<object>();
+        //                        tool_calls1.AddRange(tool_calls);
+        //                        toolsmessages.Add(new
+        //                        {
+        //                            role = "assistant",
+
+        //                            content = contentBuilder.ToString(),
+        //                            reasoning_content = reasoningcontentBuilder.ToString(),
+        //                            tool_calls = tool_calls1
+        //                        });
+
+        //                        foreach (var pair in tool_calls)
+        //                        {
+        //                            string toolResult = string.Empty;
+        //                            switch (pair.function.name)
+        //                            {
+        //                                case nameof(GetCurrentDataTime):
+        //                                    {
+
+
+        //                                        toolResult = await GetCurrentDataTime();
+        //                                        break;
+        //                                    }
+        //                                case nameof(JinaAiSearch):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
+
+
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+        //                                        break;
+        //                                    }
+        //                                case nameof(SearchTrainTicket):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+        //                                        query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+        //                                        query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+        //                                        break;
+        //                                    }
+        //                                case nameof(GetWeather):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
+
+
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
+        //                                        break;
+        //                                    }
+        //                                default:
+        //                                    {
+        //                                        yield return "未知工具调用";
+        //                                        break;
+        //                                    }
+        //                            }
+
+        //                            toolsmessages.Add(new
+        //                            {
+        //                                role = "tool",
+        //                                tool_call_id = pair.id,
+        //                                content = toolResult
+        //                            });
+
+
+
+        //                        }
+        //                        contentBuilder.Clear();
+        //                        reasoningcontentBuilder.Clear();
+        //                        tool_calls.Clear();
+        //                        response.Content.Dispose();
+        //                        await foreach (var item in DeepseekOpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+        //                        {
+        //                            yield return item;
+        //                        }
+        //                        break;
+        //                    }
+
+
+
+        //                }
+        //            }
+        //            else
+        //            {
+        //                var line = await reader.ReadToEndAsync(cancellationToken);
+        //                if (string.IsNullOrEmpty(line)) continue;
+        //                var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
+        //                var citations = chunk?.citations;
+        //                if (citations != null && citations.Length > 0 && !iscitations)
+        //                {
+        //                    StringBuilder sb = new StringBuilder();
+        //                    sb.Append('\n');
+        //                    sb.Append('\n');
+        //                    for (int i = 0; i < citations.Length; i++)
+        //                    {
+        //                        sb.AppendLine("[" + (i + 1).ToString() + "]: " + citations[i]);
+
+        //                    }
+        //                    sb.Append('\n');
+        //                    citationsstring = sb.ToString();
+        //                    iscitations = true;
+        //                }
+        //                var content = chunk?.choices?.FirstOrDefault()?.message?.content;
+        //                var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
+        //                if (!string.IsNullOrEmpty(content))
+        //                {
+
+        //                    contentBuilder.Append(content);
+        //                }
+        //                if (!string.IsNullOrEmpty(reasoning_content))
+        //                {
+
+        //                }
+
+        //                if (chunk?.choices?.FirstOrDefault()?.message?.tool_calls?.FirstOrDefault() != null)
+        //                {
+
+
+        //                    var toolCalls = chunk?.choices?.FirstOrDefault()?.message?.tool_calls;
+        //                    if (toolCalls != null)
+        //                    {
+        //                        tool_calls.AddRange(toolCalls.Cast<tool_call>());
+        //                    }
+        //                    if (tool_calls.Count > 0)
+        //                    {
+        //                        List<object> tool_calls1 = new List<object>();
+        //                        tool_calls1.AddRange(tool_calls);
+        //                        toolsmessages.Add(new
+        //                        {
+        //                            role = "assistant",
+
+        //                            content = contentBuilder.ToString(),
+        //                            tool_calls = tool_calls1
+        //                        });
+
+        //                        foreach (var pair in tool_calls)
+        //                        {
+        //                            string toolResult = string.Empty;
+        //                            switch (pair.function.name)
+        //                            {
+        //                                case nameof(GetCurrentDataTime):
+        //                                    {
+
+
+        //                                        toolResult = await GetCurrentDataTime();
+        //                                        break;
+        //                                    }
+        //                                case nameof(JinaAiSearch):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
+
+
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+        //                                        break;
+        //                                    }
+        //                                case nameof(SearchTrainTicket):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+
+        //                                        query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+        //                                        query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+        //                                        break;
+        //                                    }
+        //                                case nameof(GetWeather):
+        //                                    {
+        //                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+        //                                        bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
+
+
+        //                                        if (!query)
+        //                                        {
+        //                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+        //                                        }
+        //                                        toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
+        //                                        break;
+        //                                    }
+        //                                default:
+        //                                    {
+        //                                        yield return "未知工具调用";
+        //                                        break;
+        //                                    }
+        //                            }
+
+        //                            toolsmessages.Add(new
+        //                            {
+        //                                role = "tool",
+        //                                tool_call_id = pair.id,
+        //                                content = toolResult
+        //                            });
+
+
+
+        //                        }
+        //                        contentBuilder.Clear();
+        //                        tool_calls.Clear();
+        //                        response.Content.Dispose();
+        //                        await foreach (var item in DeepseekOpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+        //                        {
+        //                            yield return item;
+        //                        }
+        //                        break;
+        //                    }
+        //                }
+
+        //                if (!string.IsNullOrEmpty(reasoning_content))
+        //                {
+        //                    reasoning_content = "<think>" + reasoning_content + "</think>";
+        //                    reasoning_content = reasoning_content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+        //                    reasoning_content = reasoning_content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
+        //                    yield return reasoning_content + content;
+        //                }
+        //                if (!string.IsNullOrEmpty(content))
+        //                {
+        //                    content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
+        //                    content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
+        //                    yield return content;
+        //                }
+        //            }
+        //        }
+        //        if (!string.IsNullOrEmpty(citationsstring))
+        //        {
+        //            yield return "\n\n" + citationsstring;
+        //        }
+        //    }
+        //}
         /// <summary>
         /// 使用 Dify API 生成消息内容，支持流式输出
         /// </summary>
@@ -2825,7 +2827,328 @@ namespace ChatBot.Web.Services
 
         }
 
-      
+        public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
+        {
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
+            var apiEndpoint = modelconfg.ApiEndpoint;
+
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            {
+                throw new InvalidOperationException("API配置缺失");
+            }
+
+            // 创建HTTP客户端
+            HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
+            if (inputclient == null)
+            {
+                client.Timeout = TimeSpan.FromMinutes(30);
+                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+            }
+
+            var messages = ToMessagesOpenAi(request, modelconfg);
+            toolsmessages ??= new List<object>();
+            messages.AddRange(toolsmessages);
+
+            List<object> tools = request.EnableSearch ? PrepareOpenAiTools() : null;
+
+            var requestContent = new
+            {
+                model = modelconfg.Model,
+                messages = messages,
+                stream = modelconfg.Stream,
+                temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
+                tools = tools,
+            };
+
+            using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
+            {
+                if (response.StatusCode != System.Net.HttpStatusCode.OK)
+                {
+                    yield return "失败: StatusCode " + response.StatusCode.ToString();
+                    yield break;
+                }
+                response.EnsureSuccessStatusCode();
+
+                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                using var reader = new StreamReader(stream);
+
+                // 判断是否是工具调用后的继续（已有之前的推理内容）
+                bool isToolCallContinuation = toolsmessages.Count > 0;
+                bool thinkingStarted = false;
+                bool thinkingEnded = false;
+                bool inlineThinkingStarted = false;
+                bool inlineThinkingEnded = false;
+                List<tool_call> tool_calls = new();
+                var contentBuilder = new StringBuilder();
+                var reasoningContentBuilder = new StringBuilder();
+                bool hasCitations = false;
+                string citationsString = string.Empty;
+
+                while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+                {
+                    if (modelconfg.Stream)
+                    {
+                        var line = await reader.ReadLineAsync(cancellationToken);
+                        if (string.IsNullOrEmpty(line)) continue;
+                        if (line.StartsWith("data: "))
+                        {
+                            line = line.Substring(6);
+                            if (line == "[DONE]") break;
+
+                            var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
+                            var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
+                            var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
+
+                            if (!string.IsNullOrEmpty(content))
+                            {
+                                contentBuilder.Append(content);
+                            }
+                            if (!string.IsNullOrEmpty(reasoning_content))
+                            {
+                                reasoningContentBuilder.Append(reasoning_content);
+                            }
+
+                            // 处理工具调用
+                            var toolCallDelta = chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault();
+                            if (toolCallDelta != null)
+                            {
+                                if (!string.IsNullOrEmpty(toolCallDelta.function?.name))
+                                {
+                                    tool_calls.Add(toolCallDelta);
+                                }
+                                else if (tool_calls.Count > 0)
+                                {
+                                    int index = toolCallDelta.index;
+                                    if (index >= 0 && index < tool_calls.Count)
+                                    {
+                                        tool_calls[index].function.arguments += toolCallDelta.function?.arguments;
+                                    }
+                                }
+                            }
+
+                            // 输出推理内容
+                            if (!string.IsNullOrEmpty(reasoning_content))
+                            {
+                                if (!thinkingStarted)
+                                {
+                                    // 如果是工具调用后的继续，需要先闭合之前的内容块再开始新的思考块
+                                    if (isToolCallContinuation)
+                                    {
+                                        yield return "\n\n<think>\n\n~~~Thoughts\n\n" + reasoning_content;
+                                    }
+                                    else
+                                    {
+                                        yield return "<think>\n\n~~~Thoughts\n\n" + reasoning_content;
+                                    }
+                                    thinkingStarted = true;
+                                }
+                                else
+                                {
+                                    yield return reasoning_content;
+                                }
+                            }
+
+                            // 输出内容
+                            if (!string.IsNullOrEmpty(content))
+                            {
+                                if (thinkingStarted && !thinkingEnded)
+                                {
+                                    yield return "\n\n~~~\n\n</think>\n\n" + content;
+                                    thinkingEnded = true;
+                                }
+                                else if (content.Contains("<think>") && !inlineThinkingStarted && !inlineThinkingEnded)
+                                {
+                                    yield return content.Replace("<think>", "<think>\n\n~~~Thoughts\n\n");
+                                    inlineThinkingStarted = true;
+                                }
+                                else if (content.Contains("</think>") && inlineThinkingStarted && !inlineThinkingEnded)
+                                {
+                                    yield return content.Replace("</think>", "\n\n~~~\n\n</think>\n\n");
+                                    inlineThinkingEnded = true;
+                                }
+                                else
+                                {
+                                    yield return content;
+                                }
+                            }
+
+                            // 处理工具调用完成
+                            var finishReason = chunk?.choices?.FirstOrDefault()?.finish_reason;
+                            if (tool_calls.Count > 0 && (finishReason == "tool_calls" || finishReason == "stop"))
+                            {
+                                // 如果有未闭合的思考块，先闭合它
+                                if (thinkingStarted && !thinkingEnded)
+                                {
+                                    yield return "\n\n~~~\n\n</think>\n\n";
+                                    thinkingEnded = true;
+                                }
+
+                                await foreach (var item in ExecuteToolCallsAndContinueAsync(
+                                    modelconfg, request, cancellationToken, client, toolsmessages,
+                                    tool_calls, contentBuilder, reasoningContentBuilder, response))
+                                {
+                                    yield return item;
+                                }
+                                yield break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var line = await reader.ReadToEndAsync(cancellationToken);
+                        if (string.IsNullOrEmpty(line)) continue;
+
+                        var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
+
+                        
+
+                        var content = chunk?.choices?.FirstOrDefault()?.message?.content;
+                        var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
+
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            contentBuilder.Append(content);
+                        }
+
+                        if (!string.IsNullOrEmpty(reasoning_content))
+                        {
+                            reasoningContentBuilder.Append(reasoning_content);
+                        }
+                        // 处理工具调用
+                        var toolCalls = chunk?.choices?.FirstOrDefault()?.message?.tool_calls;
+                        if (toolCalls != null && toolCalls.Length > 0)
+                        {
+                            tool_calls.AddRange(toolCalls.Cast<tool_call>());
+
+                            // 如果有推理内容，先输出它（带闭合标签）
+                            if (!string.IsNullOrEmpty(reasoning_content))
+                            {
+                                var formattedReasoning = isToolCallContinuation
+                                    ? $"\n\n<think>\n\n~~~Thoughts\n\n{reasoning_content}\n\n~~~\n\n</think>\n\n"
+                                    : $"<think>\n\n~~~Thoughts\n\n{reasoning_content}\n\n~~~\n\n</think>\n\n";
+                                yield return formattedReasoning;
+                            }
+
+                            await foreach (var item in ExecuteToolCallsAndContinueAsync(
+                                modelconfg, request, cancellationToken, client, toolsmessages,
+                                tool_calls, contentBuilder, reasoningContentBuilder, response))
+                            {
+                                yield return item;
+                            }
+                            yield break;
+                        }
+
+                        // 输出推理和内容
+                        if (!string.IsNullOrEmpty(reasoning_content))
+                        {
+                            var formattedReasoning = isToolCallContinuation
+                                ? $"\n\n<think>\n\n~~~Thoughts\n\n{reasoning_content}\n\n~~~\n\n</think>\n\n"
+                                : $"<think>\n\n~~~Thoughts\n\n{reasoning_content}\n\n~~~\n\n</think>\n\n";
+                            yield return formattedReasoning + content;
+                        }
+                        else if (!string.IsNullOrEmpty(content))
+                        {
+                            content = content.Replace("<think>", "<think>\n\n~~~Thoughts\n\n");
+                            content = content.Replace("</think>", "\n\n~~~\n\n</think>\n\n");
+                            yield return content;
+                        }
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(citationsString))
+                {
+                    yield return "\n\n" + citationsString;
+                }
+            }
+        }
+
+        // 提取工具调用执行逻辑为独立方法，减少代码重复
+        private async IAsyncEnumerable<string> ExecuteToolCallsAndContinueAsync(
+            ChatModelConfig modelconfg, ChatRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            HttpClient client, List<object> toolsmessages,
+            List<tool_call> tool_calls, StringBuilder contentBuilder,
+            StringBuilder reasoningContentBuilder, HttpResponseMessage response)
+        {
+            List<object> tool_calls1 = new List<object>();
+            tool_calls1.AddRange(tool_calls);
+
+            var assistantMessage = reasoningContentBuilder != null
+                ? new { role = "assistant", content = contentBuilder.ToString(), reasoning_content = reasoningContentBuilder.ToString(), tool_calls = tool_calls1 }
+                : (object)new { role = "assistant", content = contentBuilder.ToString(), tool_calls = tool_calls1 };
+
+            toolsmessages.Add(assistantMessage);
+
+            foreach (var pair in tool_calls)
+            {
+                string toolResult = await ExecuteToolCallAsync(pair);
+
+                toolsmessages.Add(new
+                {
+                    role = "tool",
+                    tool_call_id = pair.id,
+                    content = toolResult
+                });
+            }
+
+            contentBuilder.Clear();
+            reasoningContentBuilder?.Clear();
+            tool_calls.Clear();
+            response.Content.Dispose();
+
+            await foreach (var item in OpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+            {
+                yield return item;
+            }
+        }
+
+        // 提取工具执行逻辑
+        private async Task<string> ExecuteToolCallAsync(tool_call pair)
+        {
+            switch (pair.function.name)
+            {
+                case nameof(GetCurrentDataTime):
+                    return await GetCurrentDataTime();
+
+                case nameof(JinaAiSearch):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        if (!argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery))
+                        {
+                            throw new ArgumentNullException("query", "The query argument is required.");
+                        }
+                        return await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException("query", "Query cannot be null."));
+                    }
+
+                case nameof(SearchTrainTicket):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+                        argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                        if (!argumentsJson.RootElement.TryGetProperty("date", out JsonElement date))
+                        {
+                            throw new ArgumentNullException("date", "The date argument is required.");
+                        }
+                        return await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                    }
+
+                case nameof(GetWeather):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        if (!argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery))
+                        {
+                            throw new ArgumentNullException("city", "The city argument is required.");
+                        }
+                        return await GetWeather(outquery.GetString() ?? throw new ArgumentNullException("city", "City cannot be null."));
+                    }
+
+                default:
+                    return "未知工具调用";
+            }
+        }
         #region 工具方法
         // 创建工具列表
         private List<object> PrepareOpenAiResponsesTools()

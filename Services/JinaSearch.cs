@@ -1,4 +1,4 @@
-﻿using ChatBot.Models;
+using ChatBot.Models;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text;

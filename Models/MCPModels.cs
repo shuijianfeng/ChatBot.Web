@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace ChatBot.Models
 {
     /// <summary>
-    /// MCP (Model Context Protocol) ÇëÇóÄ£ĞÍ
+    /// MCP (Model Context Protocol) è¯·æ±‚æ¨¡å‹
     /// </summary>
     public class MCPRequest
     {
@@ -22,7 +22,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP ÏìÓ¦Ä£ĞÍ
+    /// MCP å“åº”æ¨¡å‹
     /// </summary>
     public class MCPResponse
     {
@@ -40,7 +40,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP ½á¹û
+    /// MCP ç»“æœ
     /// </summary>
     public class MCPResult
     {
@@ -58,7 +58,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP ÄÚÈİ
+    /// MCP å†…å®¹
     /// </summary>
     public class MCPContent
     {
@@ -70,7 +70,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP ´íÎó
+    /// MCP é”™è¯¯
     /// </summary>
     public class MCPError
     {
@@ -85,7 +85,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP ¹¤¾ß¶¨Òå
+    /// MCP å·¥å…·å®šä¹‰
     /// </summary>
     public class MCPTool
     {
@@ -100,7 +100,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP ¹¤¾ßÊäÈëÄ£Ê½
+    /// MCP å·¥å…·è¾“å…¥æ¨¡å¼
     /// </summary>
     public class MCPToolInputSchema
     {
@@ -115,7 +115,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP ²ÉÑùÇëÇó²ÎÊı
+    /// MCP é‡‡æ ·è¯·æ±‚å‚æ•°
     /// </summary>
     public class MCPSamplingParams
     {
@@ -145,7 +145,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP ÏûÏ¢
+    /// MCP æ¶ˆæ¯
     /// </summary>
     public class MCPMessage
     {
@@ -157,7 +157,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP ÏûÏ¢ÄÚÈİ
+    /// MCP æ¶ˆæ¯å†…å®¹
     /// </summary>
     public class MCPMessageContent
     {
@@ -169,7 +169,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP Ä£ĞÍÆ«ºÃ
+    /// MCP æ¨¡å‹åå¥½
     /// </summary>
     public class MCPModelPreferences
     {
@@ -187,7 +187,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP Ä£ĞÍÌáÊ¾
+    /// MCP æ¨¡å‹æç¤º
     /// </summary>
     public class MCPModelHint
     {
@@ -196,7 +196,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP Á÷Ê½ÏìÓ¦¿é
+    /// MCP æµå¼å“åº”å—
     /// </summary>
     public class MCPStreamChunk
     {
@@ -211,7 +211,7 @@ namespace ChatBot.Models
     }
 
     /// <summary>
-    /// MCP Á÷Ê½²ÎÊı
+    /// MCP æµå¼å‚æ•°
     /// </summary>
     public class MCPStreamParams
     {

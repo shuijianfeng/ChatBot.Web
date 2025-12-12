@@ -21,13 +21,13 @@ namespace ChatBot.Models
         Deepbricks,
         OpenAiDeepResearch,
         GeminiDeepResearch,
-        Dify,  // ĞÂÔöµÄ Dify ÀàĞÍ
+        Dify,  // æ–°å¢çš„ Dify ç±»å‹
         OpenAiResponses
     }
 
     public class ChatModelConfig
     {
-        public string Name { get; set; } = string.Empty; // Ä£ĞÍÃû³Æ
+        public string Name { get; set; } = string.Empty; // æ¨¡å‹åç§°
         public string ApiEndpoint { get; set; } = string.Empty;
         public string EnvironmentApikeyName { get; set; } = string.Empty;
         public string Systemprompt { get; set; } = string.Empty;
