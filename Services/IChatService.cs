@@ -203,6 +203,14 @@ namespace ChatBot.Web.Services
                             }
                             break;
                         }
+                    case ChatModelType.GeminiFileSearch:
+                        {
+                            await foreach (var item in GeminiFileSearchAsync(config, request, cancellationToken))
+                            {
+                                yield return item;
+                            }
+                            break;
+                        }
 
                     case ChatModelType.Dify:
                         // 添加对Dify的支持
@@ -401,19 +409,35 @@ namespace ChatBot.Web.Services
             }
         }
 
-        public async IAsyncEnumerable<string> OpenAIResponsesAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
+        /// <summary>
+        /// OpenAI Responses API 流式响应处理方法
+        /// 支持完整的 SSE 事件类型，包括:
+        /// - response.created/in_progress/completed/failed: 响应生命周期事件
+        /// - response.output_item.added/done: 输出项事件
+        /// - response.output_text.delta/done: 文本输出事件
+        /// - response.reasoning_summary_part.added/done: 推理摘要部分事件
+        /// - response.reasoning_summary_text.delta/done: 推理摘要文本事件  
+        /// - response.function_call_arguments.delta/done: 函数调用事件
+        /// - response.web_search_call.searching/completed: Web搜索事件
+        /// - response.file_search_call.searching/completed: 文件搜索事件
+        /// </summary>
+        public async IAsyncEnumerable<string> OpenAIResponsesAsync(
+            ChatModelConfig modelconfg,
+            ChatRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            HttpClient inputclient = null,
+            List<object> toolsmessages = null)
         {
+            // 验证API配置
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
-
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
                 throw new InvalidOperationException("API配置缺失");
             }
 
-
-            // 创建HTTP客户端
+            // 创建或复用HTTP客户端
             HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
             if (inputclient == null)
             {
@@ -421,302 +445,515 @@ namespace ChatBot.Web.Services
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
             }
 
+            // 准备消息列表
             var messages = ToMessagesResponsesOpenAi(request, modelconfg);
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
-            //toolsmessages.Clear();
+
+            // 准备工具列表 (如果启用搜索)
             List<object> tools = request.EnableSearch
-        ? PrepareOpenAiResponsesTools()
-        : null;
+                ? PrepareOpenAiResponsesTools()
+                : null;
 
-
+            // 构建请求内容
             var requestContent = new
             {
-
                 model = modelconfg.Model,
                 input = messages,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-
+                reasoning = OpenAiThinkingLevel(modelconfg),
                 tools = tools,
             };
+
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
             }, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
             {
-
-
-
+                // 检查HTTP响应状态
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 {
-                    yield return "失败: StatusCode " + response.StatusCode.ToString();
+                    // 尝试读取错误详情
+                    var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                    yield return $"失败: StatusCode {response.StatusCode}\n{errorContent}";
                     yield break;
                 }
                 response.EnsureSuccessStatusCode();
 
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 using var reader = new StreamReader(stream);
-                bool beging = false;
-                bool end = false;
-                bool beging1 = false;
-                bool end1 = false;
-                List<tool_callnew> tool_calls = new();
-                var contentBuilder = new StringBuilder();
-                bool iscitations = false;
-                string citationsstring = string.Empty;
+
+                // 状态变量
+                bool isReasoningStarted = false;      // 推理摘要是否已开始
+                bool isReasoningEnded = false;        // 推理摘要是否已结束
+                bool isThinkTagStarted = false;       // <think>标签是否已开始 (对于某些模型)
+                bool isThinkTagEnded = false;         // </think>标签是否已结束
+                bool isWebSearching = false;          // 是否正在执行Web搜索
+                bool isFileSearching = false;         // 是否正在执行文件搜索
+
+                List<tool_callnew> tool_calls = new();      // 工具调用列表
+                List<object> reasoning_items = new();        // 推理项列表 (用于关联 function_call)
+                var contentBuilder = new StringBuilder();    // 内容构建器
+
                 while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
                 {
-
                     if (modelconfg.Stream)
                     {
+                        // 流式模式：处理SSE事件
                         var line = await reader.ReadLineAsync(cancellationToken);
                         if (string.IsNullOrEmpty(line)) continue;
+
+                        // 处理SSE格式 "data: {...}"
                         if (line.StartsWith("data: "))
                         {
                             line = line.Substring(6);
 
-
-                            var chunk = JsonSerializer.Deserialize<OpenAIChunkResponsenew>(line);
-
-
-                            switch (chunk?.type)
+                            // 尝试解析JSON
+                            OpenAIChunkResponsenew chunk;
+                            try
                             {
+                                chunk = JsonSerializer.Deserialize<OpenAIChunkResponsenew>(line);
+                            }
+                            catch (JsonException)
+                            {
+                                // JSON解析失败，跳过此行
+                                continue;
+                            }
+
+                            if (chunk == null) continue;
+
+                            // 根据事件类型分发处理
+                            switch (chunk.type)
+                            {
+                                // ========== 响应生命周期事件 ==========
+                                case "response.created":
+                                    // 响应创建，可用于初始化
+                                    break;
+
+                                case "response.in_progress":
+                                    // 响应进行中
+                                    break;
+
+                                case "response.completed":
+                                    // 响应完成
+                                    break;
+
+                                case "response.failed":
+                                    // 响应失败
+                                    yield return "\n\n⚠️ **响应失败**";
+                                    yield break;
+
+                                // ========== 推理摘要事件 (OpenAI o1等推理模型) ==========
+                                case "response.reasoning_summary_part.added":
+                                    // 推理摘要部分开始
+                                    if (!isReasoningStarted)
+                                    {
+                                        yield return "<think>\n\n~~~Thoughts\n\n";
+                                        isReasoningStarted = true;
+                                    }
+                                    break;
+
+                                case "response.reasoning_summary_text.delta":
+                                    // 推理摘要文本增量
+                                    if (!string.IsNullOrEmpty(chunk.delta))
+                                    {
+                                        if (!isReasoningStarted)
+                                        {
+                                            yield return "<think>\n\n~~~Thoughts\n\n";
+                                            isReasoningStarted = true;
+                                        }
+                                        yield return chunk.delta;
+                                    }
+                                    break;
+
+                                case "response.reasoning_summary_text.done":
+                                    // 推理摘要文本完成
+                                    break;
+
+                                case "response.reasoning_summary_part.done":
+                                    // 推理摘要部分完成
+                                    if (isReasoningStarted && !isReasoningEnded)
+                                    {
+                                        yield return "\n\n~~~\n\n</think>\n\n";
+                                        isReasoningEnded = true;
+                                    }
+                                    break;
+
+                                // ========== 输出项事件 ==========
+                                case "response.output_item.added":
+                                    // 输出项添加 (可能是文本、函数调用、推理等)
+                                    if (chunk?.item?.ValueKind == JsonValueKind.Object)
+                                    {
+                                        var itemElement = chunk.item.Value;
+                                        if (itemElement.TryGetProperty("type", out var typeProperty))
+                                        {
+                                            var itemType = typeProperty.GetString();
+                                            if (itemType == "function_call")
+                                            {
+                                                // 将 JsonElement 反序列化为 tool_callnew
+                                                var toolCall = JsonSerializer.Deserialize<tool_callnew>(itemElement.GetRawText(), _jsonOptions);
+                                                if (toolCall != null)
+                                                {
+                                                    tool_calls.Add(toolCall);
+                                                }
+                                            }
+                                            else if (itemType == "reasoning")
+                                            {
+                                                // 保存原始 JsonElement 以保留完整结构
+                                                // OpenAI 推理模型 (o1/o3等) 要求 function_call 必须包含其关联的 reasoning 项
+                                                // 需要使用 Clone() 因为原始 JsonElement 是 stream 的一部分，可能会被释放
+                                                reasoning_items.Add(JsonSerializer.Deserialize<object>(itemElement.GetRawText(), _jsonOptions)!);
+                                            }
+                                        }
+                                    }
+                                    break;
+
+                                // ========== 内容部分事件 ==========
+                                case "response.content_part.added":
+                                    // 内容部分添加
+                                    break;
+
+                                case "response.content_part.done":
+                                    // 内容部分完成
+                                    break;
+
+                                // ========== 文本输出事件 ==========
                                 case "response.output_text.delta":
                                     {
                                         var content = chunk?.delta;
                                         if (!string.IsNullOrEmpty(content))
                                         {
+                                            // 处理连续引用标记，添加空格分隔
                                             content = Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                             contentBuilder.Append(content);
                                         }
+
                                         if (!string.IsNullOrEmpty(content))
                                         {
-                                            if (beging && !end)
+                                            // 如果推理刚结束，先输出推理结束标记
+                                            if (isReasoningStarted && !isReasoningEnded)
                                             {
-                                                yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + content;
-                                                end = true;
+                                                yield return "\n\n~~~\n\n</think>\n\n" + content;
+                                                isReasoningEnded = true;
+                                            }
+                                            // 处理某些模型的 <think> 标签
+                                            else if (content.Contains("<think>") && !isThinkTagStarted && !isThinkTagEnded)
+                                            {
+                                                yield return content.Replace("<think>", "<think>\n\n~~~Thoughts\n\n");
+                                                isThinkTagStarted = true;
+                                            }
+                                            else if (content.Contains("</think>") && isThinkTagStarted && !isThinkTagEnded)
+                                            {
+                                                yield return content.Replace("</think>", "\n\n~~~\n\n</think>\n\n");
+                                                isThinkTagEnded = true;
                                             }
                                             else
                                             {
-                                                if (content.Contains("<think>") && !beging1 && !end1)
-                                                {
-                                                    yield return content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                                                    beging1 = true;
-                                                }
-                                                else
-                                                {
-                                                    if (content.Contains("</think>") && beging1 && !end1)
-                                                    {
-
-                                                        yield return content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
-                                                        end1 = true;
-                                                    }
-                                                    else
-                                                    {
-                                                        yield return content;
-                                                    }
-
-                                                }
-
-                                            }
-
-                                        }
-                                        break;
-                                    }
-                                case "response.output_item.added":
-                                    {
-                                        if (chunk?.item?.type == "function_call")
-                                        {
-                                            if (chunk?.item != null)
-                                            {
-                                                tool_calls.Add(chunk.item);
-
-
+                                                yield return content;
                                             }
                                         }
                                         break;
-
                                     }
+
+                                case "response.output_text.done":
+                                    // 文本输出完成
+                                    break;
+
+                                // ========== 函数调用事件 ==========
                                 case "response.function_call_arguments.delta":
+                                    // 函数调用参数增量
+                                    if (chunk?.output_index - 1 >= 0 && chunk?.output_index - 1 < tool_calls.Count)
                                     {
-                                        if (chunk?.output_index < tool_calls.Count)
-                                        {
-                                            tool_calls[(int)chunk.output_index].arguments += chunk.delta ?? string.Empty;
-                                        }
-                                        break;
+                                        tool_calls[(int)chunk.output_index - 1].arguments += chunk.delta ?? string.Empty;
                                     }
+                                    break;
+
                                 case "response.function_call_arguments.done":
+                                    // 函数调用参数完成
+                                    break;
+
+                                // ========== Web搜索事件 ==========
+                                case "response.web_search_call.searching":
+                                    // Web搜索开始
+                                    if (!isWebSearching)
                                     {
-
-                                        break;
+                                        yield return "\n\n🔍 *正在搜索网络...*\n\n";
+                                        isWebSearching = true;
                                     }
+                                    break;
 
+                                case "response.web_search_call.completed":
+                                    // Web搜索完成
+                                    if (isWebSearching)
+                                    {
+                                        yield return "\n\n✅ *搜索完成*\n\n";
+                                        isWebSearching = false;
+                                    }
+                                    break;
+
+                                case "response.web_search_call.failed":
+                                    // Web搜索失败
+                                    yield return "\n\n❌ *搜索失败*\n\n";
+                                    isWebSearching = false;
+                                    break;
+
+                                // ========== 文件搜索事件 ==========
+                                case "response.file_search_call.searching":
+                                    // 文件搜索开始
+                                    if (!isFileSearching)
+                                    {
+                                        yield return "\n\n📁 *正在搜索文件...*\n\n";
+                                        isFileSearching = true;
+                                    }
+                                    break;
+
+                                case "response.file_search_call.completed":
+                                    // 文件搜索完成
+                                    if (isFileSearching)
+                                    {
+                                        yield return "\n\n✅ *文件搜索完成*\n\n";
+                                        isFileSearching = false;
+                                    }
+                                    break;
+
+                                // ========== 输出项完成事件 ==========
                                 case "response.output_item.done":
                                     {
-                                        //if (chunk?.output_index < tool_calls.Count)
+                                        // 处理函数调用完成
+                                        if (tool_calls.Count > 0)
                                         {
-
-                                            if (tool_calls.Count > 0)
+                                            // 先添加 reasoning 项到消息列表
+                                            // OpenAI 推理模型 (o1/o3等) 要求 function_call 必须包含其关联的 reasoning 项
+                                            foreach (var reasoningItem in reasoning_items)
                                             {
+                                                toolsmessages.Add(reasoningItem);
+                                            }
+                                            reasoning_items.Clear();
 
-
-                                                foreach (var pair in tool_calls)
+                                            foreach (var pair in tool_calls)
+                                            {
+                                                string toolResult = string.Empty;
+                                                switch (pair.name)
                                                 {
-                                                    string toolResult = string.Empty;
-                                                    switch (pair.name)
-                                                    {
-                                                        case nameof(GetCurrentDataTime):
+                                                    case nameof(GetCurrentDataTime):
+                                                        {
+                                                            // 该函数不需要参数
+                                                            toolResult = await GetCurrentDataTime();
+                                                            break;
+                                                        }
+                                                    case nameof(JinaAiSearch):
+                                                        {
+                                                            if (string.IsNullOrWhiteSpace(pair.arguments) || pair.arguments == "{}")
                                                             {
-
-
-                                                                toolResult = await GetCurrentDataTime();
+                                                                toolResult = "错误：搜索查询参数不能为空";
                                                                 break;
                                                             }
-                                                        case nameof(JinaAiSearch):
+                                                            using (JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments))
                                                             {
-                                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments);
-                                                                bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-
-                                                                if (!query)
+                                                                if (!argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery))
                                                                 {
-                                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                                    toolResult = "错误：缺少 query 参数";
+                                                                    break;
                                                                 }
-                                                                toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+                                                                var queryStr = outquery.GetString();
+                                                                if (string.IsNullOrEmpty(queryStr))
+                                                                {
+                                                                    toolResult = "错误：query 参数不能为空";
+                                                                    break;
+                                                                }
+                                                                toolResult = await JinaAiSearch(queryStr);
+                                                            }
+                                                            break;
+                                                        }
+                                                    case nameof(SearchTrainTicket):
+                                                        {
+                                                            if (string.IsNullOrWhiteSpace(pair.arguments) || pair.arguments == "{}")
+                                                            {
+                                                                toolResult = "错误：搜索火车票参数不能为空";
                                                                 break;
                                                             }
-                                                        case nameof(SearchTrainTicket):
+                                                            using (JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments))
                                                             {
-                                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments);
-                                                                bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
-
-                                                                query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
-                                                                query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
-                                                                if (!query)
+                                                                argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+                                                                argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                                if (!argumentsJson.RootElement.TryGetProperty("date", out JsonElement date))
                                                                 {
-                                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                                    toolResult = "错误：缺少 date 参数";
+                                                                    break;
                                                                 }
                                                                 toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                                            }
+                                                            break;
+                                                        }
+                                                    case nameof(GetWeather):
+                                                        {
+                                                            if (string.IsNullOrWhiteSpace(pair.arguments) || pair.arguments == "{}")
+                                                            {
+                                                                toolResult = "错误：天气查询参数不能为空";
                                                                 break;
                                                             }
-                                                        case nameof(GetWeather):
+                                                            using (JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments))
                                                             {
-                                                                using JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments);
-                                                                bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
-
-
-                                                                if (!query)
+                                                                if (!argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery))
                                                                 {
-                                                                    throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                                    toolResult = "错误：缺少 city 参数";
+                                                                    break;
                                                                 }
-                                                                toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
-                                                                break;
+                                                                var cityStr = outquery.GetString();
+                                                                if (string.IsNullOrEmpty(cityStr))
+                                                                {
+                                                                    toolResult = "错误：city 参数不能为空";
+                                                                    break;
+                                                                }
+                                                                toolResult = await GetWeather(cityStr);
                                                             }
-                                                        default:
-                                                            {
-                                                                yield return "未知工具调用";
-                                                                break;
-                                                            }
-                                                    }
-                                                    toolsmessages.Add(pair);
-                                                    toolsmessages.Add(new
-                                                    {
-                                                        type = "function_call_output",
-                                                        call_id = pair.call_id,
-                                                        output = toolResult
-                                                    });
-
-
-
+                                                            break;
+                                                        }
+                                                    default:
+                                                        {
+                                                            toolResult = $"未知工具调用: {pair.name}";
+                                                            break;
+                                                        }
                                                 }
-                                                contentBuilder.Clear();
-                                                tool_calls.Clear();
-                                                response.Content.Dispose();
-                                                await foreach (var item in OpenAIResponsesAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+
+                                                // 添加工具调用和结果到消息列表
+                                                // 注意: OpenAI 推理模型要求 function_call 必须包含其关联的 reasoning 项
+                                                toolsmessages.Add(pair);
+                                                toolsmessages.Add(new
                                                 {
-                                                    yield return item;
-                                                }
-                                                break;
+                                                    type = "function_call_output",
+                                                    call_id = pair.call_id,
+                                                    output = toolResult
+                                                });
                                             }
+
+                                            // 清理状态，递归调用以继续对话
+                                            contentBuilder.Clear();
+                                            tool_calls.Clear();
+                                            response.Content.Dispose();
+                                            await foreach (var item in OpenAIResponsesAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                                            {
+                                                yield return item;
+                                            }
+                                            yield break;
                                         }
                                         break;
                                     }
-                            }
 
+                                // ========== 其他事件 ==========
+                                default:
+                                    // 未知事件类型，记录日志（可选）
+                                    // _logger.LogDebug("Unknown event type: {EventType}", chunk.type);
+                                    break;
+                            }
                         }
                     }
                     else
                     {
+                        // 非流式模式：一次性读取完整响应
                         var line = await reader.ReadToEndAsync(cancellationToken);
                         if (string.IsNullOrEmpty(line)) continue;
+
                         var chunk = JsonSerializer.Deserialize<OpenAIResponsenew>(line);
 
                         var output = chunk?.output;
                         if (output == null || output.Length == 0) continue;
+
                         foreach (var item in output)
                         {
                             if (item.type == "function_call")
                             {
+                                // 处理函数调用类型
                                 var content1 = item?.content?.FirstOrDefault()?.text;
                                 if (!string.IsNullOrEmpty(content1))
                                 {
                                     content1 = Regex.Replace(content1, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
                                     contentBuilder.Append(content1);
                                 }
+
                                 string toolResult = string.Empty;
                                 switch (item.name)
                                 {
                                     case nameof(GetCurrentDataTime):
                                         {
-
+                                            // 该函数不需要参数
                                             toolResult = await GetCurrentDataTime();
                                             break;
                                         }
                                     case nameof(SearchTrainTicket):
                                         {
-                                            using JsonDocument argumentsJson = JsonDocument.Parse(item.arguments);
-                                            bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
-
-                                            query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
-                                            query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
-                                            if (!query)
+                                            if (string.IsNullOrWhiteSpace(item.arguments) || item.arguments == "{}")
                                             {
-                                                throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                toolResult = "错误：搜索火车票参数不能为空";
+                                                break;
                                             }
-                                            toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                            using (JsonDocument argumentsJson = JsonDocument.Parse(item.arguments))
+                                            {
+                                                argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+                                                argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                                                if (!argumentsJson.RootElement.TryGetProperty("date", out JsonElement date))
+                                                {
+                                                    toolResult = "错误：缺少 date 参数";
+                                                    break;
+                                                }
+                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                            }
                                             break;
                                         }
                                     case nameof(JinaAiSearch):
                                         {
-                                            using JsonDocument argumentsJson = JsonDocument.Parse(item.arguments);
-                                            bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
-
-
-                                            if (!query)
+                                            if (string.IsNullOrWhiteSpace(item.arguments) || item.arguments == "{}")
                                             {
-                                                throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                toolResult = "错误：搜索查询参数不能为空";
+                                                break;
                                             }
-                                            toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+                                            using (JsonDocument argumentsJson = JsonDocument.Parse(item.arguments))
+                                            {
+                                                if (!argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery))
+                                                {
+                                                    toolResult = "错误：缺少 query 参数";
+                                                    break;
+                                                }
+                                                var queryStr = outquery.GetString();
+                                                if (string.IsNullOrEmpty(queryStr))
+                                                {
+                                                    toolResult = "错误：query 参数不能为空";
+                                                    break;
+                                                }
+                                                toolResult = await JinaAiSearch(queryStr);
+                                            }
                                             break;
                                         }
                                     case nameof(GetWeather):
                                         {
-                                            using JsonDocument argumentsJson = JsonDocument.Parse(item.arguments);
-                                            bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
-
-
-                                            if (!query)
+                                            if (string.IsNullOrWhiteSpace(item.arguments) || item.arguments == "{}")
                                             {
-                                                throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                toolResult = "错误：天气查询参数不能为空";
+                                                break;
                                             }
-                                            toolResult = await GetWeather(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "City cannot be null."));
+                                            using (JsonDocument argumentsJson = JsonDocument.Parse(item.arguments))
+                                            {
+                                                if (!argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery))
+                                                {
+                                                    toolResult = "错误：缺少 city 参数";
+                                                    break;
+                                                }
+                                                var cityStr = outquery.GetString();
+                                                if (string.IsNullOrEmpty(cityStr))
+                                                {
+                                                    toolResult = "错误：city 参数不能为空";
+                                                    break;
+                                                }
+                                                toolResult = await GetWeather(cityStr);
+                                            }
                                             break;
                                         }
                                     default:
                                         {
-                                            yield return "未知工具调用";
+                                            toolResult = $"未知工具调用: {item.name}";
                                             break;
                                         }
                                 }
@@ -738,6 +975,7 @@ namespace ChatBot.Web.Services
                             }
                             else
                             {
+                                // 处理普通文本内容
                                 var content1 = item?.content?.FirstOrDefault()?.text;
                                 if (!string.IsNullOrEmpty(content1))
                                 {
@@ -746,13 +984,18 @@ namespace ChatBot.Web.Services
                                 }
                             }
                         }
+
+                        // 输出内容
                         var content = contentBuilder.ToString();
                         if (!string.IsNullOrEmpty(content))
                         {
-                            content = content.Replace("<think>", "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n");
-                            content = content.Replace("</think>", "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n");
+                            // 处理 <think> 标签
+                            content = content.Replace("<think>", "<think>\n\n~~~Thoughts\n\n");
+                            content = content.Replace("</think>", "\n\n~~~\n\n</think>\n\n");
                             yield return content;
                         }
+
+                        // 如果有工具调用，递归处理
                         if (toolsmessages.Count > 0)
                         {
                             await foreach (var item in OpenAIResponsesAsync(modelconfg, request, cancellationToken, client, toolsmessages))
@@ -761,10 +1004,8 @@ namespace ChatBot.Web.Services
                             }
                             break;
                         }
-
                     }
                 }
-
             }
         }
         //public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
@@ -1223,101 +1464,7 @@ namespace ChatBot.Web.Services
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
             //toolsmessages.Clear();
-            List<object> tools = request.EnableSearch
-        ? new List<object>
-        {
-             new
-                {
-
-
-                    name = nameof(JinaAiSearch),
-                    description = "执行网页搜索并返回结果",
-                    input_schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new
-                            {
-                                type = "string",
-                                description = "搜索词"
-
-                            }
-                        },
-                        required = new[] { "query" }
-                    }
-
-                },
-             new
-                {
-
-
-                    name = nameof(GetWeather),
-                    description = "获取天气预报并返回结果",
-                    input_schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            city = new
-                            {
-                                type = "string",
-                                description = "城市(用英文表示)"
-
-                            }
-                        },
-                        required = new[] { "city" }
-                    }
-
-                },
-             new
-            {
-
-                    name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间",
-                    input_schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-
-                        }
-                    }
-
-            },
-             new
-            {
-
-                    name = nameof(SearchTrainTicket),
-                    description = "获取指定日期的火车票、火车车次",
-                    input_schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-
-                                startingplace = new
-                            {
-                                type = "string",
-                                description = "起始城市"
-                            },
-                                  arrivalplace = new
-                            {
-                                type = "string",
-                                description = "到达城市"
-                            },
-
-                              date = new
-                            {
-                                type = "string",
-                                description = "日期(格式:YYYY-MM-DD)"
-                            }
-                        }
-                       ,
-                         required = new[] { "startingplace", "arrivalplace", "date" }
-                    }
-            }
-        } : null;
+            List<object> tools = request.EnableSearch ? PrepareClaudeTools() : null;
 
 
             // 创建HTTP客户端
@@ -1894,6 +2041,9 @@ namespace ChatBot.Web.Services
             // 准备工具定义
             List<object> tools = request.EnableSearch ? PrepareGeminiTools() : null;
 
+            // 获取思考配置
+            var thinkingConfig = GeminiThinkingConfig(modelconfg);
+
             HttpResponseMessage response = null;
             if (modelconfg.Temperature >= 0)
             {
@@ -1904,7 +2054,7 @@ namespace ChatBot.Web.Services
                         parts = new { text = modelconfg.Systemprompt }
                     },
                     contents = messages,
-                    generationConfig = new { temperature = modelconfg.Temperature },
+                    generationConfig = new { temperature = modelconfg.Temperature, thinkingConfig = thinkingConfig },
                     tools = tools
                 };
 
@@ -1922,6 +2072,7 @@ namespace ChatBot.Web.Services
                         parts = new { text = modelconfg.Systemprompt }
                     },
                     contents = messages,
+                    generationConfig = thinkingConfig != null ? new { thinkingConfig = thinkingConfig } : null,
                     tools = tools
                 };
 
@@ -1943,6 +2094,8 @@ namespace ChatBot.Web.Services
             var contentBuilder = new StringBuilder();
             //List<GeminiFunctionCall> functionCalls = new();
             List<GeminiToolCall> tool_calls = new();
+            bool isThinkingStarted = false;  // 思考内容是否已开始
+            bool isThinkingEnded = false;    // 思考内容是否已结束
             while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
             {
                 if (modelconfg.Stream)
@@ -1967,15 +2120,42 @@ namespace ChatBot.Web.Services
                                     {
                                         tool_calls.Add(part.functionCall);
                                     }
-                                   
+
                                     //continue;
                                 }
 
                                 // 处理文本内容
                                 if (!string.IsNullOrEmpty(part.text))
                                 {
+                                    // 检查是否是思考内容 (Gemini 思考模型返回 thought=true)
+                                    if (part.thought)
+                                    {
+                                        // 思考内容开始标记
+                                        if (!isThinkingStarted)
+                                        {
+                                            yield return "<think>\n\n~~~Thoughts\n\n" + part.text;
+                                            isThinkingStarted = true;
+                                        }
+                                        else
+                                        {
+                                            yield return part.text;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // 非思考内容
+                                        if (isThinkingStarted && !isThinkingEnded)
+                                        {
+                                            // 思考结束，输出结束标记
+                                            yield return "\n\n~~~\n\n</think>\n\n" + part.text;
+                                            isThinkingEnded = true;
+                                        }
+                                        else
+                                        {
+                                            yield return part.text;
+                                        }
+                                    }
                                     contentBuilder.Append(part.text);
-                                    yield return part.text;
                                 }
 
                             }
@@ -2095,6 +2275,324 @@ namespace ChatBot.Web.Services
             }
         }
 
+        //Gemini
+        public async IAsyncEnumerable<string> GeminiFileSearchAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
+        {
+            // 验证配置AQ.Ab8RN6LQoXO75Ty1A9x4EEogc0XS97bVZPZwz-ytddNBxMvvrg
+            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
+            //var apiKey = "AQ.Ab8RN6LQoXO75Ty1A9x4EEogc0XS97bVZPZwz-ytddNBxMvvrg";
+            var apiEndpoint = modelconfg.ApiEndpoint;
+            apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
+
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+            {
+                throw new InvalidOperationException("配置缺失");
+            }
+            if (modelconfg.Stream)
+            {
+                apiEndpoint = apiEndpoint + $":streamGenerateContent?alt=sse&key={apiKey}";
+            }
+            else
+            {
+                apiEndpoint = apiEndpoint + $":generateContent?key={apiKey}";
+            }
+
+            // 创建HTTP客户端
+            HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
+
+            var messages = ToMessagesGemini(request, modelconfg);
+            toolsmessages ??= new List<object>();
+            messages.AddRange(toolsmessages);
+
+            // 准备工具定义
+            List<object> tools = PrepareGeminiFileSearchTools(modelconfg, request.EnableSearch);
+
+            // 获取思考配置
+            var thinkingConfig = GeminiThinkingConfig(modelconfg);
+
+            HttpResponseMessage response = null;
+            if (modelconfg.Temperature >= 0)
+            {
+                var requestContent = new
+                {
+                    system_instruction = new
+                    {
+                        parts = new { text = modelconfg.Systemprompt }
+                    },
+                    contents = messages,
+                    generationConfig = new { temperature = modelconfg.Temperature, thinkingConfig = thinkingConfig },
+                    tools = tools
+                };
+                string str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+            else
+            {
+                var requestContent = new
+                {
+                    system_instruction = new
+                    {
+                        parts = new { text = modelconfg.Systemprompt }
+                    },
+                    contents = messages,
+                    generationConfig = thinkingConfig != null ? new { thinkingConfig = thinkingConfig } : null,
+                    tools = tools
+                };
+
+                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            }
+
+            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            {
+                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                yield break;
+            }
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var reader = new StreamReader(stream);
+            var contentBuilder = new StringBuilder();
+            //List<GeminiFunctionCall> functionCalls = new();
+            List<GeminiToolCall> tool_calls = new();
+            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            {
+                if (modelconfg.Stream)
+                {
+                    var line = await reader.ReadLineAsync(cancellationToken);
+                    if (string.IsNullOrEmpty(line)) continue;
+                    if (line.StartsWith("data: "))
+                    {
+                        line = line.Substring(6);
+
+                        var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
+                        var candidate = chunk?.candidates?.FirstOrDefault();
+
+                        if (candidate?.content?.parts != null)
+                        {
+                            foreach (var part in candidate.content.parts)
+                            {
+
+                                if (part.functionCall != null)
+                                {
+                                    if (!string.IsNullOrEmpty(part.functionCall.name))
+                                    {
+                                        tool_calls.Add(part.functionCall);
+                                    }
+
+                                    //continue;
+                                }
+
+                                // 处理文本内容
+                                if (!string.IsNullOrEmpty(part.text))
+                                {
+                                    contentBuilder.Append(part.text);
+                                    yield return part.text;
+                                }
+
+                            }
+                        }
+
+                        // 检查是否完成且有函数调用
+                        if (candidate?.finishReason == "STOP" && tool_calls.Count > 0)
+                        {
+                            // 执行函数调用
+                            var functionResults = new List<object>();
+
+                            foreach (var funcCall in tool_calls)
+                            {
+                                string toolResult = await ExecuteFunctionCall(funcCall);
+
+                                functionResults.Add(new
+                                {
+                                    role = "function",
+                                    parts = new[]
+                                    {
+                                new
+                                {
+                                    functionResponse = new
+                                    {
+                                        name = funcCall.name,
+                                        response = new { result = toolResult }
+                                    }
+                                }
+                            }
+                                });
+                            }
+
+                            toolsmessages.AddRange(functionResults);
+                            tool_calls.Clear();
+                            contentBuilder.Clear();
+                            response.Content.Dispose();
+
+                            // 递归调用以获取最终响应
+                            await foreach (var item in GeminiFileSearchAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                            {
+                                yield return item;
+                            }
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    var line = await reader.ReadToEndAsync(cancellationToken);
+
+                    var chunk = JsonSerializer.Deserialize<GeminiChunkResponse>(line);
+                    var candidate = chunk?.candidates?.FirstOrDefault();
+
+                    if (candidate?.content?.parts != null)
+                    {
+                        foreach (var part in candidate.content.parts)
+                        {
+                            if (part.functionCall != null)
+                            {
+                                if (!string.IsNullOrEmpty(part.functionCall.name))
+                                {
+                                    tool_calls.Add(part.functionCall);
+                                }
+
+                                //continue;
+                            }
+
+                            // 处理文本内容
+                            if (!string.IsNullOrEmpty(part.text))
+                            {
+                                contentBuilder.Append(part.text);
+                                yield return part.text;
+                            }
+                        }
+                    }
+
+                    // 如果有函数调用，执行并重新请求
+                    // 检查是否完成且有函数调用
+                    if (candidate?.finishReason == "STOP" && tool_calls.Count > 0)
+                    {
+                        // 执行函数调用
+                        var functionResults = new List<object>();
+
+                        foreach (var funcCall in tool_calls)
+                        {
+                            string toolResult = await ExecuteFunctionCall(funcCall);
+
+                            functionResults.Add(new
+                            {
+                                role = "function",
+                                parts = new[]
+                                {
+                                new
+                                {
+                                    functionResponse = new
+                                    {
+                                        name = funcCall.name,
+                                        response = new { result = toolResult }
+                                    }
+                                }
+                            }
+                            });
+                        }
+
+                        toolsmessages.AddRange(functionResults);
+                        tool_calls.Clear();
+                        contentBuilder.Clear();
+                        response.Content.Dispose();
+
+                        // 递归调用以获取最终响应
+                        await foreach (var item in GeminiFileSearchAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                        {
+                            yield return item;
+                        }
+                    }
+                }
+            }
+        }
+        // 添加辅助方法：准备 Claude 格式的工具定义
+        private List<object> PrepareClaudeTools()
+        {
+            return new List<object>
+            {
+                new
+                {
+                    name = nameof(JinaAiSearch),
+                    description = "执行网页搜索并返回结果",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            query = new
+                            {
+                                type = "string",
+                                description = "搜索词"
+                            }
+                        },
+                        required = new[] { "query" }
+                    }
+                },
+                new
+                {
+                    name = nameof(GetWeather),
+                    description = "获取指定城市未来8天天气预报",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            city = new
+                            {
+                                type = "string",
+                                description = "城市(用英文表示)"
+                            }
+                        },
+                        required = new[] { "city" }
+                    }
+                },
+                new
+                {
+                    name = nameof(GetCurrentDataTime),
+                    description = "获取当前日期和时间",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new { },
+                        required = Array.Empty<string>()
+                    }
+                },
+                new
+                {
+                    name = nameof(SearchTrainTicket),
+                    description = "获取指定日期的火车票、火车车次",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            startingplace = new
+                            {
+                                type = "string",
+                                description = "起始城市"
+                            },
+                            arrivalplace = new
+                            {
+                                type = "string",
+                                description = "到达城市"
+                            },
+                            date = new
+                            {
+                                type = "string",
+                                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
+                            }
+                        },
+                        required = new[] { "startingplace", "arrivalplace", "date" }
+                    }
+                }
+            };
+        }
         // 添加辅助方法：准备 Gemini 格式的工具定义
         private List<object> PrepareGeminiTools()
         {
@@ -2182,7 +2680,117 @@ namespace ChatBot.Web.Services
         }
     };
         }
+        // 添加辅助方法：准备 Gemini 格式的工具定义
+        private List<object> PrepareGeminiFileSearchTools(ChatModelConfig config, bool enableSearch)
+        {
+            var list = new List<object>();
 
+            if (enableSearch)
+            {
+                list.Add(
+
+                    new
+                    {
+                        functionDeclarations = new List<object>
+            {
+                new
+                {
+                    name = nameof(JinaAiSearch),
+                    description = "执行网页搜索并返回结果",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            query = new
+                            {
+                                type = "string",
+                                description = "搜索词"
+                            }
+                        },
+                        required = new[] { "query" }
+                    }
+                },
+                new
+                {
+                    name = nameof(GetWeather),
+                    description = "获取指定城市未来8天天气预报",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            city = new
+                            {
+                                type = "string",
+                                description = "城市(用英文表示)"
+                            }
+                        },
+                        required = new[] { "city" }
+                    }
+                },
+                new
+                {
+                    name = nameof(GetCurrentDataTime),
+                    description = "获取当前日期和时间",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new { }
+                    }
+                },
+                new
+                {
+                    name = nameof(SearchTrainTicket),
+                    description = "获取指定日期的火车票、火车车次",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            startingplace = new
+                            {
+                                type = "string",
+                                description = "起始城市"
+                            },
+                            arrivalplace = new
+                            {
+                                type = "string",
+                                description = "到达城市"
+                            },
+                            date = new
+                            {
+                                type = "string",
+                                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
+                            }
+                        },
+                        required = new[] { "startingplace", "arrivalplace", "date" }
+                    }
+                }
+            }
+                    });
+
+            }
+
+            if (!string.IsNullOrWhiteSpace(config.File_search_store_names))
+            {
+                list.Add(
+                    new
+                    {
+                        file_search = new
+                        {
+                            file_search_store_names = new List<object>
+                            {
+                                config.File_search_store_names
+                            }
+                        }
+                    }
+                );
+            }
+
+            if (list.Count == 0) return null;
+            return list;
+        }
         // 添加辅助方法：执行函数调用
         private async Task<string> ExecuteFunctionCall(GeminiToolCall funcCall)
         {
@@ -2857,6 +3465,7 @@ namespace ChatBot.Web.Services
                 messages = messages,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
+                reasoning = OpenAiThinkingLevel(modelconfg),
                 tools = tools,
             };
 
@@ -3003,7 +3612,7 @@ namespace ChatBot.Web.Services
 
                         var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
 
-                        
+
 
                         var content = chunk?.choices?.FirstOrDefault()?.message?.content;
                         var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
@@ -3200,22 +3809,14 @@ namespace ChatBot.Web.Services
                 new
                 {
                     type = "function",
-
-                        name = nameof(GetCurrentDataTime),
-                        description = "获取当前日期和时间。",
-                        parameters = new
-                        {
-                            type = "object",
-                            properties = new
-                            {
-                                  city = new
-                                {
-
-                                }
-                            },
-                             required = new[] { "city" }
-                        }
-
+                    name = nameof(GetCurrentDataTime),
+                    description = "获取当前日期和时间",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new { },
+                        required = Array.Empty<string>()
+                    }
                 },
                 new
                 {
@@ -3347,6 +3948,54 @@ namespace ChatBot.Web.Services
         }
     };
         }
+
+
+        /// <summary>
+        /// 根据配置返回 OpenAI Responses API 的 reasoning 配置
+        /// OpenAI API 使用 effort 来控制推理强度: "low", "medium", "high"
+        /// 可选 summary 参数: "auto", "concise", "detailed"
+        /// </summary>
+        private object OpenAiThinkingLevel(ChatModelConfig config)
+        {
+            // 如果没有设置 ThinkingLevel，返回 null（不启用推理）
+            if (string.IsNullOrEmpty(config.ThinkingLevel))
+            {
+                return null;
+            }
+
+            // 根据 ThinkingLevel 返回对应的 effort 配置
+            return config.ThinkingLevel.ToUpperInvariant() switch
+            {
+                "HIGH" => new { effort = "high" },
+                "MEDIUM" => new { effort = "medium" },
+                "LOW" => new { effort = "low" },
+                "OFF" => null,  // 关闭推理
+                _ => null       // 默认不设置
+            };
+        }
+
+        /// <summary>
+        /// 根据配置返回 Gemini API 的 thinkingConfig 配置
+        /// Gemini API 使用 thinkingBudget 来控制思考的 token 预算
+        /// </summary>
+        private object GeminiThinkingConfig(ChatModelConfig config)
+        {
+            // 如果 ThinkingTokens 大于 0，使用具体的 token 预算
+            if (config.ThinkingTokens > 0)
+            {
+                return new { thinkingBudget = config.ThinkingTokens, includeThoughts = true };
+            }
+
+            // 根据 ThinkingLevel 返回预设的 token 预算
+            return config.ThinkingLevel switch
+            {
+                "HIGH" => new { thinkingBudget = 24576, includeThoughts = true },    // 高强度思考
+                "MEDIUM" => new { thinkingBudget = 8192, includeThoughts = true },   // 中等强度思考
+                "LOW" => new { thinkingBudget = 1024, includeThoughts = true },      // 低强度思考
+                "OFF" => new { thinkingBudget = 0, includeThoughts = false },         // 关闭思考
+                _ => null                                     // 默认不设置，使用 API 默认值
+            };
+        }
         #endregion
 
         #region 组装消息
@@ -3476,10 +4125,10 @@ namespace ChatBot.Web.Services
                 {
 
                     var contentlist = new List<object>();
-                    
-                    
+
+
                     contentlist.Add(new { type = "text", text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) });
-                    
+
 
                     foreach (var image in msg.Images)
                     {
@@ -3497,13 +4146,13 @@ namespace ChatBot.Web.Services
                 else
                 {
 
-                   
+
                     {
                         messages.Add(new
                         {
                             role = msg.Role,
                             content = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content)
-                            
+
                         });
                     }
                 }

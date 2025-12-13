@@ -20,7 +20,7 @@ namespace ChatBot.Models
         Llama,
         Deepbricks,
         OpenAiDeepResearch,
-        GeminiDeepResearch,
+        GeminiFileSearch,
         Dify,  // 新增的 Dify 类型
         OpenAiResponses
     }
@@ -43,6 +43,10 @@ namespace ChatBot.Models
         public bool EnableImageUpload { get; set; }
         public bool Incremental_output { get; set; }
         public int ThinkingTokens { get; set; }
+
+        public string File_search_store_names { get; set; } = string.Empty;
+
+        public string ThinkingLevel { get; set; } = string.Empty;
     }
 
     public class ChatModelSettings: List<ChatModelConfig> 

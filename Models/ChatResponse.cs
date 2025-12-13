@@ -1,5 +1,6 @@
 
 using ChatBot.Web.Services;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 namespace ChatBot.Models
 {
@@ -278,7 +279,7 @@ namespace ChatBot.Models
     }
     public class tool_callnew
     {
-        
+
         public string id { get; set; } = string.Empty;
         public string call_id { get; set; } = string.Empty;
         public string type { get; set; } = string.Empty;
@@ -290,11 +291,11 @@ namespace ChatBot.Models
     public class GeminiToolCall
     {
         public string id { get; set; }
-        
+
         public string name { get; set; } = string.Empty;
         //public string args  { get; set; } = string.Empty;
 
-        public  object args { get; set; } 
+        public object args { get; set; }
 
     }
     // 响应类型
@@ -318,6 +319,7 @@ namespace ChatBot.Models
         public class part
         {
             public string text { get; set; }
+            public bool thought { get; set; }  // Gemini 思考内容标记
             public GeminiToolCall functionCall { get; set; } = new GeminiToolCall();
         }
     }
@@ -368,7 +370,7 @@ namespace ChatBot.Models
             public string text { get; set; } = string.Empty;
 
             public string id { get; set; } = string.Empty;
-            public object input { get; set; } 
+            public object input { get; set; }
             public string name { get; set; } = string.Empty;
 
             public string signature { get; set; } = string.Empty;
@@ -412,7 +414,7 @@ namespace ChatBot.Models
         public string id { get; set; } = string.Empty;
         [JsonPropertyName("object")]
         public string openaiobject { get; set; } = string.Empty;
-        
+
         public string status { get; set; } = string.Empty;
 
         public string model { get; set; } = string.Empty;
@@ -452,20 +454,110 @@ namespace ChatBot.Models
         }
     }
 
-    // 响应类型
+    // OpenAI Responses API 流式响应类型 (支持完整事件类型)
+    // 事件类型包括:
+    // - response.created, response.in_progress, response.completed, response.failed
+    // - response.output_item.added, response.output_item.done
+    // - response.content_part.added, response.content_part.done
+    // - response.output_text.delta, response.output_text.done
+    // - response.reasoning_summary_part.added, response.reasoning_summary_part.done
+    // - response.reasoning_summary_text.delta, response.reasoning_summary_text.done
+    // - response.function_call_arguments.delta, response.function_call_arguments.done
+    // - response.web_search_call.searching, response.web_search_call.completed
+    // - response.file_search_call.searching, response.file_search_call.completed
     public class OpenAIChunkResponsenew
     {
+        /// <summary>
+        /// 事件类型
+        /// </summary>
         public string type { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 输出项索引
+        /// </summary>
         public int output_index { get; set; }
+
+        /// <summary>
+        /// 内容索引
+        /// </summary>
+        public int content_index { get; set; }
+
+        /// <summary>
+        /// 响应ID
+        /// </summary>
         public string response_id { get; set; } = string.Empty;
-        
-        public tool_callnew item { get; set; } = new tool_callnew();
+
+        /// <summary>
+        /// 事件序列号，用于排序
+        /// </summary>
+        public int sequence_number { get; set; }
+
+        /// <summary>
+        /// 输出项ID
+        /// </summary>
+        public string item_id { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 工具调用项 (用于 function_call 类型) 或 reasoning 项
+        /// 使用 JsonElement 保留原始 JSON 数据，因为 reasoning 项有不同的结构
+        /// </summary>
+        public JsonElement? item { get; set; }
+
+        /// <summary>
+        /// 增量内容 (用于 delta 事件)
+        /// </summary>
         public string delta { get; set; } = string.Empty;
-       
 
-       
+        /// <summary>
+        /// 完整文本内容 (用于 done 事件)
+        /// </summary>
+        public string text { get; set; } = string.Empty;
 
+        /// <summary>
+        /// 内容部分 (用于 content_part.added 事件)
+        /// </summary>
+        public ContentPart part { get; set; }
 
+        /// <summary>
+        /// 推理摘要部分 (用于 reasoning_summary_part.added 事件)
+        /// </summary>
+        public ReasoningSummaryPart summary { get; set; }
+
+        /// <summary>
+        /// 完整响应对象 (用于 response.completed 等事件)
+        /// </summary>
+        public OpenAIResponsenew response { get; set; }
+
+        /// <summary>
+        /// 内容部分类型
+        /// </summary>
+        public class ContentPart
+        {
+            public string type { get; set; } = string.Empty;
+            public string text { get; set; } = string.Empty;
+            public Annotations[] annotations { get; set; }
+        }
+
+        /// <summary>
+        /// 注释类型 (用于引用等)
+        /// </summary>
+        public class Annotations
+        {
+            public string type { get; set; } = string.Empty;
+            public int start_index { get; set; }
+            public int end_index { get; set; }
+            public string url { get; set; } = string.Empty;
+            public string title { get; set; } = string.Empty;
+        }
+
+        /// <summary>
+        /// 推理摘要部分类型
+        /// </summary>
+        public class ReasoningSummaryPart
+        {
+            public string type { get; set; } = string.Empty;
+            public string text { get; set; } = string.Empty;
+        }
     }
     // 响应类型
     public class llama32ChunkResponse
