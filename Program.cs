@@ -19,7 +19,7 @@ builder.Services.AddScoped<IChatService,ChatService> ();
 builder.Services.AddScoped<OpenAIService>();
 builder.Services.AddScoped<JinaSearch>();
 builder.Services.AddScoped<OpenWeather>();
-builder.Services.AddScoped<MCPService>();
+
 
 var app = builder.Build();
 
