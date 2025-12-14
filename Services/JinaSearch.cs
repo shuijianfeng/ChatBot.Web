@@ -83,7 +83,7 @@ namespace ChatBot.Web.Services
             try
             {
                 using var client = _httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromSeconds(30); // 减少超时时间
+                client.Timeout = TimeSpan.FromSeconds(15); // 进一步减少超时时间提高响应速度
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
                 var requestContent = new
@@ -97,7 +97,7 @@ namespace ChatBot.Web.Services
                     temperature = 0.1,
                 };
 
-                using var response = await client.PostAsync(apiEndpoint, 
+                using var response = await client.PostAsync(apiEndpoint,
                     new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json"));
 
                 if (response.IsSuccessStatusCode)
@@ -105,7 +105,7 @@ namespace ChatBot.Web.Services
                     var responseStr = await response.Content.ReadAsStringAsync();
                     var result = JsonSerializer.Deserialize<OpenAIResponse>(responseStr, _jsonOptions);
                     var expandedQuery = result?.choices?.FirstOrDefault()?.message?.content?.Trim();
-                    
+
                     return !string.IsNullOrWhiteSpace(expandedQuery) ? expandedQuery : originalQuery;
                 }
             }
@@ -124,19 +124,20 @@ namespace ChatBot.Web.Services
                 await InitializeAsync();
             }
 
-            // 可选择启用查询扩展
-            // query = await ExpandQuery(query);
-            
+            // 启用查询扩展以提高搜索准确性
+            query = await ExpandQuery(query);
+
             _result.Data.Clear();
             _processedUrls.Clear();
 
-            // 并行执行搜索，减少等待时间
-            var searchTasks = new []
+            // 并行执行多源搜索，提高准确性和覆盖率
+            var searchTasks = new[]
             {
-                //SearchSite(query, "", searchCount, isNoCache, isdirect),           // Google
-                SearchSite(query, "baidu.com ", searchCount, isNoCache, isdirect), // Baidu
-                SearchSite(query, "ctrip.com ", searchCount, isNoCache, isdirect), // Ctrip
-                SearchSite(query, "dianping.com ", searchCount, isNoCache, isdirect) // Dianping
+                SearchSite(query, "", searchCount, isNoCache, isdirect),              // Google (通用搜索)
+                SearchSite(query, "baidu.com ", searchCount, isNoCache, isdirect),    // Baidu (中文优化)
+                SearchSite(query, "ctrip.com ", searchCount, isNoCache, isdirect),    // Ctrip (旅游)
+                SearchSite(query, "dianping.com ", searchCount, isNoCache, isdirect), // Dianping (生活服务)
+                SearchSite(query, "zhihu.com ", searchCount, isNoCache, isdirect)     // Zhihu (知识问答)
             };
 
             var results = await Task.WhenAll(searchTasks);
@@ -166,7 +167,7 @@ namespace ChatBot.Web.Services
             try
             {
                 using var client = _httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromMinutes(5); // 减少超时时间
+                client.Timeout = TimeSpan.FromSeconds(60); // 优化超时时间
 
                 client.DefaultRequestHeaders.Clear();
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
@@ -207,7 +208,7 @@ namespace ChatBot.Web.Services
                 foreach (var item in jinaSearchResult.Data)
                 {
                     item.Url = Uri.UnescapeDataString(item.Url);
-                    
+
                     // 使用 HashSet 进行高效去重
                     if (!_processedUrls.Contains(item.Url))
                     {
@@ -240,7 +241,7 @@ namespace ChatBot.Web.Services
             try
             {
                 using var client = _httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromMinutes(5);
+                client.Timeout = TimeSpan.FromSeconds(60); // 优化超时时间
 
                 client.DefaultRequestHeaders.Clear();
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
@@ -257,7 +258,7 @@ namespace ChatBot.Web.Services
                 }
 
                 // 使用 SemaphoreSlim 限制并发请求数量，避免API限制
-                using var semaphore = new SemaphoreSlim(3, 3); // 最多3个并发请求
+                using var semaphore = new SemaphoreSlim(5, 5); // 增加到5个并发请求提高速度
 
                 var tasks = jinaSearchResult.Data.Select(async item =>
                 {
@@ -265,7 +266,7 @@ namespace ChatBot.Web.Services
                     try
                     {
                         var requestContent = new { url = item.Url };
-                        
+
                         using var response = await client.PostAsync(apiEndpoint,
                             new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json"));
 
@@ -273,7 +274,7 @@ namespace ChatBot.Web.Services
                         {
                             var responseStr = await response.Content.ReadAsStringAsync();
                             var jinaReaderResult = JsonSerializer.Deserialize<JinaReaderResult>(responseStr, _jsonOptions);
-                            
+
                             if (jinaReaderResult?.Data?.Content != null)
                             {
                                 item.Content = jinaReaderResult.Data.Content;
@@ -328,7 +329,7 @@ namespace ChatBot.Web.Services
             try
             {
                 using var client = _httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromMinutes(5);
+                client.Timeout = TimeSpan.FromSeconds(45); // 优化超时时间
                 client.DefaultRequestHeaders.Clear();
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
@@ -353,7 +354,7 @@ namespace ChatBot.Web.Services
                         // 只保留排名靠前的结果
                         var rankedIndexes = new HashSet<int>();
                         var maxResults = Math.Min(jinaRerankResult.Results.Count, rerankCount);
-                        
+
                         for (int i = 0; i < maxResults; i++)
                         {
                             rankedIndexes.Add(jinaRerankResult.Results[i].Index);
@@ -384,12 +385,12 @@ namespace ChatBot.Web.Services
             try
             {
                 using var client = _httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromMinutes(5);
+                client.Timeout = TimeSpan.FromSeconds(60); // 优化超时时间
                 client.DefaultRequestHeaders.Clear();
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
                 // 使用信号量限制并发
-                using var semaphore = new SemaphoreSlim(2, 2);
+                using var semaphore = new SemaphoreSlim(4, 4); // 增加并发数提高速度
 
                 var tasks = _result.Data.Select(async item =>
                 {
@@ -447,7 +448,7 @@ namespace ChatBot.Web.Services
                 });
 
                 await Task.WhenAll(tasks);
-                
+
                 // 移除空内容
                 _result.Data = _result.Data.Where(x => !string.IsNullOrWhiteSpace(x.Content)).ToList();
             }
@@ -470,7 +471,7 @@ namespace ChatBot.Web.Services
                     continue;
 
                 var contentHash = item.Content.GetHashCode(StringComparison.OrdinalIgnoreCase).ToString();
-                
+
                 if (!contentHashSet.Contains(contentHash) && !urlHashSet.Contains(item.Url))
                 {
                     contentHashSet.Add(contentHash);
@@ -494,7 +495,7 @@ namespace ChatBot.Web.Services
             try
             {
                 using var client = _httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromMinutes(5);
+                client.Timeout = TimeSpan.FromSeconds(60); // 优化超时时间
                 client.DefaultRequestHeaders.Clear();
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
@@ -503,7 +504,7 @@ namespace ChatBot.Web.Services
                 foreach (var item in _result.Data)
                 {
                     if (string.IsNullOrWhiteSpace(item.Content)) continue;
-                    
+
                     infoBuilder.AppendLine($"Url: {item.Url}")
                               .AppendLine($"Title: {item.Title}")
                               .AppendLine("Content：")
@@ -685,7 +686,7 @@ namespace ChatBot.Web.Services
 
         // 解析车站数据，使用编译的正则表达式提高性能
         private static readonly Regex StationRegex = new(@"@([a-z]+)\|([^|]+)\|([A-Z]+)\|", RegexOptions.Compiled);
-        
+
         private static void ParseStationData(string data, Dictionary<string, string> nameToCode, Dictionary<string, string> codeToName)
         {
             var matches = StationRegex.Matches(data);
@@ -703,10 +704,10 @@ namespace ChatBot.Web.Services
         public static string getsegstr(string as_str, char as_fgstr, int ai_num)
         {
             if (string.IsNullOrEmpty(as_str) || ai_num <= 0) return string.Empty;
-            
+
             ReadOnlySpan<char> strSpan = as_str.AsSpan();
             var index = strSpan.IndexOf(as_fgstr);
-            
+
             if (index < 0)
             {
                 return ai_num == 1 ? as_str : string.Empty;
