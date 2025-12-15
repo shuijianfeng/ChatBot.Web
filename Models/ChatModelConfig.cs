@@ -73,9 +73,15 @@ namespace ChatBot.Models
         Stdio,
 
         /// <summary>
-        /// SSE（Server-Sent Events）HTTP 传输
+        /// SSE（Server-Sent Events）HTTP 传输（旧版）
         /// </summary>
-        Sse
+        Sse,
+
+        /// <summary>
+        /// Streamable HTTP 传输（MCP 2025-03-26 规范推荐）
+        /// 使用单一 HTTP 端点，支持 POST 请求和 SSE 响应流
+        /// </summary>
+        StreamableHttp
     }
 
     /// <summary>

@@ -103,18 +103,20 @@ namespace ChatBot.Web.Services
         {
             McpClient client;
 
-            if (serverConfig.TransportType == McpTransportType.Sse)
+            if (serverConfig.TransportType == McpTransportType.Sse || serverConfig.TransportType == McpTransportType.StreamableHttp)
             {
-                // SSE/HTTP 传输 - 连接远程服务器
+                // SSE 或 Streamable HTTP 传输 - 连接远程服务器
                 if (string.IsNullOrEmpty(serverConfig.Url))
                 {
-                    throw new InvalidOperationException($"MCP 服务器 '{serverConfig.Name}' 配置为 SSE 传输，但未提供 URL");
+                    throw new InvalidOperationException($"MCP 服务器 '{serverConfig.Name}' 配置为 HTTP 传输，但未提供 URL");
                 }
 
-                _logger.LogInformation("正在连接 MCP 服务器 (SSE): {ServerName} ({Url})",
-                    serverConfig.Name, serverConfig.Url);
+                var transportTypeName = serverConfig.TransportType == McpTransportType.StreamableHttp ? "Streamable HTTP" : "SSE";
+                _logger.LogInformation("正在连接 MCP 服务器 ({TransportType}): {ServerName} ({Url})",
+                    transportTypeName, serverConfig.Name, serverConfig.Url);
 
-                // 使用 HttpClientTransport 连接远程 SSE/HTTP 服务器
+                // 使用 HttpClientTransport 连接远程服务器
+                // 注意：HttpClientTransport 同时支持 SSE 和 Streamable HTTP 传输
                 var transportOptions = new HttpClientTransportOptions
                 {
                     Endpoint = new Uri(serverConfig.Url)

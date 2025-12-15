@@ -70,6 +70,7 @@ namespace ChatBot.Web.Services
         private readonly ChatModelSettings _modelSettings;
         private readonly JinaSearch _jinaSearch;
         private readonly OpenWeather _openWeather;
+        private readonly CtripSearch _ctripSearch;
         private readonly IMcpClientManager _mcpClientManager;
 
         public IHttpClientFactory HttpClientFactory => _httpClientFactory;
@@ -96,6 +97,7 @@ namespace ChatBot.Web.Services
 
             _jinaSearch = new JinaSearch(_httpClientFactory);
             _openWeather = new OpenWeather(_httpClientFactory);
+            _ctripSearch = new CtripSearch(_httpClientFactory, _logger);
             _mcpClientManager = mcpClientManager;
 
             // 初始化 MCP 客户端（异步启动）
@@ -2223,6 +2225,54 @@ namespace ChatBot.Web.Services
                     }
                     break;
 
+                case nameof(SearchCtripHotel):
+                    {
+                        argsJson.TryGetProperty("city", out var city);
+                        argsJson.TryGetProperty("checkInDate", out var checkInDate);
+                        argsJson.TryGetProperty("checkOutDate", out var checkOutDate);
+                        argsJson.TryGetProperty("keyword", out var keyword);
+                        toolResult = await SearchCtripHotel(
+                            city.GetString() ?? "",
+                            checkInDate.GetString() ?? "",
+                            checkOutDate.GetString() ?? "",
+                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                    }
+                    break;
+
+                case nameof(SearchCtripFlight):
+                    {
+                        argsJson.TryGetProperty("departure", out var departure);
+                        argsJson.TryGetProperty("arrival", out var arrival);
+                        argsJson.TryGetProperty("date", out var date);
+                        argsJson.TryGetProperty("isRoundTrip", out var isRoundTrip);
+                        toolResult = await SearchCtripFlight(
+                            departure.GetString() ?? "",
+                            arrival.GetString() ?? "",
+                            date.GetString() ?? "",
+                            isRoundTrip.ValueKind == JsonValueKind.True);
+                    }
+                    break;
+
+                case nameof(SearchCtripAttraction):
+                    {
+                        argsJson.TryGetProperty("city", out var city);
+                        argsJson.TryGetProperty("keyword", out var keyword);
+                        toolResult = await SearchCtripAttraction(
+                            city.GetString() ?? "",
+                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                    }
+                    break;
+
+                case nameof(SearchCtripTour):
+                    {
+                        argsJson.TryGetProperty("destination", out var destination);
+                        argsJson.TryGetProperty("keyword", out var keyword);
+                        toolResult = await SearchCtripTour(
+                            destination.GetString() ?? "",
+                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                    }
+                    break;
+
                 default:
                     // 尝试调用 MCP 工具
                     if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(funcCall.name))
@@ -2708,6 +2758,54 @@ namespace ChatBot.Web.Services
                         return await GetWeather(outquery.GetString() ?? throw new ArgumentNullException("city", "City cannot be null."));
                     }
 
+                case nameof(SearchCtripHotel):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
+                        argumentsJson.RootElement.TryGetProperty("city", out JsonElement city);
+                        argumentsJson.RootElement.TryGetProperty("checkInDate", out JsonElement checkInDate);
+                        argumentsJson.RootElement.TryGetProperty("checkOutDate", out JsonElement checkOutDate);
+                        argumentsJson.RootElement.TryGetProperty("keyword", out JsonElement keyword);
+                        return await SearchCtripHotel(
+                            city.GetString() ?? "",
+                            checkInDate.GetString() ?? "",
+                            checkOutDate.GetString() ?? "",
+                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                    }
+
+                case nameof(SearchCtripFlight):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
+                        argumentsJson.RootElement.TryGetProperty("departure", out JsonElement departure);
+                        argumentsJson.RootElement.TryGetProperty("arrival", out JsonElement arrival);
+                        argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                        argumentsJson.RootElement.TryGetProperty("isRoundTrip", out JsonElement isRoundTrip);
+                        return await SearchCtripFlight(
+                            departure.GetString() ?? "",
+                            arrival.GetString() ?? "",
+                            date.GetString() ?? "",
+                            isRoundTrip.ValueKind == JsonValueKind.True);
+                    }
+
+                case nameof(SearchCtripAttraction):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
+                        argumentsJson.RootElement.TryGetProperty("city", out JsonElement city);
+                        argumentsJson.RootElement.TryGetProperty("keyword", out JsonElement keyword);
+                        return await SearchCtripAttraction(
+                            city.GetString() ?? "",
+                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                    }
+
+                case nameof(SearchCtripTour):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
+                        argumentsJson.RootElement.TryGetProperty("destination", out JsonElement destination);
+                        argumentsJson.RootElement.TryGetProperty("keyword", out JsonElement keyword);
+                        return await SearchCtripTour(
+                            destination.GetString() ?? "",
+                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                    }
+
                 default:
                     // 尝试调用 MCP 工具
                     if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(pair.function.name))
@@ -2816,6 +2914,134 @@ namespace ChatBot.Web.Services
                        }
                    },
                    required = new[] { "startingplace", "arrivalplace", "date" }
+               });
+
+            // 携程酒店搜索
+            tools.Add(
+               new
+               {
+                   type = "function",
+                   name = nameof(SearchCtripHotel),
+                   description = "搜索携程酒店信息，获取指定城市的酒店列表、价格和评分",
+                   parameters = new
+                   {
+                       type = "object",
+                       properties = new
+                       {
+                           city = new
+                           {
+                               type = "string",
+                               description = "城市名称（如：上海、北京）"
+                           },
+                           checkInDate = new
+                           {
+                               type = "string",
+                               description = "入住日期(格式:YYYY-MM-DD)"
+                           },
+                           checkOutDate = new
+                           {
+                               type = "string",
+                               description = "离店日期(格式:YYYY-MM-DD)"
+                           },
+                           keyword = new
+                           {
+                               type = "string",
+                               description = "搜索关键词（可选，如酒店名称、地标）"
+                           }
+                       },
+                       required = new[] { "city", "checkInDate", "checkOutDate" }
+                   }
+               });
+
+            // 携程机票搜索
+            tools.Add(
+               new
+               {
+                   type = "function",
+                   name = nameof(SearchCtripFlight),
+                   description = "搜索携程机票信息，获取指定航线的航班列表和票价",
+                   parameters = new
+                   {
+                       type = "object",
+                       properties = new
+                       {
+                           departure = new
+                           {
+                               type = "string",
+                               description = "出发城市（如：北京、上海）"
+                           },
+                           arrival = new
+                           {
+                               type = "string",
+                               description = "到达城市（如：广州、深圳）"
+                           },
+                           date = new
+                           {
+                               type = "string",
+                               description = "出发日期(格式:YYYY-MM-DD)"
+                           },
+                           isRoundTrip = new
+                           {
+                               type = "boolean",
+                               description = "是否往返（可选，默认单程）"
+                           }
+                       },
+                       required = new[] { "departure", "arrival", "date" }
+                   }
+               });
+
+            // 携程景点门票搜索
+            tools.Add(
+               new
+               {
+                   type = "function",
+                   name = nameof(SearchCtripAttraction),
+                   description = "搜索携程景点门票信息，获取指定城市的景点列表和门票价格",
+                   parameters = new
+                   {
+                       type = "object",
+                       properties = new
+                       {
+                           city = new
+                           {
+                               type = "string",
+                               description = "城市名称（如：杭州、西安）"
+                           },
+                           keyword = new
+                           {
+                               type = "string",
+                               description = "景点关键词（可选，如西湖、兵马俑）"
+                           }
+                       },
+                       required = new[] { "city" }
+                   }
+               });
+
+            // 携程旅游产品搜索
+            tools.Add(
+               new
+               {
+                   type = "function",
+                   name = nameof(SearchCtripTour),
+                   description = "搜索携程旅游产品，获取跟团游、自由行等旅游线路信息",
+                   parameters = new
+                   {
+                       type = "object",
+                       properties = new
+                       {
+                           destination = new
+                           {
+                               type = "string",
+                               description = "目的地（如：三亚、丽江）"
+                           },
+                           keyword = new
+                           {
+                               type = "string",
+                               description = "关键词（可选，如亲子游、蜜月）"
+                           }
+                       },
+                       required = new[] { "destination" }
+                   }
                });
 
 
@@ -2957,6 +3183,98 @@ namespace ChatBot.Web.Services
                    }
                });
 
+            //// 携程酒店搜索
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       function = new
+            //       {
+            //           name = nameof(SearchCtripHotel),
+            //           description = "搜索携程酒店信息，获取指定城市的酒店列表、价格和评分",
+            //           parameters = new
+            //           {
+            //               type = "object",
+            //               properties = new
+            //               {
+            //                   city = new { type = "string", description = "城市名称（如：上海、北京）" },
+            //                   checkInDate = new { type = "string", description = "入住日期(格式:YYYY-MM-DD)" },
+            //                   checkOutDate = new { type = "string", description = "离店日期(格式:YYYY-MM-DD)" },
+            //                   keyword = new { type = "string", description = "搜索关键词（可选，如酒店名称、地标）" }
+            //               },
+            //               required = new[] { "city", "checkInDate", "checkOutDate" }
+            //           }
+            //       }
+            //   });
+
+            //// 携程机票搜索
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       function = new
+            //       {
+            //           name = nameof(SearchCtripFlight),
+            //           description = "搜索携程机票信息，获取指定航线的航班列表和票价",
+            //           parameters = new
+            //           {
+            //               type = "object",
+            //               properties = new
+            //               {
+            //                   departure = new { type = "string", description = "出发城市（如：北京、上海）" },
+            //                   arrival = new { type = "string", description = "到达城市（如：广州、深圳）" },
+            //                   date = new { type = "string", description = "出发日期(格式:YYYY-MM-DD)" },
+            //                   isRoundTrip = new { type = "boolean", description = "是否往返（可选，默认单程）" }
+            //               },
+            //               required = new[] { "departure", "arrival", "date" }
+            //           }
+            //       }
+            //   });
+
+            //// 携程景点门票搜索
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       function = new
+            //       {
+            //           name = nameof(SearchCtripAttraction),
+            //           description = "搜索携程景点门票信息，获取指定城市的景点列表和门票价格",
+            //           parameters = new
+            //           {
+            //               type = "object",
+            //               properties = new
+            //               {
+            //                   city = new { type = "string", description = "城市名称（如：杭州、西安）" },
+            //                   keyword = new { type = "string", description = "景点关键词（可选，如西湖、兵马俑）" }
+            //               },
+            //               required = new[] { "city" }
+            //           }
+            //       }
+            //   });
+
+            //// 携程旅游产品搜索
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       function = new
+            //       {
+            //           name = nameof(SearchCtripTour),
+            //           description = "搜索携程旅游产品，获取跟团游、自由行等旅游线路信息",
+            //           parameters = new
+            //           {
+            //               type = "object",
+            //               properties = new
+            //               {
+            //                   destination = new { type = "string", description = "目的地（如：三亚、丽江）" },
+            //                   keyword = new { type = "string", description = "关键词（可选，如亲子游、蜜月）" }
+            //               },
+            //               required = new[] { "destination" }
+            //           }
+            //       }
+            //   });
+
 
             // 加载 MCP 工具
             if (_mcpClientManager.IsEnabled)
@@ -3086,6 +3404,82 @@ namespace ChatBot.Web.Services
                     }
                 });
 
+            //// 携程酒店搜索
+            //tools.Add(
+            //    new
+            //    {
+            //        name = nameof(SearchCtripHotel),
+            //        description = "搜索携程酒店信息，获取指定城市的酒店列表、价格和评分",
+            //        input_schema = new
+            //        {
+            //            type = "object",
+            //            properties = new
+            //            {
+            //                city = new { type = "string", description = "城市名称（如：上海、北京）" },
+            //                checkInDate = new { type = "string", description = "入住日期(格式:YYYY-MM-DD)" },
+            //                checkOutDate = new { type = "string", description = "离店日期(格式:YYYY-MM-DD)" },
+            //                keyword = new { type = "string", description = "搜索关键词（可选，如酒店名称、地标）" }
+            //            },
+            //            required = new[] { "city", "checkInDate", "checkOutDate" }
+            //        }
+            //    });
+
+            //// 携程机票搜索
+            //tools.Add(
+            //    new
+            //    {
+            //        name = nameof(SearchCtripFlight),
+            //        description = "搜索携程机票信息，获取指定航线的航班列表和票价",
+            //        input_schema = new
+            //        {
+            //            type = "object",
+            //            properties = new
+            //            {
+            //                departure = new { type = "string", description = "出发城市（如：北京、上海）" },
+            //                arrival = new { type = "string", description = "到达城市（如：广州、深圳）" },
+            //                date = new { type = "string", description = "出发日期(格式:YYYY-MM-DD)" },
+            //                isRoundTrip = new { type = "boolean", description = "是否往返（可选，默认单程）" }
+            //            },
+            //            required = new[] { "departure", "arrival", "date" }
+            //        }
+            //    });
+
+            //// 携程景点门票搜索
+            //tools.Add(
+            //    new
+            //    {
+            //        name = nameof(SearchCtripAttraction),
+            //        description = "搜索携程景点门票信息，获取指定城市的景点列表和门票价格",
+            //        input_schema = new
+            //        {
+            //            type = "object",
+            //            properties = new
+            //            {
+            //                city = new { type = "string", description = "城市名称（如：杭州、西安）" },
+            //                keyword = new { type = "string", description = "景点关键词（可选，如西湖、兵马俑）" }
+            //            },
+            //            required = new[] { "city" }
+            //        }
+            //    });
+
+            //// 携程旅游产品搜索
+            //tools.Add(
+            //    new
+            //    {
+            //        name = nameof(SearchCtripTour),
+            //        description = "搜索携程旅游产品，获取跟团游、自由行等旅游线路信息",
+            //        input_schema = new
+            //        {
+            //            type = "object",
+            //            properties = new
+            //            {
+            //                destination = new { type = "string", description = "目的地（如：三亚、丽江）" },
+            //                keyword = new { type = "string", description = "关键词（可选，如亲子游、蜜月）" }
+            //            },
+            //            required = new[] { "destination" }
+            //        }
+            //    });
+
             // 加载 MCP 工具
             if (_mcpClientManager.IsEnabled)
             {
@@ -3127,12 +3521,12 @@ namespace ChatBot.Web.Services
             var allowedPropertyFields = new HashSet<string> { "type", "description", "enum", "items", "properties", "required" };
 
             var filtered = FilterElement(element, excludedTopLevelFields, allowedPropertyFields, isPropertyLevel: false);
-            
+
             // 将过滤后的对象序列化为 JsonElement
-            var json = JsonSerializer.Serialize(filtered,  new JsonSerializerOptions 
-            { 
+            var json = JsonSerializer.Serialize(filtered, new JsonSerializerOptions
+            {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             });
             return JsonDocument.Parse(json).RootElement;
 
@@ -3290,6 +3684,78 @@ namespace ChatBot.Web.Services
                 }
             });
 
+            //// 携程酒店搜索
+            //tools.Add(new
+            //{
+            //    name = nameof(SearchCtripHotel),
+            //    description = "搜索携程酒店信息，获取指定城市的酒店列表、价格和评分",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            city = new { type = "string", description = "城市名称（如：上海、北京）" },
+            //            checkInDate = new { type = "string", description = "入住日期(格式:YYYY-MM-DD)" },
+            //            checkOutDate = new { type = "string", description = "离店日期(格式:YYYY-MM-DD)" },
+            //            keyword = new { type = "string", description = "搜索关键词（可选，如酒店名称、地标）" }
+            //        },
+            //        required = new[] { "city", "checkInDate", "checkOutDate" }
+            //    }
+            //});
+
+            //// 携程机票搜索
+            //tools.Add(new
+            //{
+            //    name = nameof(SearchCtripFlight),
+            //    description = "搜索携程机票信息，获取指定航线的航班列表和票价",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            departure = new { type = "string", description = "出发城市（如：北京、上海）" },
+            //            arrival = new { type = "string", description = "到达城市（如：广州、深圳）" },
+            //            date = new { type = "string", description = "出发日期(格式:YYYY-MM-DD)" },
+            //            isRoundTrip = new { type = "boolean", description = "是否往返（可选，默认单程）" }
+            //        },
+            //        required = new[] { "departure", "arrival", "date" }
+            //    }
+            //});
+
+            //// 携程景点门票搜索
+            //tools.Add(new
+            //{
+            //    name = nameof(SearchCtripAttraction),
+            //    description = "搜索携程景点门票信息，获取指定城市的景点列表和门票价格",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            city = new { type = "string", description = "城市名称（如：杭州、西安）" },
+            //            keyword = new { type = "string", description = "景点关键词（可选，如西湖、兵马俑）" }
+            //        },
+            //        required = new[] { "city" }
+            //    }
+            //});
+
+            //// 携程旅游产品搜索
+            //tools.Add(new
+            //{
+            //    name = nameof(SearchCtripTour),
+            //    description = "搜索携程旅游产品，获取跟团游、自由行等旅游线路信息",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            destination = new { type = "string", description = "目的地（如：三亚、丽江）" },
+            //            keyword = new { type = "string", description = "关键词（可选，如亲子游、蜜月）" }
+            //        },
+            //        required = new[] { "destination" }
+            //    }
+            //});
+
 
             // 加载 MCP 工具
             if (_mcpClientManager.IsEnabled)
@@ -3433,9 +3899,9 @@ namespace ChatBot.Web.Services
                         if (mcpTool.InputSchema.HasValue)
                         {
                             // 使用辅助方法递归过滤不支持的字段（如 format, $schema, additionalProperties, default, examples, title 等）
-                             inputSchema = FilterGeminiUnsupportedSchemaFields(mcpTool.InputSchema.Value);
+                            inputSchema = FilterGeminiUnsupportedSchemaFields(mcpTool.InputSchema.Value);
 
-                           
+
                         }
                         else
                         {
@@ -3475,7 +3941,7 @@ namespace ChatBot.Web.Services
 
             if (tools.Count == 0 && File_search == null) return null;
 
-            return new List<object> { new { functionDeclarations = tools },   File_search  };
+            return new List<object> { new { functionDeclarations = tools }, File_search };
 
         }
 
@@ -3857,6 +4323,34 @@ namespace ChatBot.Web.Services
             var result = DateTime.Now.ToString(" 日期: yyyy年M月dd日 dddd 时间：HH:mm:ss ");
 
             return await Task.FromResult(result);
+        }
+
+        // 携程酒店搜索
+        private async Task<string> SearchCtripHotel(string city, string checkInDate, string checkOutDate, string? keyword = null)
+        {
+            var result = await _ctripSearch.SearchHotel(city, checkInDate, checkOutDate, keyword);
+            return result;
+        }
+
+        // 携程机票搜索
+        private async Task<string> SearchCtripFlight(string departure, string arrival, string date, bool isRoundTrip = false)
+        {
+            var result = await _ctripSearch.SearchFlight(departure, arrival, date, isRoundTrip);
+            return result;
+        }
+
+        // 携程景点门票搜索
+        private async Task<string> SearchCtripAttraction(string city, string? keyword = null)
+        {
+            var result = await _ctripSearch.SearchAttraction(city, keyword);
+            return result;
+        }
+
+        // 携程旅游产品搜索
+        private async Task<string> SearchCtripTour(string destination, string? keyword = null)
+        {
+            var result = await _ctripSearch.SearchTour(destination, keyword);
+            return result;
         }
         #endregion
         #region 图片处理
