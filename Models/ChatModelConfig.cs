@@ -49,9 +49,9 @@ namespace ChatBot.Models
         public string ThinkingLevel { get; set; } = string.Empty;
     }
 
-    public class ChatModelSettings: List<ChatModelConfig> 
+    public class ChatModelSettings : List<ChatModelConfig>
     {
-        
+
     }
 
     public class ErrorViewModel
@@ -60,5 +60,83 @@ namespace ChatBot.Models
         public string Message { get; set; }
         public string RequestId { get; set; }
         public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+    }
+
+    /// <summary>
+    /// MCP 传输类型
+    /// </summary>
+    public enum McpTransportType
+    {
+        /// <summary>
+        /// 标准输入输出（本地进程）
+        /// </summary>
+        Stdio,
+
+        /// <summary>
+        /// SSE（Server-Sent Events）HTTP 传输
+        /// </summary>
+        Sse
+    }
+
+    /// <summary>
+    /// MCP 服务器配置
+    /// </summary>
+    public class McpServerConfig
+    {
+        /// <summary>
+        /// 服务器名称
+        /// </summary>
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 传输类型（Stdio 或 Sse）
+        /// </summary>
+        public McpTransportType TransportType { get; set; } = McpTransportType.Stdio;
+
+        /// <summary>
+        /// [Stdio] 启动命令 (如 npx, python, node)
+        /// </summary>
+        public string Command { get; set; } = string.Empty;
+
+        /// <summary>
+        /// [Stdio] 命令参数
+        /// </summary>
+        public string[] Arguments { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// [Stdio] 工作目录（可选）
+        /// </summary>
+        public string? WorkingDirectory { get; set; }
+
+        /// <summary>
+        /// [Stdio] 环境变量（可选）
+        /// </summary>
+        public Dictionary<string, string>? EnvironmentVariables { get; set; }
+
+        /// <summary>
+        /// [Sse] MCP 服务器 URL（如 http://localhost:3000/sse）
+        /// </summary>
+        public string? Url { get; set; }
+
+        /// <summary>
+        /// [Sse] HTTP 请求头（如 Authorization）
+        /// </summary>
+        public Dictionary<string, string>? Headers { get; set; }
+    }
+
+    /// <summary>
+    /// MCP 设置
+    /// </summary>
+    public class McpSettings
+    {
+        /// <summary>
+        /// 是否启用 MCP
+        /// </summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>
+        /// MCP 服务器列表
+        /// </summary>
+        public List<McpServerConfig> Servers { get; set; } = new List<McpServerConfig>();
     }
 }

@@ -70,6 +70,7 @@ namespace ChatBot.Web.Services
         private readonly ChatModelSettings _modelSettings;
         private readonly JinaSearch _jinaSearch;
         private readonly OpenWeather _openWeather;
+        private readonly IMcpClientManager _mcpClientManager;
 
         public IHttpClientFactory HttpClientFactory => _httpClientFactory;
 
@@ -77,7 +78,8 @@ namespace ChatBot.Web.Services
             IHttpClientFactory httpClientFactory,
             IConfiguration configuration,
             ILogger<ChatService> logger,
-            IOptions<ChatModelSettings> modelOptions)
+            IOptions<ChatModelSettings> modelOptions,
+            IMcpClientManager mcpClientManager)
         {
             _httpClientFactory = httpClientFactory;
             _configuration = configuration;
@@ -94,7 +96,10 @@ namespace ChatBot.Web.Services
 
             _jinaSearch = new JinaSearch(_httpClientFactory);
             _openWeather = new OpenWeather(_httpClientFactory);
+            _mcpClientManager = mcpClientManager;
 
+            // 初始化 MCP 客户端（异步启动）
+            _ = _mcpClientManager.InitializeAsync();
         }
 
         #region 搜索相关
@@ -451,9 +456,7 @@ namespace ChatBot.Web.Services
             messages.AddRange(toolsmessages);
 
             // 准备工具列表 (如果启用搜索)
-            List<object> tools = request.EnableSearch
-                ? PrepareOpenAiResponsesTools()
-                : null;
+            List<object>? tools = await PrepareOpenAiResponsesToolsAsync(request.EnableSearch, cancellationToken);
 
             // 构建请求内容
             var requestContent = new
@@ -814,7 +817,15 @@ namespace ChatBot.Web.Services
                                                         }
                                                     default:
                                                         {
-                                                            toolResult = $"未知工具调用: {pair.name}";
+                                                            // 尝试调用 MCP 工具
+                                                            if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(pair.name))
+                                                            {
+                                                                toolResult = await _mcpClientManager.CallToolAsync(pair.name, pair.arguments ?? "{}", cancellationToken);
+                                                            }
+                                                            else
+                                                            {
+                                                                toolResult = $"未知工具调用: {pair.name}";
+                                                            }
                                                             break;
                                                         }
                                                 }
@@ -953,7 +964,15 @@ namespace ChatBot.Web.Services
                                         }
                                     default:
                                         {
-                                            toolResult = $"未知工具调用: {item.name}";
+                                            // 尝试调用 MCP 工具
+                                            if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(item.name))
+                                            {
+                                                toolResult = await _mcpClientManager.CallToolAsync(item.name, item.arguments ?? "{}", cancellationToken);
+                                            }
+                                            else
+                                            {
+                                                toolResult = $"未知工具调用: {item.name}";
+                                            }
                                             break;
                                         }
                                 }
@@ -1008,7 +1027,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        
+
         public async IAsyncEnumerable<string> ClaudeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
         {
             // 验证配置
@@ -1034,7 +1053,7 @@ namespace ChatBot.Web.Services
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
             //toolsmessages.Clear();
-            List<object> tools = request.EnableSearch ? PrepareClaudeTools() : null;
+            List<object> tools = await PrepareClaudeTools(request.EnableSearch, cancellationToken);
 
 
             // 创建HTTP客户端
@@ -1308,7 +1327,34 @@ namespace ChatBot.Web.Services
                                                     }
                                                 default:
                                                     {
-                                                        yield return "未知工具调用";
+                                                        // 尝试调用 MCP 工具
+                                                        if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(pair.name))
+                                                        {
+                                                            // 处理 input：将 partial_json 反序列化为 object
+                                                            object inputValue = !string.IsNullOrEmpty(pair.partial_json)
+                                                                ? JsonSerializer.Deserialize<object>(pair.partial_json, _jsonOptions)
+                                                                : new { };
+
+                                                            content.Add(new
+                                                            {
+                                                                type = "tool_use",
+                                                                id = pair.id,
+                                                                name = pair.name,
+                                                                input = inputValue
+                                                            });
+                                                            toolsmessages.Add(new
+                                                            {
+                                                                role = "assistant",
+                                                                content = content
+
+
+                                                            });
+                                                            toolResult = await _mcpClientManager.CallToolAsync(pair.name, pair.partial_json ?? "{}", cancellationToken);
+                                                        }
+                                                        else
+                                                        {
+                                                            yield return "未知工具调用";
+                                                        }
                                                         break;
                                                     }
                                             }
@@ -1536,7 +1582,40 @@ namespace ChatBot.Web.Services
                                         }
                                     default:
                                         {
-                                            yield return "未知工具调用";
+                                            // 尝试调用 MCP 工具
+                                            if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(pair.name))
+                                            {
+                                                // 处理 input：如果是 JsonElement 则反序列化为 object，否则直接使用
+                                                object inputValue = pair.input is JsonElement jsonElement
+                                                    ? JsonSerializer.Deserialize<object>(jsonElement.GetRawText(), _jsonOptions)
+                                                    : pair.input;
+
+                                                content1.Add(new
+                                                {
+                                                    type = "tool_use",
+                                                    id = pair.id,
+                                                    name = pair.name,
+                                                    input = inputValue
+                                                });
+                                                toolsmessages.Add(new
+                                                {
+                                                    role = "assistant",
+                                                    content = content1
+
+
+                                                });
+                                                text = string.Empty;
+
+                                                // 获取正确的 JSON 字符串用于 MCP 调用
+                                                string inputJson = pair.input is JsonElement je
+                                                    ? je.GetRawText()
+                                                    : JsonSerializer.Serialize(pair.input, _jsonOptions);
+                                                toolResult = await _mcpClientManager.CallToolAsync(pair.name, inputJson ?? "{}", cancellationToken);
+                                            }
+                                            else
+                                            {
+                                                yield return "未知工具调用";
+                                            }
                                             break;
                                         }
                                 }
@@ -1609,7 +1688,7 @@ namespace ChatBot.Web.Services
             messages.AddRange(toolsmessages);
 
             // 准备工具定义
-            List<object> tools = request.EnableSearch ? PrepareGeminiTools() : null;
+            List<object> tools = await PrepareGeminiTools(request.EnableSearch, cancellationToken);
 
             // 获取思考配置
             var thinkingConfig = GeminiThinkingConfig(modelconfg);
@@ -1875,7 +1954,7 @@ namespace ChatBot.Web.Services
             messages.AddRange(toolsmessages);
 
             // 准备工具定义
-            List<object> tools = PrepareGeminiFileSearchTools(modelconfg, request.EnableSearch);
+            List<object> tools = await PrepareGeminiFileSearchTools(request.EnableSearch, modelconfg, cancellationToken);
 
             // 获取思考配置
             var thinkingConfig = GeminiThinkingConfig(modelconfg);
@@ -2081,286 +2160,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        // 添加辅助方法：准备 Claude 格式的工具定义
-        private List<object> PrepareClaudeTools()
-        {
-            return new List<object>
-            {
-                new
-                {
-                    name = nameof(JinaAiSearch),
-                    description = "执行网页搜索并返回结果",
-                    input_schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new
-                            {
-                                type = "string",
-                                description = "搜索词"
-                            }
-                        },
-                        required = new[] { "query" }
-                    }
-                },
-                new
-                {
-                    name = nameof(GetWeather),
-                    description = "获取指定城市未来8天天气预报",
-                    input_schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            city = new
-                            {
-                                type = "string",
-                                description = "城市(用英文表示)"
-                            }
-                        },
-                        required = new[] { "city" }
-                    }
-                },
-                new
-                {
-                    name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间",
-                    input_schema = new
-                    {
-                        type = "object",
-                        properties = new { },
-                        required = Array.Empty<string>()
-                    }
-                },
-                new
-                {
-                    name = nameof(SearchTrainTicket),
-                    description = "获取指定日期的火车票、火车车次",
-                    input_schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            startingplace = new
-                            {
-                                type = "string",
-                                description = "起始城市"
-                            },
-                            arrivalplace = new
-                            {
-                                type = "string",
-                                description = "到达城市"
-                            },
-                            date = new
-                            {
-                                type = "string",
-                                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
-                            }
-                        },
-                        required = new[] { "startingplace", "arrivalplace", "date" }
-                    }
-                }
-            };
-        }
-        // 添加辅助方法：准备 Gemini 格式的工具定义
-        private List<object> PrepareGeminiTools()
-        {
-            return new List<object>
-    {
-        new
-        {
-            functionDeclarations = new List<object>
-            {
-                new
-                {
-                    name = nameof(JinaAiSearch),
-                    description = "执行网页搜索并返回结果",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new
-                            {
-                                type = "string",
-                                description = "搜索词"
-                            }
-                        },
-                        required = new[] { "query" }
-                    }
-                },
-                new
-                {
-                    name = nameof(GetWeather),
-                    description = "获取指定城市未来8天天气预报",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            city = new
-                            {
-                                type = "string",
-                                description = "城市(用英文表示)"
-                            }
-                        },
-                        required = new[] { "city" }
-                    }
-                },
-                new
-                {
-                    name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new { }
-                    }
-                },
-                new
-                {
-                    name = nameof(SearchTrainTicket),
-                    description = "获取指定日期的火车票、火车车次",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            startingplace = new
-                            {
-                                type = "string",
-                                description = "起始城市"
-                            },
-                            arrivalplace = new
-                            {
-                                type = "string",
-                                description = "到达城市"
-                            },
-                            date = new
-                            {
-                                type = "string",
-                                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
-                            }
-                        },
-                        required = new[] { "startingplace", "arrivalplace", "date" }
-                    }
-                }
-            }
-        }
-    };
-        }
-        // 添加辅助方法：准备 Gemini 格式的工具定义
-        private List<object> PrepareGeminiFileSearchTools(ChatModelConfig config, bool enableSearch)
-        {
-            var list = new List<object>();
 
-            if (enableSearch)
-            {
-                list.Add(
-
-                    new
-                    {
-                        functionDeclarations = new List<object>
-            {
-                new
-                {
-                    name = nameof(JinaAiSearch),
-                    description = "执行网页搜索并返回结果",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new
-                            {
-                                type = "string",
-                                description = "搜索词"
-                            }
-                        },
-                        required = new[] { "query" }
-                    }
-                },
-                new
-                {
-                    name = nameof(GetWeather),
-                    description = "获取指定城市未来8天天气预报",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            city = new
-                            {
-                                type = "string",
-                                description = "城市(用英文表示)"
-                            }
-                        },
-                        required = new[] { "city" }
-                    }
-                },
-                new
-                {
-                    name = nameof(GetCurrentDataTime),
-                    description = "获取当前日期和时间",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new { }
-                    }
-                },
-                new
-                {
-                    name = nameof(SearchTrainTicket),
-                    description = "获取指定日期的火车票、火车车次",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            startingplace = new
-                            {
-                                type = "string",
-                                description = "起始城市"
-                            },
-                            arrivalplace = new
-                            {
-                                type = "string",
-                                description = "到达城市"
-                            },
-                            date = new
-                            {
-                                type = "string",
-                                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
-                            }
-                        },
-                        required = new[] { "startingplace", "arrivalplace", "date" }
-                    }
-                }
-            }
-                    });
-
-            }
-
-            if (!string.IsNullOrWhiteSpace(config.File_search_store_names))
-            {
-                list.Add(
-                    new
-                    {
-                        file_search = new
-                        {
-                            file_search_store_names = new List<object>
-                            {
-                                config.File_search_store_names
-                            }
-                        }
-                    }
-                );
-            }
-
-            if (list.Count == 0) return null;
-            return list;
-        }
         // 添加辅助方法：执行函数调用
         private async Task<string> ExecuteFunctionCall(GeminiToolCall funcCall)
         {
@@ -2424,13 +2224,22 @@ namespace ChatBot.Web.Services
                     break;
 
                 default:
-                    toolResult = "未知工具调用";
+                    // 尝试调用 MCP 工具
+                    if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(funcCall.name))
+                    {
+                        var argsStr = argsJson.ValueKind == JsonValueKind.Undefined ? "{}" : argsJson.GetRawText();
+                        toolResult = await _mcpClientManager.CallToolAsync(funcCall.name, argsStr);
+                    }
+                    else
+                    {
+                        toolResult = "未知工具调用";
+                    }
                     break;
             }
 
             return toolResult;
         }
-        
+
         /// <summary>
         /// 使用 Dify API 生成消息内容，支持流式输出
         /// </summary>
@@ -2602,7 +2411,7 @@ namespace ChatBot.Web.Services
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
 
-            List<object> tools = request.EnableSearch ? PrepareOpenAiTools() : null;
+            List<object> tools = await PrepareOpenAiToolsAsync(request.EnableSearch, cancellationToken);
 
             var requestContent = new
             {
@@ -2900,18 +2709,26 @@ namespace ChatBot.Web.Services
                     }
 
                 default:
+                    // 尝试调用 MCP 工具
+                    if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(pair.function.name))
+                    {
+                        return await _mcpClientManager.CallToolAsync(pair.function.name, pair.function.arguments ?? "{}");
+                    }
                     return "未知工具调用";
             }
         }
         #region 工具方法
-        // 创建工具列表
-        private List<object> PrepareOpenAiResponsesTools()
+        // 创建工具列表（包含内置工具和 MCP 工具）
+        private async Task<List<object>> PrepareOpenAiResponsesToolsAsync(bool search, CancellationToken cancellationToken = default)
         {
-            return new List<object>
+            var tools = new List<object>();
+            if (search)
             {
-                new
-                {
-                    type = "function",
+                tools.Add
+                    (
+                    new
+                    {
+                        type = "function",
 
                         name = nameof(JinaAiSearch),
                         description = "执行网页搜索并返回结果",
@@ -2929,28 +2746,32 @@ namespace ChatBot.Web.Services
                             required = new[] { "query" }
                         }
 
-                },
-                new
-                {
-                    type = "function",
+                    });
+            }
 
-                        name = nameof(GetWeather),
-                        description = "获取天气预报并返回结果",
-                        parameters = new
-                        {
-                            type = "object",
-                            properties = new
-                            {
-                                city = new
-                                {
-                                    type = "string",
-                                    description = "城市(用英文表示)"
-                                }
-                            },
-                            required = new[] { "city" }
-                        }
+            tools.Add(
+                 new
+                 {
+                     type = "function",
 
-                },
+                     name = nameof(GetWeather),
+                     description = "获取天气预报并返回结果",
+                     parameters = new
+                     {
+                         type = "object",
+                         properties = new
+                         {
+                             city = new
+                             {
+                                 type = "string",
+                                 description = "城市(用英文表示)"
+                             }
+                         },
+                         required = new[] { "city" }
+                     }
+
+                 });
+            tools.Add(
                 new
                 {
                     type = "function",
@@ -2962,71 +2783,455 @@ namespace ChatBot.Web.Services
                         properties = new { },
                         required = Array.Empty<string>()
                     }
-                },
+                });
+            tools.Add(
+               new
+               {
+                   type = "function",
+
+                   name = nameof(SearchTrainTicket),
+                   description = "获取指定日期的火车票、火车车次",
+                   parameters = new
+                   {
+                       type = "object",
+                       properties = new
+                       {
+
+                           startingplace = new
+                           {
+                               type = "string",
+                               description = "起始城市"
+                           },
+                           arrivalplace = new
+                           {
+                               type = "string",
+                               description = "到达城市"
+                           },
+
+                           date = new
+                           {
+                               type = "string",
+                               description = "出发日期(格式:YYYY-MM-DD)"
+                           }
+                       }
+                   },
+                   required = new[] { "startingplace", "arrivalplace", "date" }
+               });
+
+
+            // 加载 MCP 工具
+            if (_mcpClientManager.IsEnabled)
+            {
+                try
+                {
+                    var mcpTools = await _mcpClientManager.GetAllToolsAsync(cancellationToken);
+                    foreach (var mcpTool in mcpTools)
+                    {
+                        // 使用 JsonNode 正确解析 inputSchema
+                        //object? inputSchema = mcpTool.InputSchema.HasValue
+                        //    ? System.Text.Json.Nodes.JsonNode.Parse(mcpTool.InputSchema.Value.GetRawText())
+                        //    : null;
+                        tools.Add(new
+                        {
+                            type = "function",
+                            name = mcpTool.Name,
+                            description = mcpTool.Description,
+                            parameters = mcpTool.InputSchema
+                        });
+                    }
+                    _logger.LogInformation("加载了 {Count} 个 MCP 工具", mcpTools.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "加载 MCP 工具失败");
+                }
+            }
+
+            return tools.Count == 0 ? null : tools;
+
+        }
+
+        private async Task<List<object>> PrepareOpenAiToolsAsync(bool search, CancellationToken cancellationToken = default)
+        {
+            var tools = new List<object>();
+            if (search)
+            {
+                tools.Add
+                    (
+                    new
+                    {
+                        type = "function",
+                        function = new
+                        {
+                            name = nameof(JinaAiSearch),
+                            description = "执行网页搜索并返回结果",
+                            parameters = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    query = new
+                                    {
+                                        type = "string",
+                                        description = "搜索词"
+                                    }
+                                },
+                                required = new[] { "query" }
+                            }
+                        }
+                    });
+            }
+
+            tools.Add(
+                 new
+                 {
+                     type = "function",
+                     function = new
+                     {
+                         name = nameof(GetWeather),
+                         description = "获取天气预报并返回结果",
+                         parameters = new
+                         {
+                             type = "object",
+                             properties = new
+                             {
+                                 city = new
+                                 {
+                                     type = "string",
+                                     description = "城市(用英文表示)"
+                                 }
+                             },
+                             required = new[] { "city" }
+                         }
+                     }
+                 });
+            tools.Add(
                 new
                 {
                     type = "function",
-
-                        name = nameof(SearchTrainTicket),
-                        description = "获取指定日期的火车票、火车车次",
+                    function = new
+                    {
+                        name = nameof(GetCurrentDataTime),
+                        description = "获取当前日期和时间",
                         parameters = new
                         {
                             type = "object",
-                            properties = new
-                            {
-
-                                    startingplace = new
-                                {
-                                    type = "string",
-                                    description = "起始城市"
-                                },
-                                      arrivalplace = new
-                                {
-                                    type = "string",
-                                    description = "到达城市"
-                                },
-
-                                  date = new
-                                {
-                                    type = "string",
-                                    description = "出发日期(格式:YYYY-MM-DD)"
-                                }
-                            }
-                           },
-                             required = new[] { "startingplace", "arrivalplace", "date" }
-                }
-            };
-        }
-        private List<object> PrepareOpenAiTools()
-        {
-            return new List<object>
-    {
-        new
-        {
-            type = "function",
-            function = new
-            {
-                name = nameof(JinaAiSearch),
-                description = "执行网页搜索并返回结果",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        query = new
-                        {
-                            type = "string",
-                            description = "搜索词"
+                            properties = new { },
+                            required = Array.Empty<string>()
                         }
-                    },
-                    required = new[] { "query" }
+                    }
+                });
+            tools.Add(
+               new
+               {
+                   type = "function",
+                   function = new
+                   {
+                       name = nameof(SearchTrainTicket),
+                       description = "获取指定日期的火车票、火车车次",
+                       parameters = new
+                       {
+                           type = "object",
+                           properties = new
+                           {
+
+                               startingplace = new
+                               {
+                                   type = "string",
+                                   description = "起始城市"
+                               },
+                               arrivalplace = new
+                               {
+                                   type = "string",
+                                   description = "到达城市"
+                               },
+
+                               date = new
+                               {
+                                   type = "string",
+                                   description = "出发日期(格式:YYYY-MM-DD)"
+                               }
+                           }
+                       },
+                       required = new[] { "startingplace", "arrivalplace", "date" }
+                   }
+               });
+
+
+            // 加载 MCP 工具
+            if (_mcpClientManager.IsEnabled)
+            {
+                try
+                {
+                    var mcpTools = await _mcpClientManager.GetAllToolsAsync(cancellationToken);
+                    foreach (var mcpTool in mcpTools)
+                    {
+                        //// 使用 JsonNode 正确解析 inputSchema
+                        //object? inputSchema = mcpTool.InputSchema.HasValue
+                        //    ? System.Text.Json.Nodes.JsonNode.Parse(mcpTool.InputSchema.Value.GetRawText())
+                        //    : null;
+                        tools.Add(new
+                        {
+                            type = "function",
+                            function = new
+                            {
+                                name = mcpTool.Name,
+                                description = mcpTool.Description,
+                                parameters = mcpTool.InputSchema
+                            }
+                        });
+                    }
+                    _logger.LogInformation("加载了 {Count} 个 MCP 工具", mcpTools.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "加载 MCP 工具失败");
                 }
             }
-        },
-        new
+
+            return tools.Count == 0 ? null : tools;
+
+        }
+
+        // 添加辅助方法：准备 Claude 格式的工具定义
+        private async Task<List<object>> PrepareClaudeTools(bool search, CancellationToken cancellationToken = default)
         {
-            type = "function",
-            function = new
+            var tools = new List<object>();
+            if (search)
+            {
+                tools.Add
+                    (
+                   new
+                   {
+                       name = nameof(JinaAiSearch),
+                       description = "执行网页搜索并返回结果",
+                       input_schema = new
+                       {
+                           type = "object",
+                           properties = new
+                           {
+                               query = new
+                               {
+                                   type = "string",
+                                   description = "搜索词"
+                               }
+                           },
+                           required = new[] { "query" }
+                       }
+                   });
+            }
+            tools.Add
+                    (
+                   new
+                   {
+                       name = nameof(GetWeather),
+                       description = "获取指定城市未来8天天气预报",
+                       input_schema = new
+                       {
+                           type = "object",
+                           properties = new
+                           {
+                               city = new
+                               {
+                                   type = "string",
+                                   description = "城市(用英文表示)"
+                               }
+                           },
+                           required = new[] { "city" }
+                       }
+                   });
+
+            tools.Add
+                (
+                new
+                {
+                    name = nameof(GetCurrentDataTime),
+                    description = "获取当前日期和时间",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new { },
+                        required = Array.Empty<string>()
+                    }
+                });
+
+            tools.Add
+            (
+                new
+                {
+                    name = nameof(SearchTrainTicket),
+                    description = "获取指定日期的火车票、火车车次",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            startingplace = new
+                            {
+                                type = "string",
+                                description = "起始城市"
+                            },
+                            arrivalplace = new
+                            {
+                                type = "string",
+                                description = "到达城市"
+                            },
+                            date = new
+                            {
+                                type = "string",
+                                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
+                            }
+                        },
+                        required = new[] { "startingplace", "arrivalplace", "date" }
+                    }
+                });
+
+            // 加载 MCP 工具
+            if (_mcpClientManager.IsEnabled)
+            {
+                try
+                {
+                    var mcpTools = await _mcpClientManager.GetAllToolsAsync(cancellationToken);
+                    foreach (var mcpTool in mcpTools)
+                    {
+
+                        tools.Add(new
+                        {
+                            //type = "function",
+                            name = mcpTool.Name,
+                            description = mcpTool.Description,
+                            input_schema = mcpTool.InputSchema
+                        });
+                    }
+                    _logger.LogInformation("加载了 {Count} 个 MCP 工具", mcpTools.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "加载 MCP 工具失败");
+                }
+            }
+
+            return tools.Count == 0 ? null : tools;
+
+        }
+        /// <summary>
+        /// 递归过滤 Gemini API 不支持的 JSON Schema 字段
+        /// </summary>
+        /// <param name="element">要处理的 JsonElement</param>
+        /// <returns>过滤后的 JsonElement</returns>
+        private static JsonElement FilterGeminiUnsupportedSchemaFields(JsonElement element)
+        {
+            // Gemini API 不支持的字段列表
+            var excludedTopLevelFields = new HashSet<string> { "$schema", "$id", "$ref", "$defs", "definitions", "additionalProperties", "title", "default", "examples" };
+            // 属性定义层只允许的字段（白名单）
+            var allowedPropertyFields = new HashSet<string> { "type", "description", "enum", "items", "properties", "required" };
+
+            var filtered = FilterElement(element, excludedTopLevelFields, allowedPropertyFields, isPropertyLevel: false);
+            
+            // 将过滤后的对象序列化为 JsonElement
+            var json = JsonSerializer.Serialize(filtered,  new JsonSerializerOptions 
+            { 
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
+            });
+            return JsonDocument.Parse(json).RootElement;
+
+            static object? FilterElement(JsonElement elem, HashSet<string> topLevelExcluded, HashSet<string> allowedPropFields, bool isPropertyLevel)
+            {
+                switch (elem.ValueKind)
+                {
+                    case JsonValueKind.Object:
+                        var dict = new Dictionary<string, object?>();
+                        foreach (var prop in elem.EnumerateObject())
+                        {
+                            // 在顶层过滤 $schema, additionalProperties 等
+                            if (!isPropertyLevel && topLevelExcluded.Contains(prop.Name))
+                                continue;
+
+                            // 在属性定义层使用白名单，只保留 type, description 等
+                            if (isPropertyLevel && !allowedPropFields.Contains(prop.Name))
+                                continue;
+
+                            // 递归处理 properties 对象中的每个属性定义
+                            if (prop.Name == "properties" && prop.Value.ValueKind == JsonValueKind.Object)
+                            {
+                                // properties 内部的每个键值对代表一个属性定义
+                                var propsDict = new Dictionary<string, object?>();
+                                foreach (var propDef in prop.Value.EnumerateObject())
+                                {
+                                    propsDict[propDef.Name] = FilterElement(propDef.Value, topLevelExcluded, allowedPropFields, isPropertyLevel: true);
+                                }
+                                dict[prop.Name] = propsDict;
+                            }
+                            else if (prop.Name == "items" && prop.Value.ValueKind == JsonValueKind.Object)
+                            {
+                                // items 也是一个 schema 定义，需要递归过滤
+                                dict[prop.Name] = FilterElement(prop.Value, topLevelExcluded, allowedPropFields, isPropertyLevel: true);
+                            }
+                            else
+                            {
+                                dict[prop.Name] = FilterElement(prop.Value, topLevelExcluded, allowedPropFields, isPropertyLevel);
+                            }
+                        }
+                        return dict;
+
+                    case JsonValueKind.Array:
+                        var list = new List<object?>();
+                        foreach (var item in elem.EnumerateArray())
+                        {
+                            list.Add(FilterElement(item, topLevelExcluded, allowedPropFields, isPropertyLevel));
+                        }
+                        return list;
+
+                    case JsonValueKind.String:
+                        return elem.GetString();
+
+                    case JsonValueKind.Number:
+                        if (elem.TryGetInt64(out var longVal))
+                            return longVal;
+                        return elem.GetDouble();
+
+                    case JsonValueKind.True:
+                        return true;
+
+                    case JsonValueKind.False:
+                        return false;
+
+                    case JsonValueKind.Null:
+                    default:
+                        return null;
+                }
+            }
+        }
+
+        // 添加辅助方法：准备 Gemini 格式的工具定义
+        private async Task<List<object>> PrepareGeminiTools(bool search, CancellationToken cancellationToken = default)
+        {
+            var tools = new List<object>();
+
+            if (search)
+            {
+                tools.Add(new
+                {
+                    name = nameof(JinaAiSearch),
+                    description = "执行网页搜索并返回结果",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            query = new
+                            {
+                                type = "string",
+                                description = "搜索词"
+                            }
+                        },
+                        required = new[] { "query" }
+                    }
+                });
+            }
+
+            tools.Add(new
             {
                 name = nameof(GetWeather),
                 description = "获取指定城市未来8天天气预报",
@@ -3043,12 +3248,9 @@ namespace ChatBot.Web.Services
                     },
                     required = new[] { "city" }
                 }
-            }
-        },
-        new
-        {
-            type = "function",
-            function = new
+            });
+
+            tools.Add(new
             {
                 name = nameof(GetCurrentDataTime),
                 description = "获取当前日期和时间",
@@ -3057,12 +3259,9 @@ namespace ChatBot.Web.Services
                     type = "object",
                     properties = new { }
                 }
-            }
-        },
-        new
-        {
-            type = "function",
-            function = new
+            });
+
+            tools.Add(new
             {
                 name = nameof(SearchTrainTicket),
                 description = "获取指定日期的火车票、火车车次",
@@ -3089,11 +3288,196 @@ namespace ChatBot.Web.Services
                     },
                     required = new[] { "startingplace", "arrivalplace", "date" }
                 }
-            }
-        }
-    };
-        }
+            });
 
+
+            // 加载 MCP 工具
+            if (_mcpClientManager.IsEnabled)
+            {
+                try
+                {
+                    var mcpTools = await _mcpClientManager.GetAllToolsAsync(cancellationToken);
+                    foreach (var mcpTool in mcpTools)
+                    {
+
+                        // 从 MCP InputSchema 中动态提取字段，过滤掉 Gemini 不支持的字段
+                        object? inputSchema;
+                        if (mcpTool.InputSchema.HasValue)
+                        {
+                            // 使用辅助方法递归过滤不支持的字段（如 format, $schema, additionalProperties, default, examples, title 等）
+                            inputSchema = FilterGeminiUnsupportedSchemaFields(mcpTool.InputSchema.Value);
+
+
+                        }
+                        else
+                        {
+                            inputSchema = new { type = "object", properties = new { } };
+                        }
+                        tools.Add(new
+                        {
+                            name = mcpTool.Name,
+                            description = mcpTool.Description,
+                            parameters = inputSchema
+                        });
+                    }
+                    _logger.LogInformation("加载了 {Count} 个 MCP 工具", mcpTools.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "加载 MCP 工具失败");
+                }
+            }
+
+            return tools.Count == 0 ? null : new List<object> { new { functionDeclarations = tools } };
+
+
+        }
+        // 添加辅助方法：准备 Gemini 格式的工具定义
+        private async Task<List<object>> PrepareGeminiFileSearchTools(bool search, ChatModelConfig config, CancellationToken cancellationToken = default)
+        {
+
+            var tools = new List<object>();
+
+            if (search)
+            {
+                tools.Add(new
+                {
+                    name = nameof(JinaAiSearch),
+                    description = "执行网页搜索并返回结果",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            query = new
+                            {
+                                type = "string",
+                                description = "搜索词"
+                            }
+                        },
+                        required = new[] { "query" }
+                    }
+                });
+            }
+
+            tools.Add(new
+            {
+                name = nameof(GetWeather),
+                description = "获取指定城市未来8天天气预报",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        city = new
+                        {
+                            type = "string",
+                            description = "城市(用英文表示)"
+                        }
+                    },
+                    required = new[] { "city" }
+                }
+            });
+
+            tools.Add(new
+            {
+                name = nameof(GetCurrentDataTime),
+                description = "获取当前日期和时间",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { }
+                }
+            });
+
+            tools.Add(new
+            {
+                name = nameof(SearchTrainTicket),
+                description = "获取指定日期的火车票、火车车次",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        startingplace = new
+                        {
+                            type = "string",
+                            description = "起始城市"
+                        },
+                        arrivalplace = new
+                        {
+                            type = "string",
+                            description = "到达城市"
+                        },
+                        date = new
+                        {
+                            type = "string",
+                            description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
+                        }
+                    },
+                    required = new[] { "startingplace", "arrivalplace", "date" }
+                }
+            });
+
+
+            // 加载 MCP 工具
+            if (_mcpClientManager.IsEnabled)
+            {
+                try
+                {
+                    var mcpTools = await _mcpClientManager.GetAllToolsAsync(cancellationToken);
+                    foreach (var mcpTool in mcpTools)
+                    {
+                        // 从 MCP InputSchema 中动态提取字段，过滤掉 Gemini 不支持的字段
+                        object? inputSchema;
+                        if (mcpTool.InputSchema.HasValue)
+                        {
+                            // 使用辅助方法递归过滤不支持的字段（如 format, $schema, additionalProperties, default, examples, title 等）
+                             inputSchema = FilterGeminiUnsupportedSchemaFields(mcpTool.InputSchema.Value);
+
+                           
+                        }
+                        else
+                        {
+                            inputSchema = new { type = "object", properties = new { } };
+                        }
+                        tools.Add(new
+                        {
+                            name = mcpTool.Name,
+                            description = mcpTool.Description,
+                            parameters = inputSchema
+                        });
+                    }
+                    _logger.LogInformation("加载了 {Count} 个 MCP 工具", mcpTools.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "加载 MCP 工具失败");
+                }
+            }
+
+            object File_search = null;
+            if (!string.IsNullOrWhiteSpace(config.File_search_store_names))
+            {
+                File_search =
+                    new
+                    {
+                        file_search = new
+                        {
+                            file_search_store_names = new List<object>
+                            {
+                                config.File_search_store_names
+                            }
+                        }
+                    }
+                ;
+            }
+
+            if (tools.Count == 0 && File_search == null) return null;
+
+            return new List<object> { new { functionDeclarations = tools },   File_search  };
+
+        }
 
         /// <summary>
         /// 根据配置返回 OpenAI Responses API 的 reasoning 配置
@@ -3144,40 +3528,7 @@ namespace ChatBot.Web.Services
         #endregion
 
         #region 组装消息
-        private static List<object> ToMessagesllama32(ChatRequest request, ChatModelConfig modelconfg)
-        {
 
-            var messages = new List<object>();
-
-            // 添加系统提示词
-            messages.Add(new
-            {
-                role = "system",
-                content = new List<object> { new { text = modelconfg.Systemprompt } }
-            });
-            // 添加历史消息
-            foreach (var msg in request.History)
-            {
-                if (msg.Images.Length == 0)
-                {
-                    messages.Add(new
-                    {
-                        role = msg.Role,
-                        content = new List<object> { new { text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) } }
-                    });
-                }
-                else
-                {
-                    messages.Add(new
-                    {
-                        role = msg.Role,
-                        content = new List<object> { new { image = msg.Images }, new { text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) } }
-                    });
-                }
-            }
-
-            return messages;
-        }
         private static List<object> ToMessagesResponsesOpenAi(ChatRequest request, ChatModelConfig modelconfg, string generateSystemPrompt = "")
         {
 
@@ -3432,246 +3783,6 @@ namespace ChatBot.Web.Services
             return messages;
         }
 
-        private static object ToResponsesOpenAischema()
-        {
-            return new
-            {
-                format = new
-                {
-                    type = "json_schema",
-                    name = "getdata",
-                    schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            delist = new
-                            {
-                                type = "array",
-                                description = "定额子目集合",
-                                items =
-
-                          new
-                          {
-                              type = "object",
-                              description = "定额子目",
-                              properties = new
-                              {
-                                  deh = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目编号"
-                                  },
-                                  xmmc = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目名称"
-                                  },
-                                  syfw = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目适用范围，如果没有就留空"
-                                  },
-                                  gznr = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目工作内容，如果没有就留空"
-                                  },
-                                  dw = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目单位"
-                                  },
-                                  rcjlist = new
-                                  {
-                                      type = "array",
-                                      description = "人工、材料、机械、其他、定额的集合，不显示名称为合计的项目，不显示yl=0的项目",
-                                      items = new
-                                      {
-
-                                          type = "object",
-                                          properties = new
-                                          {
-                                              clmc = new
-                                              {
-                                                  type = "string",
-                                                  description = "人材机名称"
-                                              },
-                                              cldw = new
-                                              {
-                                                  type = "string",
-                                                  description = "人材机单位"
-                                              },
-                                              yl = new
-                                              {
-                                                  type = "number",
-                                                  description = "人材机用量"
-                                              },
-
-                                              flag = new
-                                              {
-                                                  type = "number",
-                                                  description = "人材机名称靠右的和上一个人材机都设置flag=1，其他flag=0"
-                                              },
-
-
-
-
-                                          },
-                                          required = new[]
-                                        {
-                                          "clmc",
-                                          "cldw",
-                                          "yl",
-                                          "flag"
-                                        },
-                                          additionalProperties = false
-
-                                      }
-                                  }
-                              },
-                              required = new[]
-                          {
-                              "deh",
-                              "xmmc",
-                              "syfw",
-                              "gznr",
-                              "dw",
-                              "rcjlist"
-                          },
-                              additionalProperties = false
-                          }
-
-                            }
-                        },
-                        required = new[]
-                        {
-                            "delist"
-                        },
-                        additionalProperties = false
-                    }
-                }
-            };
-        }
-        private static object ToOpenAischema()
-        {
-            return new
-            {
-                type = "json_schema",
-                json_schema = new
-                {
-
-                    name = "getdata",
-                    schema = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            delist = new
-                            {
-                                type = "array",
-                                description = "定额子目集合，如果没有就不输出",
-                                items =
-
-                          new
-                          {
-                              type = "object",
-                              description = "定额子目",
-                              properties = new
-                              {
-                                  deh = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目编号"
-                                  },
-                                  xmmc = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目名称"
-                                  },
-                                  syfw = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目适用范围，如果没有就留空"
-                                  },
-                                  gznr = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目工作内容，如果没有就留空"
-                                  },
-                                  dw = new
-                                  {
-                                      type = "string",
-                                      description = "定额子目单位"
-                                  },
-                                  rcjlist = new
-                                  {
-                                      type = "array",
-                                      description = "人工、材料、机械、其他、定额的集合，不显示名称为合计的项目，不显示yl=0的项目",
-                                      items = new
-                                      {
-                                          type = "object",
-                                          properties = new
-                                          {
-                                              clmc = new
-                                              {
-                                                  type = "string",
-                                                  description = "人材机名称"
-                                              },
-                                              cldw = new
-                                              {
-                                                  type = "string",
-                                                  description = "人材机单位"
-                                              },
-                                              yl = new
-                                              {
-                                                  type = "number",
-                                                  description = "人材机用量"
-                                              },
-                                              flag = new
-                                              {
-                                                  type = "number",
-                                                  description = "人材机名称靠右的和上一个人材机都设置flag=1，其他flag=0"
-                                              }
-
-                                          },
-                                          required = new[]
-                                        {
-                                          "clmc",
-                                          "cldw",
-                                          "yl",
-                                          "flag"
-                                        },
-                                          additionalProperties = false
-
-                                      }
-                                  }
-                              },
-                              required = new[]
-                          {
-                              "deh",
-                              "xmmc",
-                              "syfw",
-                              "gznr",
-                              "dw",
-                              "rcjlist"
-                          },
-                              additionalProperties = false
-
-
-                          }
-                            }
-                        },
-                        required = new[]
-                        {
-                            "delist"
-                        },
-                        additionalProperties = false
-
-                    }
-                }
-            };
-        }
         #endregion
 
 
@@ -3844,7 +3955,7 @@ namespace ChatBot.Web.Services
                       .CopyTo(span[state.startIndex..]);
             });
         }
-        
+
         // ChatService.cs 中添加用户验证方法的实现
         public async Task<bool> ValidateUserIdAsync(string userId)
         {
@@ -4622,7 +4733,7 @@ namespace ChatBot.Web.Services
 
             styleDefinitionsPart.Styles = styles;
         }
-        
+
         // 预处理HTML中的表格，确保它们能正确转换
         private string ProcessTablesForWordExport(string htmlContent)
         {

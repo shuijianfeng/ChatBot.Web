@@ -14,7 +14,11 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<ChatModelConfig>();
 
-builder.Services.AddScoped<IChatService,ChatService> ();
+builder.Services.AddScoped<IChatService, ChatService>();
+
+// MCP 客户端管理器
+builder.Services.Configure<McpSettings>(builder.Configuration.GetSection("McpSettings"));
+builder.Services.AddSingleton<IMcpClientManager, McpClientManager>();
 
 builder.Services.AddScoped<OpenAIService>();
 builder.Services.AddScoped<JinaSearch>();
