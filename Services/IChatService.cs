@@ -3,9 +3,13 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Office2013.Excel;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using A = DocumentFormat.OpenXml.Drawing;
+using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
+using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 using iText.Commons.Utils;
 using iText.Html2pdf;
 using iText.Layout.Font;
+using iText.StyledXmlParser.Resolver.Resource;
 using Markdig;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -4617,6 +4621,13 @@ namespace ChatBot.Web.Services
                     margin-left: 0;
                     color: #666;
                 }}
+                /* 图片自动缩放以适应页面宽度 */
+                img {{
+                    max-width: 100%;
+                    height: auto;
+                    display: block;
+                    margin: 10px auto;
+                }}
             </style>
         </head>
         <body>{htmlContent}</body>
@@ -4654,6 +4665,9 @@ namespace ChatBot.Web.Services
                                 body.AppendChild(para.CloneNode(true));
                             }
                         }
+
+                        // 调整超出页面宽度的图片
+                        ResizeImagesInDocument(mainPart);
 
                         // 保存文档
                         doc.Save();
@@ -4963,6 +4977,13 @@ namespace ChatBot.Web.Services
             margin-left: 0;
             color: #666;
         }}
+        /* 图片自动缩放以适应页面宽度 */
+        img {{
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 10px auto;
+        }}
     </style>
 </head>
 <body>{htmlContent}</body>
@@ -4997,6 +5018,9 @@ namespace ChatBot.Web.Services
                                 body.AppendChild(para.CloneNode(true));
                             }
                         }
+
+                        // 调整超出页面宽度的图片
+                        ResizeImagesInDocument(mainPart);
 
                         // 保存文档
                         doc.Save();
@@ -5261,6 +5285,60 @@ namespace ChatBot.Web.Services
             );
 
             return processedHtml;
+        }
+
+        // 调整文档中的图片大小，使其不超过页面宽度
+        // A4 纸张可用宽度约为 16cm (去除左右边距后)，转换为 EMU: 16cm = 5760000 EMU
+        private void ResizeImagesInDocument(MainDocumentPart mainPart)
+        {
+            // A4 页面可用宽度 (去除边距后约 16cm)
+            // 1 cm = 360000 EMU, 16 cm = 5760000 EMU
+            const long maxWidthEmu = 5760000L;
+
+            // 查找文档中所有的 Drawing 元素
+            var drawings = mainPart.Document.Descendants<Drawing>().ToList();
+
+            foreach (var drawing in drawings)
+            {
+                // 查找 Inline 或 Anchor 元素中的 Extent（图片尺寸）
+                var inline = drawing.Descendants<DW.Inline>().FirstOrDefault();
+                var anchor = drawing.Descendants<DW.Anchor>().FirstOrDefault();
+
+                DW.Extent? extent = null;
+                A.Extents? transformExtent = null;
+
+                if (inline != null)
+                {
+                    extent = inline.Extent;
+                    transformExtent = inline.Descendants<A.Extents>().FirstOrDefault();
+                }
+                else if (anchor != null)
+                {
+                    extent = anchor.Descendants<DW.Extent>().FirstOrDefault();
+                    transformExtent = anchor.Descendants<A.Extents>().FirstOrDefault();
+                }
+
+                if (extent != null && extent.Cx != null && extent.Cy != null && extent.Cx.Value > maxWidthEmu)
+                {
+                    // 计算缩放比例
+                    double scale = (double)maxWidthEmu / extent.Cx.Value;
+
+                    // 计算新的尺寸
+                    long newWidth = maxWidthEmu;
+                    long newHeight = (long)(extent.Cy.Value * scale);
+
+                    // 更新 Extent
+                    extent.Cx = newWidth;
+                    extent.Cy = newHeight;
+
+                    // 同时更新 Transform 的 Extents (如果存在)
+                    if (transformExtent != null)
+                    {
+                        transformExtent.Cx = newWidth;
+                        transformExtent.Cy = newHeight;
+                    }
+                }
+            }
         }
 
         // 添加新的帮助方法处理表头前无空行的情况
@@ -5552,6 +5630,9 @@ namespace ChatBot.Web.Services
 
                         // 增加转换时的内存限制
                         //properties.SetTagWorkerFactory(new iText.Html2pdf.AttachmentTagWorkerFactory());
+
+                        // 设置自定义资源获取器以支持网络图片下载
+                        properties.SetResourceRetriever(new CustomResourceRetriever());
 
                         // 优化表格处理
                         properties.SetBaseUri("");
@@ -5938,6 +6019,9 @@ namespace ChatBot.Web.Services
                         // 增加转换时的内存限制
                         //properties.SetTagWorkerFactory(new iText.Html2pdf.AttachmentTagWorkerFactory());
 
+                        // 设置自定义资源获取器以支持网络图片下载
+                        properties.SetResourceRetriever(new CustomResourceRetriever());
+
                         // 优化表格处理
                         properties.SetBaseUri("");
 
@@ -6135,6 +6219,9 @@ namespace ChatBot.Web.Services
                         // 配置字体解析器以支持彩色Emoji
                         properties.SetFontProvider(fontProvider);
 
+                        // 设置自定义资源获取器以支持网络图片下载
+                        properties.SetResourceRetriever(new CustomResourceRetriever());
+
                         // 优化表格处理
                         properties.SetBaseUri("");
 
@@ -6177,6 +6264,79 @@ namespace ChatBot.Web.Services
         {
             return type.Name.StartsWith("<>")
                 && type.GetCustomAttributes(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false).Length > 0;
+        }
+    }
+
+    /// <summary>
+    /// 自定义资源获取器，支持网络图片下载和 Base64 图片处理
+    /// 用于 iText HTML 转 PDF 时获取图片资源
+    /// </summary>
+#pragma warning disable CS0618 // IResourceRetriever 已过时，但 SetResourceRetriever 仍然需要它
+    public class CustomResourceRetriever : IResourceRetriever
+    {
+        private static readonly HttpClient _httpClient;
+        private int _resourceSizeByteLimit = 0;
+
+        static CustomResourceRetriever()
+        {
+            _httpClient = new HttpClient();
+            _httpClient.Timeout = TimeSpan.FromSeconds(30);
+            // 添加常见的用户代理以避免被某些服务器拒绝
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        }
+
+        public byte[] GetByteArrayByUrl(Uri url)
+        {
+            try
+            {
+                if (url.Scheme == "data")
+                {
+                    // 处理 Base64 图片 (data:image/png;base64,...)
+                    var base64Data = url.OriginalString;
+                    var commaIndex = base64Data.IndexOf(',');
+                    if (commaIndex > 0)
+                    {
+                        var base64 = base64Data.Substring(commaIndex + 1);
+                        return Convert.FromBase64String(base64);
+                    }
+                }
+                else if (url.Scheme == "http" || url.Scheme == "https")
+                {
+                    // 同步下载网络图片
+                    return _httpClient.GetByteArrayAsync(url).GetAwaiter().GetResult();
+                }
+                else if (url.IsFile || url.Scheme == "file")
+                {
+                    // 本地文件
+                    var localPath = url.LocalPath;
+                    if (File.Exists(localPath))
+                    {
+                        return File.ReadAllBytes(localPath);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"获取资源失败: {url}, 错误: {ex.Message}");
+            }
+            return null;
+        }
+
+        public Stream GetInputStreamByUrl(Uri url)
+        {
+            var bytes = GetByteArrayByUrl(url);
+            return bytes != null ? new MemoryStream(bytes) : null;
+        }
+
+        public int GetResourceSizeByteLimit()
+        {
+            return _resourceSizeByteLimit;
+        }
+
+        public IResourceRetriever SetResourceSizeByteLimit(int resourceSizeByteLimit)
+        {
+            _resourceSizeByteLimit = resourceSizeByteLimit;
+            return this;
         }
     }
 }
