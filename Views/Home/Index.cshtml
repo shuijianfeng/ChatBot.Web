@@ -1,21 +1,45 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ai助手</title>
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = "聊天";
+}
 
-    <link rel="stylesheet" href="~/css/site.css" />
+<link rel="stylesheet" href="~/css/sidebar.css" asp-append-version="true" />
 
-</head>
-<body>
-    <div class="chat-main">
-        <!-- 用户信息栏 -->
-        @* <div class="user-info-bar">
-            <span class="time-info">Current Date and Time (UTC): 2024-11-01 01:58:23</span>
-            <span class="user-info">Current User's Login: shuijianfeng</span>
-        </div> *@
+<!-- 页面容器：侧边栏 + 主内容 -->
+<div class="page-wrapper">
+    <!-- 侧边栏 -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <button class="new-chat-btn" id="new-chat-btn" title="新建会话">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>新建会话</span>
+            </button>
+        </div>
+        <div class="sessions-list" id="sessions-list">
+            <!-- 会话列表将通过JavaScript动态填充 -->
+            <div class="sessions-loading">加载中...</div>
+        </div>
+        <div class="sidebar-footer">
+            <button class="collapse-btn" id="collapse-sidebar-btn" title="折叠侧边栏">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+            </button>
+        </div>
+    </aside>
 
+    <!-- 侧边栏折叠后的展开按钮 -->
+    <button class="expand-sidebar-btn" id="expand-sidebar-btn" title="展开侧边栏" style="display: none;">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+    </button>
+
+    <!-- 聊天主区域 -->
+    <div class="chat-main" id="chat-main">
         <!-- 消息容器 -->
         <div class="messages-container" id="messages-container">
             <!-- 消息内容将通过 JavaScript 动态添加 -->
@@ -31,20 +55,16 @@
                     <!-- 初始隐藏 -->
                     <button class="btn icon-button" id="upload-image-button" title="上传图片" style="display: none;">
                         <i class="bi bi-image"></i>
-                        
                     </button>
                     <button class="btn icon-button" id="network-search-button" title="联网搜索" style="display: none;">
                         <i class="bi bi-wifi-off" id="network-icon"></i>
-                        
                     </button>
 
                     <!-- 隐藏的文件输入 -->
                     <input type="file" id="image-input" accept="image/*" style="display: none;" />
                 </div>
-                <textarea id="message-input"
-                          placeholder="输入您的提问..."
-                          rows="1" aria-label="Message input"></textarea>
-                
+                <textarea id="message-input" placeholder="输入您的提问..." rows="1" aria-label="Message input"></textarea>
+
                 <button class="send-button" id="send-button" title="Send message" disabled>
                     <svg class="send-icon" viewBox="0 0 16 16" width="16" height="16">
                         <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"></path>
@@ -57,17 +77,8 @@
                 </button>
             </div>
             <div class="disclaimer-message">
-                
                 <span>Ai的回答未必正确无误，请仔细核查</span>
             </div>
-
         </div>
-        <!-- 图片上传按钮 -->
-        
-        <!-- 联网搜索按钮 -->
-
     </div>
-
-
-</body>
-</html>
+</div>

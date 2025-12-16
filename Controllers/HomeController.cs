@@ -19,16 +19,19 @@ namespace ChatBot.Controllers
 
         private readonly IChatService _chatService;
         private readonly IWebHostEnvironment _env;
+        private readonly ChatSessionRepository _sessionRepository;
 
         public HomeController(
             ILogger<HomeController> logger,
             IChatService chatService,
             IWebHostEnvironment webHostEnvironment,
+            ChatSessionRepository sessionRepository,
             Microsoft.Extensions.Configuration.IConfiguration configuration)
         {
 
             _chatService = chatService;
             _env = webHostEnvironment;
+            _sessionRepository = sessionRepository;
         }
 
         /// <summary>
@@ -57,7 +60,7 @@ namespace ChatBot.Controllers
                 //HttpContext.Session.SetString("UserId", uid);
             }
             // 如果没有提供UID但系统配置要求UID验证，检查会话中是否已存在验证过的UID
-            else 
+            else
             {
                 // 用户ID无效，返回未授权页面
                 return View("Unauthorized", new ErrorViewModel
@@ -201,7 +204,8 @@ namespace ChatBot.Controllers
                     // 查找页面中可能的大图片（至少200x150像素大小）
                     // 先检查有明确width/height属性的图片
                     var imgWithSize = document.QuerySelectorAll("img[width][height]")
-                        .FirstOrDefault(img => {
+                        .FirstOrDefault(img =>
+                        {
                             int.TryParse(img.GetAttribute("width"), out int width);
                             int.TryParse(img.GetAttribute("height"), out int height);
                             return width >= 200 && height >= 150;
@@ -217,7 +221,8 @@ namespace ChatBot.Controllers
                         image = document.QuerySelectorAll("img")
                             .Where(img => !img.GetAttribute("src")?.Contains("icon", StringComparison.OrdinalIgnoreCase) ?? false)
                             .Where(img => !img.GetAttribute("src")?.Contains("logo", StringComparison.OrdinalIgnoreCase) ?? false)
-                            .Where(img => {
+                            .Where(img =>
+                            {
                                 var src = img.GetAttribute("src");
                                 return !string.IsNullOrEmpty(src) && !src.EndsWith(".svg") && !src.EndsWith(".ico");
                             })
@@ -616,11 +621,11 @@ namespace ChatBot.Controllers
             var cancellationToken = HttpContext.RequestAborted;
             try
             {
-                bool Incremental_output= _chatService.GetModelConfig(request.Model).Incremental_output;
+                bool Incremental_output = _chatService.GetModelConfig(request.Model).Incremental_output;
                 IAsyncEnumerable<string> stream;
                 stream = _chatService.GenerateStreamAsync(request, cancellationToken);
                 int count = 0;
-                await foreach (var chunk in stream)  
+                await foreach (var chunk in stream)
                 {
                     string str = chunk;
                     if (!Incremental_output)
@@ -814,6 +819,116 @@ namespace ChatBot.Controllers
         {
             public string Content { get; set; }
         }
+
+        #region 会话管理API
+
+        /// <summary>
+        /// 获取用户的所有会话列表
+        /// </summary>
+        [HttpGet]
+        [Route("/api/sessions/{uid}")]
+        public async Task<IActionResult> GetUserSessions(string uid)
+        {
+            if (string.IsNullOrEmpty(uid))
+            {
+                return BadRequest(new { error = "用户ID不能为空" });
+            }
+
+            var sessions = await _sessionRepository.GetSessionsByUserAsync(uid);
+            return Ok(sessions.Select(s => new
+            {
+                id = s.Id,
+                title = s.Title,
+                modelName = s.ModelName,
+                createdAt = s.CreatedAt,
+                updatedAt = s.UpdatedAt
+            }));
+        }
+
+        /// <summary>
+        /// 获取会话详情（包含消息）
+        /// </summary>
+        [HttpGet]
+        [Route("/api/sessions/{uid}/{sessionId}")]
+        public async Task<IActionResult> GetSessionDetail(string uid, string sessionId)
+        {
+            if (string.IsNullOrEmpty(sessionId))
+            {
+                return BadRequest(new { error = "会话ID不能为空" });
+            }
+
+            var session = await _sessionRepository.GetSessionWithMessagesAsync(sessionId);
+            if (session == null)
+            {
+                return NotFound(new { error = "会话不存在" });
+            }
+
+            // 验证会话归属
+            if (session.Uid != uid)
+            {
+                return Forbid();
+            }
+
+            return Ok(new
+            {
+                id = session.Id,
+                title = session.Title,
+                modelName = session.ModelName,
+                createdAt = session.CreatedAt,
+                updatedAt = session.UpdatedAt,
+                messages = session.Messages.Select(m => new
+                {
+                    role = m.Role,
+                    content = m.Content,
+                    imageUrls = m.ImageUrls,
+                    createdAt = m.CreatedAt
+                })
+            });
+        }
+
+        /// <summary>
+        /// 保存会话
+        /// </summary>
+        [HttpPost]
+        [Route("/api/sessions/save")]
+        public async Task<IActionResult> SaveSession([FromBody] SaveSessionRequest request)
+        {
+            if (string.IsNullOrEmpty(request?.SessionId) || string.IsNullOrEmpty(request?.Uid))
+            {
+                return BadRequest(new { error = "会话ID和用户ID不能为空" });
+            }
+
+            var success = await _sessionRepository.SaveSessionAsync(request);
+            if (success)
+            {
+                return Ok(new { success = true, sessionId = request.SessionId });
+            }
+
+            return BadRequest(new { error = "保存会话失败" });
+        }
+
+        /// <summary>
+        /// 删除会话
+        /// </summary>
+        [HttpDelete]
+        [Route("/api/sessions/{sessionId}")]
+        public async Task<IActionResult> DeleteSession(string sessionId)
+        {
+            if (string.IsNullOrEmpty(sessionId))
+            {
+                return BadRequest(new { error = "会话ID不能为空" });
+            }
+
+            var success = await _sessionRepository.DeleteSessionAsync(sessionId);
+            if (success)
+            {
+                return Ok(new { success = true });
+            }
+
+            return NotFound(new { error = "会话不存在或删除失败" });
+        }
+
+        #endregion
     }
-    
+
 }

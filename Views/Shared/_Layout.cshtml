@@ -3,6 +3,7 @@
 
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -31,8 +32,8 @@
                 ready: () => {
 
                     MathJax.startup.defaultReady();
-                      
-                     
+
+
                     MathJax.startup.promise.then(() => {
                         console.log('MathJax initial typesetting complete');
                     });
@@ -44,7 +45,7 @@
             }
         };
 
-        
+
     </script>
 
     <link rel="stylesheet" href="~/lib/jsmind/style/jsmind.css" />
@@ -58,11 +59,12 @@
     <link rel="icon" type="image/x-icon" href="~/favicon.ico" />
 
 </head>
+
 <body class="bg-light">
     <div class="app-container" id="app-container">
         @* 顶部导航栏 *@
         <header>
-            <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom fixed-top" id="navbar">
+            <nav class="navbar navbar-expand-sm navbar-light bg-white fixed-top" id="navbar">
                 <div class="container-fluid px-4" id="container-fluid">
                     @* Logo和品牌名 *@
                     <a class="navbar-brand d-flex align-items-center" href="~/" id="navbar-brand">
@@ -71,7 +73,8 @@
                     </a>
 
                     @* 移动端菜单按钮 *@
-                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" id="navbar-toggler">
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                        data-bs-target=".navbar-collapse" id="navbar-toggler">
                         <span class="navbar-toggler-icon" id="navbar-toggler-icon"></span>
                     </button>
 
@@ -117,26 +120,7 @@
                                 <label></label>
 
                             </div>
-                            @* 设置下拉菜单 *@
-                            <div class="dropdown">
-                                <button class="btn btn-link nav-link dropdown-toggle" type="button" id="settingsDropdown" data-bs-toggle="dropdown">
-                                    <i class="bi bi-gear"></i>
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="settingsDropdown" id="dropdown-menu">
-
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li>
-                                        <a class="dropdown-item" href="javascript:void(0)" id="clear-history">
-                                            <i class="bi bi-trash me-2"></i>清除历史记录
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="javascript:void(0)" id="export-history">
-                                            <i class="bi bi-download me-2"></i>导出聊天记录
-                                        </a>
-                                    </li>
-                                </ul>
-                            </div>
+                            @* 设置下拉菜单 - 已移除 *@
                         </div>
                     </div>
                 </div>
@@ -173,7 +157,7 @@
     <script src="~/lib/highlight.js/languages/css.min.js"></script>
 
     <script src="~/js/chat.js?v=@Guid.NewGuid().ToString("N")"></script>
-    
+
 
     @* 页面特定脚本 *@
     @await RenderSectionAsync("Scripts", required: false)
@@ -181,91 +165,68 @@
     @* 主题和设置管理脚本 *@
     <script>
 
-                // 主题切换功能
-                document.addEventListener('DOMContentLoaded', () => {
+        // 主题切换功能
+        document.addEventListener('DOMContentLoaded', () => {
 
-        @if (ViewBag.DefaultTheme != null)
-        {
-            <text>
-                        // 接收控制器设置的主题
-                            const initialTheme = '@ViewBag.DefaultTheme';
+            @if (ViewBag.DefaultTheme != null)
+                {
+                    <text>
+                            // 接收控制器设置的主题
+                        const initialTheme = '@ViewBag.DefaultTheme';
 
                         localStorage.setItem('theme', initialTheme);
 
-            </text>
-        }
+                    </text>
+            }
 
 
                     const themeToggle = document.getElementById('theme-toggle');
-                    const body = document.body;
+            const body = document.body;
 
-                    // 加载保存的主题
-                    const savedTheme = localStorage.getItem('theme') || 'light';
-                    body.setAttribute('data-theme', savedTheme);
-                    themeToggle.checked = savedTheme === 'dark';
+            // 加载保存的主题
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            body.setAttribute('data-theme', savedTheme);
+            themeToggle.checked = savedTheme === 'dark';
 
-                    // 主题切换事件
-                    themeToggle.addEventListener('change', (e) => {
-                        const newTheme = e.target.checked ? 'dark' : 'light';
-                        body.setAttribute('data-theme', newTheme);
-                        localStorage.setItem('theme', newTheme);
-                    });
-
-
-
-                    // 加载保存的模型设置或默认选择第一个模型
-                    const modelSelector = document.getElementById('global-model-selector');
-                    const models = Array.from(modelSelector.options).map(option => option.value);
-                    const savedModel = localStorage.getItem('selectedModel');
-
-                    if (savedModel && models.includes(savedModel)) {
-                        modelSelector.value = savedModel;
-                    } else if (models.length > 0) {
-                        modelSelector.value = models[0];
-                        localStorage.setItem('selectedModel', models[0]);
-        }
+            // 主题切换事件
+            themeToggle.addEventListener('change', (e) => {
+                const newTheme = e.target.checked ? 'dark' : 'light';
+                body.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+            });
 
 
 
+            // 加载保存的模型设置或默认选择第一个模型
+            const modelSelector = document.getElementById('global-model-selector');
+            const models = Array.from(modelSelector.options).map(option => option.value);
+            const savedModel = localStorage.getItem('selectedModel');
+
+            if (savedModel && models.includes(savedModel)) {
+                modelSelector.value = savedModel;
+            } else if (models.length > 0) {
+                modelSelector.value = models[0];
+                localStorage.setItem('selectedModel', models[0]);
+            }
 
 
-                    // 保存模型选择
-                    modelSelector.addEventListener('change', (e) => {
-                        localStorage.setItem('selectedModel', e.target.value);
-                    });
 
-                    // 清除历史记录
-                    document.getElementById('clear-history').addEventListener('click', () => {
-                        if (confirm('确定要清除所有聊天历史记录吗？')) {
-                            localStorage.removeItem('chatHistory');
-                            window.location.reload();
-                        }
-                    });
 
-                    // 导出聊天记录
-                    document.getElementById('export-history').addEventListener('click', () => {
-                        const history = localStorage.getItem('chatHistory');
-                        if (history) {
-                            const blob = new Blob([history], { type: 'application/json' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `chat-history-${new Date().toISOString().slice(0, 10)}.json`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            URL.revokeObjectURL(url);
-                        }
-                    });
-                });
+
+            // 保存模型选择
+            modelSelector.addEventListener('change', (e) => {
+                localStorage.setItem('selectedModel', e.target.value);
+            });
+        });
     </script>
     @* 屏蔽右键 *@
     <script>
-        document.addEventListener('contextmenu', function(event) {
+        document.addEventListener('contextmenu', function (event) {
             event.preventDefault();
         });
     </script>
 </body>
+
 </html>
 
 @functions {

@@ -11,7 +11,7 @@ class ChatUI {
         this.isNetworkEnabled = false; // 默认启用联网搜索
 
         this.MathJax = window.MathJax;
-        
+
         this.setupEventListeners();
         // 初始化DOM元素引用
         this.messagesContainer = document.getElementById('messages-container');
@@ -36,6 +36,13 @@ class ChatUI {
         // 定义用于存储模型配置
         this.chatModels = [];
         this.uploadedImageUrls = []; // 修改为数组以支持多张图片
+
+        // 会话管理相关属性
+        this.currentSessionId = this.generateSessionId();
+        this.currentSessionTitle = null; // 当前会话标题，用于避免重复生成
+        this.uid = this.getUidFromUrl();
+        this.sidebarCollapsed = true; // 默认折叠
+        this.sessionsLoaded = false;
 
         // 设置图片上传事件监听
         this.uploadImageButton.addEventListener('click', () => this.imageInput.click());
@@ -112,6 +119,9 @@ class ChatUI {
         });
 
         this.setupMarked();
+
+        // 初始化侧边栏
+        this.initSidebar();
 
         this.init();
     }
@@ -778,7 +788,7 @@ class ChatUI {
 
 
 
-       
+
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-button';
         copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
@@ -804,7 +814,7 @@ class ChatUI {
         });
     }
 
-    
+
 
     /**
  * 显示复制操作的反馈
@@ -1081,7 +1091,7 @@ class ChatUI {
             alert('导出DOCX失败,请重试');
         }
     }
-   
+
     async exportMessageToPdf(content) {
         try {
             const response = await fetch('/api/chat/export-message-pdf', {
@@ -1162,7 +1172,7 @@ class ChatUI {
         return copyButton;
     }
 
- 
+
     setupLinkPreviews() {
         // 创建预览容器
         const previewContainer = document.createElement('div');
@@ -1437,12 +1447,12 @@ class ChatUI {
         }
     }
 
-   
+
     // 修改 setupMarked 方法中的链接渲染器部分
     setupMarked() {
         const renderer = new marked.Renderer();
         const originalCode = renderer.code.bind(renderer);
-        
+
         // 添加预处理函数，用于处理连续的引用链接
         this.preprocessMarkdown = (content) => {
             // 在连续的引用链接之间添加空格，如 [2][3][8] -> [2] [3] [8]
@@ -1518,7 +1528,7 @@ class ChatUI {
             smartLists: true,
             smartypants: false,
             xhtml: false
-           
+
         });
         // 6. 在内容更新后触发渲染
         const renderMath = (element) => {
@@ -1531,7 +1541,7 @@ class ChatUI {
                 window.MathJax.typesetPromise([element])
                     .catch(err => console.error('备用 MathJax 渲染错误:', err));
             }
-            
+
         };
 
         // 导出renderMath方法供外部使用
@@ -1788,7 +1798,7 @@ class ChatUI {
                     contentDiv.dataset.rawContent = '';
                 }
                 contentDiv.dataset.rawContent = content;
-                contentDiv.dataset.rawContent=this.preprocessMarkdown(contentDiv.dataset.rawContent)
+                contentDiv.dataset.rawContent = this.preprocessMarkdown(contentDiv.dataset.rawContent)
                 // 更新内存中最后一条消息的内容
                 if (this.messages.length > 0) {
                     this.messages[this.messages.length - 1].content = contentDiv.dataset.rawContent;
@@ -2123,6 +2133,9 @@ class ChatUI {
             this.toggleStopButton(false); // 隐藏停止按钮
             this.controller = null;
             this.uploadedImageUrls = []; // 清除已上传的图片URLs
+
+            // 自动保存会话
+            this.saveCurrentSession();
         }
     }
 
@@ -2156,6 +2169,396 @@ class ChatUI {
         }
 
         return message; // 如果没有命令，返回原始消息
+    }
+
+    // ==================== 会话管理功能 ====================
+
+    // 从 URL 获取 uid 参数
+    getUidFromUrl() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('uid') || '';
+    }
+
+    // 生成唯一的会话 ID
+    generateSessionId() {
+        return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // 初始化侧边栏
+    initSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const newChatBtn = document.getElementById('new-chat-btn');
+        const collapseSidebarBtn = document.getElementById('collapse-sidebar-btn');
+        const expandSidebarBtn = document.getElementById('expand-sidebar-btn');
+
+        if (!sidebar) return;
+
+        // 新建会话按钮
+        if (newChatBtn) {
+            newChatBtn.addEventListener('click', () => this.createNewSession());
+        }
+
+        // 折叠/展开侧边栏
+        if (collapseSidebarBtn) {
+            collapseSidebarBtn.addEventListener('click', () => this.toggleSidebar());
+        }
+        if (expandSidebarBtn) {
+            expandSidebarBtn.addEventListener('click', () => this.toggleSidebar());
+        }
+
+        // 应用初始折叠状态
+        if (this.sidebarCollapsed) {
+            sidebar.classList.add('collapsed');
+            if (expandSidebarBtn) expandSidebarBtn.style.display = 'flex';
+        }
+
+        // 加载会话列表
+        if (this.uid) {
+            this.loadSessions();
+        }
+    }
+
+    // 切换侧边栏折叠状态
+    toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const expandBtn = document.getElementById('expand-sidebar-btn');
+        const chatMain = document.getElementById('chat-main');
+
+        if (!sidebar) return;
+
+        this.sidebarCollapsed = !this.sidebarCollapsed;
+
+        if (this.sidebarCollapsed) {
+            sidebar.classList.add('collapsed');
+            if (expandBtn) expandBtn.style.display = 'flex';
+        } else {
+            sidebar.classList.remove('collapsed');
+            if (expandBtn) expandBtn.style.display = 'none';
+        }
+    }
+
+    // 加载用户会话列表
+    async loadSessions() {
+        if (!this.uid) return;
+
+        const sessionsList = document.getElementById('sessions-list');
+        if (!sessionsList) return;
+
+        try {
+            const response = await fetch(`/api/sessions/${encodeURIComponent(this.uid)}`);
+            if (!response.ok) {
+                throw new Error('获取会话列表失败');
+            }
+
+            const sessions = await response.json();
+            this.renderSessionsList(sessions);
+            this.sessionsLoaded = true;
+        } catch (error) {
+            console.error('加载会话列表失败:', error);
+            sessionsList.innerHTML = '<div class="sessions-empty">加载失败，请刷新重试</div>';
+        }
+    }
+
+    // 渲染会话列表
+    renderSessionsList(sessions) {
+        const sessionsList = document.getElementById('sessions-list');
+        if (!sessionsList) return;
+
+        if (sessions.length === 0) {
+            sessionsList.innerHTML = `
+                <div class="sessions-empty">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <p>暂无历史会话</p>
+                    <p>开始新的对话吧</p>
+                </div>
+            `;
+            return;
+        }
+
+        sessionsList.innerHTML = sessions.map(session => `
+            <div class="session-item ${session.id === this.currentSessionId ? 'active' : ''}" data-session-id="${session.id}">
+                <div class="session-item-content">
+                    <div class="session-title">${this.escapeHtml(session.title || '新会话')}</div>
+                    <div class="session-meta">
+                        <span class="session-time">${this.formatSessionTime(session.updatedAt)}</span>
+                        <span class="session-model">${this.escapeHtml(session.modelName || '')}</span>
+                    </div>
+                </div>
+                <div class="session-actions">
+                    <button class="session-delete-btn" data-session-id="${session.id}" title="删除会话">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        // 绑定点击事件
+        sessionsList.querySelectorAll('.session-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                // 如果点击的是删除按钮，不切换会话
+                if (e.target.closest('.session-delete-btn')) return;
+                const sessionId = item.dataset.sessionId;
+                this.switchSession(sessionId);
+            });
+        });
+
+        // 绑定删除事件
+        sessionsList.querySelectorAll('.session-delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const sessionId = btn.dataset.sessionId;
+                this.confirmDeleteSession(sessionId);
+            });
+        });
+    }
+
+    // 格式化会话时间
+    formatSessionTime(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) {
+            return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        } else if (diffDays === 1) {
+            return '昨天';
+        } else if (diffDays < 7) {
+            return `${diffDays}天前`;
+        } else {
+            return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+        }
+    }
+
+    // HTML转义
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // 切换会话
+    async switchSession(sessionId) {
+        if (sessionId === this.currentSessionId) return;
+
+        // 先保存当前会话
+        if (this.messages.length > 0) {
+            await this.saveCurrentSession();
+        }
+
+        try {
+            const response = await fetch(`/api/sessions/${encodeURIComponent(this.uid)}/${encodeURIComponent(sessionId)}`);
+            if (!response.ok) {
+                throw new Error('获取会话详情失败');
+            }
+
+            const session = await response.json();
+
+            // 清空当前消息
+            this.clearMessages();
+
+            // 加载会话消息
+            this.currentSessionId = sessionId;
+            this.currentSessionTitle = session.title; // 保留已有的标题
+            if (session.modelName) {
+                this.modelSelect.value = session.modelName;
+                this.toggleImageUploadButton();
+            }
+
+            // 恢复消息
+            if (session.messages && session.messages.length > 0) {
+                session.messages.forEach(msg => {
+                    // 显示消息（appendMessageWithoutSave 会通过 appendMessage 添加到 this.messages）
+                    this.appendMessageWithoutSave(msg.role, msg.content, msg.imageUrls);
+                });
+            }
+
+            // 更新侧边栏选中状态
+            this.updateSessionActiveState(sessionId);
+
+        } catch (error) {
+            console.error('加载会话失败:', error);
+            alert('加载会话失败，请重试');
+        }
+    }
+
+    // 不触发保存的消息添加方法（用于加载历史会话）
+    appendMessageWithoutSave(role, content, imageUrls = []) {
+        // 暂存当前的 uploadedImageUrls
+        const originalImageUrls = this.uploadedImageUrls.slice();
+
+        // 如果有图片，设置 uploadedImageUrls 以便 appendMessage 正确处理
+        if (imageUrls && imageUrls.length > 0) {
+            this.uploadedImageUrls = imageUrls;
+        } else {
+            this.uploadedImageUrls = [];
+        }
+
+        // 使用 appendMessage 但不是流式模式
+        this.appendMessage(role, content, false);
+
+        // 恢复原来的 uploadedImageUrls
+        this.uploadedImageUrls = originalImageUrls;
+
+        // 重置当前消息元素
+        this.currentMessageElement = null;
+    }
+
+    // 更新侧边栏选中状态
+    updateSessionActiveState(activeSessionId) {
+        const sessionsList = document.getElementById('sessions-list');
+        if (!sessionsList) return;
+
+        sessionsList.querySelectorAll('.session-item').forEach(item => {
+            if (item.dataset.sessionId === activeSessionId) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+    }
+
+    // 创建新会话
+    async createNewSession() {
+        // 保存当前会话
+        if (this.messages.length > 0) {
+            await this.saveCurrentSession();
+        }
+
+        // 清空并创建新会话
+        this.clearMessages();
+        this.currentSessionId = this.generateSessionId();
+        this.currentSessionTitle = null; // 重置标题，等待首次保存时生成
+
+        // 更新侧边栏
+        this.updateSessionActiveState(this.currentSessionId);
+
+        // 聚焦到输入框
+        this.messageInput.focus();
+    }
+
+    // 保存当前会话
+    async saveCurrentSession() {
+        if (!this.uid || this.messages.length === 0) return;
+
+        // 只在没有已保存标题时生成新标题
+        if (!this.currentSessionTitle) {
+            this.currentSessionTitle = this.generateSessionTitle();
+        }
+
+        const modelName = this.modelSelect.value;
+
+        const saveRequest = {
+            sessionId: this.currentSessionId,
+            uid: this.uid,
+            title: this.currentSessionTitle,
+            modelName: modelName,
+            messages: this.messages.map(msg => ({
+                role: msg.role,
+                content: msg.content,
+                imageUrls: msg.images || []
+            }))
+        };
+
+        try {
+            const response = await fetch('/api/sessions/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(saveRequest)
+            });
+
+            if (!response.ok) {
+                throw new Error('保存会话失败');
+            }
+
+            // 刷新会话列表
+            await this.loadSessions();
+        } catch (error) {
+            console.error('保存会话失败:', error);
+        }
+    }
+
+    // 生成会话标题
+    generateSessionTitle() {
+        if (this.messages.length === 0) return '新会话';
+
+        // 从第一条用户消息生成标题
+        const firstUserMessage = this.messages.find(msg => msg.role === 'user');
+        if (firstUserMessage && firstUserMessage.content) {
+            let title = firstUserMessage.content.trim();
+            // 截取前50个字符
+            if (title.length > 50) {
+                title = title.substring(0, 50) + '...';
+            }
+            return title;
+        }
+
+        return '新会话';
+    }
+
+    // 确认删除会话
+    confirmDeleteSession(sessionId) {
+        const overlay = document.createElement('div');
+        overlay.className = 'delete-confirm-overlay';
+        overlay.innerHTML = `
+            <div class="delete-confirm-dialog">
+                <h3>删除会话</h3>
+                <p>确定要删除这个会话吗？此操作不可撤销。</p>
+                <div class="delete-confirm-actions">
+                    <button class="delete-confirm-cancel">取消</button>
+                    <button class="delete-confirm-delete">删除</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('.delete-confirm-cancel').addEventListener('click', () => {
+            document.body.removeChild(overlay);
+        });
+
+        overlay.querySelector('.delete-confirm-delete').addEventListener('click', async () => {
+            await this.deleteSession(sessionId);
+            document.body.removeChild(overlay);
+        });
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                document.body.removeChild(overlay);
+            }
+        });
+    }
+
+    // 删除会话
+    async deleteSession(sessionId) {
+        try {
+            const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                throw new Error('删除会话失败');
+            }
+
+            // 如果删除的是当前会话，创建新会话
+            if (sessionId === this.currentSessionId) {
+                this.clearMessages();
+                this.currentSessionId = this.generateSessionId();
+            }
+
+            // 刷新会话列表
+            await this.loadSessions();
+        } catch (error) {
+            console.error('删除会话失败:', error);
+            alert('删除会话失败，请重试');
+        }
     }
 
 }

@@ -23,6 +23,7 @@ builder.Services.AddSingleton<IMcpClientManager, McpClientManager>();
 builder.Services.AddScoped<OpenAIService>();
 builder.Services.AddScoped<JinaSearch>();
 builder.Services.AddScoped<OpenWeather>();
+builder.Services.AddScoped<ChatSessionRepository>();
 
 
 var app = builder.Build();
