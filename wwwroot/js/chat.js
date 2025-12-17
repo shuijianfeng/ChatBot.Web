@@ -44,13 +44,27 @@ class ChatUI {
         this.sidebarCollapsed = true; // 默认折叠
         this.sessionsLoaded = false;
 
+        // 会话脏标志 - 追踪是否有实际变更
+        this.sessionDirty = false;
+        this.originalSessionData = null; // 保存原始会话数据用于比较
+
+        // 搜索相关
+        this.sessionSearchQuery = '';
+        this.allSessions = []; // 保存完整会话列表用于搜索过滤
+
         // 设置图片上传事件监听
         this.uploadImageButton.addEventListener('click', () => this.imageInput.click());
         this.imageInput.addEventListener('change', (event) => this.handleImageUpload(event));
         //this.removeImageButton.addEventListener('click', () => this.removeAllImages());
 
         // 设置模型选择事件监听
-        this.modelSelect.addEventListener('change', () => this.toggleImageUploadButton());
+        this.modelSelect.addEventListener('change', () => {
+            this.toggleImageUploadButton();
+            // 检查模型是否与原始模型不同
+            if (this.originalSessionData && this.originalSessionData.modelName !== this.modelSelect.value) {
+                this.sessionDirty = true;
+            }
+        });
 
         this.networkButton.addEventListener('click', () => {
             this.isNetworkEnabled = !this.isNetworkEnabled;
@@ -1141,6 +1155,7 @@ class ChatUI {
                 this.messages.splice(index, 1);
             }
             this.messagesContainer.removeChild(messageElement);
+            this.sessionDirty = true; // 标记会话有变更
         }
     }
 
@@ -2000,6 +2015,7 @@ class ChatUI {
 
         this.setLoadingState(true);
         this.appendMessage('user', message);
+        this.sessionDirty = true; // 标记会话有变更
         this.messageInput.value = '';
         this.removeAllImages(); // 清除图片预览
         this.autoResizeTextarea();
@@ -2190,12 +2206,37 @@ class ChatUI {
         const newChatBtn = document.getElementById('new-chat-btn');
         const collapseSidebarBtn = document.getElementById('collapse-sidebar-btn');
         const expandSidebarBtn = document.getElementById('expand-sidebar-btn');
+        const searchInput = document.getElementById('session-search-input');
+        const searchClearBtn = document.getElementById('search-clear-btn');
 
         if (!sidebar) return;
 
         // 新建会话按钮
         if (newChatBtn) {
             newChatBtn.addEventListener('click', () => this.createNewSession());
+        }
+
+        // 搜索框事件监听
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.sessionSearchQuery = e.target.value.trim().toLowerCase();
+                if (searchClearBtn) {
+                    searchClearBtn.style.display = this.sessionSearchQuery ? 'flex' : 'none';
+                }
+                this.filterAndRenderSessions();
+            });
+        }
+
+        // 清除搜索按钮
+        if (searchClearBtn) {
+            searchClearBtn.addEventListener('click', () => {
+                if (searchInput) {
+                    searchInput.value = '';
+                    this.sessionSearchQuery = '';
+                    searchClearBtn.style.display = 'none';
+                    this.filterAndRenderSessions();
+                }
+            });
         }
 
         // 折叠/展开侧边栏
@@ -2251,7 +2292,8 @@ class ChatUI {
             }
 
             const sessions = await response.json();
-            this.renderSessionsList(sessions);
+            this.allSessions = sessions; // 保存完整列表用于搜索
+            this.filterAndRenderSessions();
             this.sessionsLoaded = true;
         } catch (error) {
             console.error('加载会话列表失败:', error);
@@ -2259,10 +2301,36 @@ class ChatUI {
         }
     }
 
+    // 过滤并渲染会话列表
+    filterAndRenderSessions() {
+        if (!this.sessionSearchQuery) {
+            this.renderSessionsList(this.allSessions);
+            return;
+        }
+
+        const filtered = this.allSessions.filter(session => {
+            const title = (session.title || '').toLowerCase();
+            const model = (session.modelName || '').toLowerCase();
+            return title.includes(this.sessionSearchQuery) || model.includes(this.sessionSearchQuery);
+        });
+
+        this.renderSessionsList(filtered, this.sessionSearchQuery);
+    }
+
     // 渲染会话列表
-    renderSessionsList(sessions) {
+    renderSessionsList(sessions, highlightQuery = '') {
         const sessionsList = document.getElementById('sessions-list');
         if (!sessionsList) return;
+
+        // 搜索无结果
+        if (sessions.length === 0 && highlightQuery) {
+            sessionsList.innerHTML = `
+                <div class="sessions-no-results">
+                    <p>没有找到匹配 "${this.escapeHtml(highlightQuery)}" 的会话</p>
+                </div>
+            `;
+            return;
+        }
 
         if (sessions.length === 0) {
             sessionsList.innerHTML = `
@@ -2277,13 +2345,23 @@ class ChatUI {
             return;
         }
 
-        sessionsList.innerHTML = sessions.map(session => `
+        sessionsList.innerHTML = sessions.map(session => {
+            let titleHtml = this.escapeHtml(session.title || '新会话');
+            let modelHtml = this.escapeHtml(session.modelName || '');
+
+            // 高亮搜索关键词
+            if (highlightQuery) {
+                titleHtml = this.highlightText(titleHtml, highlightQuery);
+                modelHtml = this.highlightText(modelHtml, highlightQuery);
+            }
+
+            return `
             <div class="session-item ${session.id === this.currentSessionId ? 'active' : ''}" data-session-id="${session.id}">
                 <div class="session-item-content">
-                    <div class="session-title">${this.escapeHtml(session.title || '新会话')}</div>
+                    <div class="session-title">${titleHtml}</div>
                     <div class="session-meta">
                         <span class="session-time">${this.formatSessionTime(session.updatedAt)}</span>
-                        <span class="session-model">${this.escapeHtml(session.modelName || '')}</span>
+                        <span class="session-model">${modelHtml}</span>
                     </div>
                 </div>
                 <div class="session-actions">
@@ -2295,7 +2373,7 @@ class ChatUI {
                     </button>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
 
         // 绑定点击事件
         sessionsList.querySelectorAll('.session-item').forEach(item => {
@@ -2315,6 +2393,13 @@ class ChatUI {
                 this.confirmDeleteSession(sessionId);
             });
         });
+    }
+
+    // 高亮搜索文本
+    highlightText(text, query) {
+        if (!query) return text;
+        const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return text.replace(regex, '<mark class="search-highlight">$1</mark>');
     }
 
     // 格式化会话时间
@@ -2346,8 +2431,8 @@ class ChatUI {
     async switchSession(sessionId) {
         if (sessionId === this.currentSessionId) return;
 
-        // 先保存当前会话
-        if (this.messages.length > 0) {
+        // 先保存当前会话（只有在有变更时才保存）
+        if (this.messages.length > 0 && this.sessionDirty) {
             await this.saveCurrentSession();
         }
 
@@ -2377,6 +2462,14 @@ class ChatUI {
                     this.appendMessageWithoutSave(msg.role, msg.content, msg.imageUrls);
                 });
             }
+
+            // 保存原始会话数据快照（用于脏标志比较）
+            this.originalSessionData = {
+                modelName: session.modelName || '',
+                messageCount: (session.messages || []).length
+            };
+            // 重置脏标志
+            this.sessionDirty = false;
 
             // 更新侧边栏选中状态
             this.updateSessionActiveState(sessionId);
@@ -2425,8 +2518,8 @@ class ChatUI {
 
     // 创建新会话
     async createNewSession() {
-        // 保存当前会话
-        if (this.messages.length > 0) {
+        // 保存当前会话（只有在有变更时才保存）
+        if (this.messages.length > 0 && this.sessionDirty) {
             await this.saveCurrentSession();
         }
 
@@ -2434,6 +2527,10 @@ class ChatUI {
         this.clearMessages();
         this.currentSessionId = this.generateSessionId();
         this.currentSessionTitle = null; // 重置标题，等待首次保存时生成
+
+        // 重置脏标志和原始数据
+        this.sessionDirty = false;
+        this.originalSessionData = null;
 
         // 更新侧边栏
         this.updateSessionActiveState(this.currentSessionId);
