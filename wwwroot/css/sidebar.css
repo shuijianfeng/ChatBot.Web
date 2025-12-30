@@ -59,9 +59,12 @@
 
 /* 侧边栏头部 */
 .sidebar-header {
-    padding: 16px;
+    padding: 12px;
     border-bottom: 1px solid #e2e8f0;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 /* 搜索框容器 */
@@ -140,30 +143,50 @@
 }
 
 .new-chat-btn {
-    width: 100%;
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 12px 16px;
+    gap: 6px;
+    padding: 8px 12px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
-    border-radius: 12px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     transition: all 0.2s ease;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .new-chat-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .new-chat-btn:active {
     transform: translateY(0);
+}
+
+/* 头部收缩按钮 */
+.sidebar-header .collapse-btn {
+    padding: 8px;
+    background: transparent;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #64748b;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.sidebar-header .collapse-btn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: #1e293b;
 }
 
 /* 会话列表 */
@@ -298,33 +321,6 @@
 .session-delete-btn:hover {
     background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
-}
-
-/* 侧边栏底部 */
-.sidebar-footer {
-    padding: 12px 16px;
-    border-top: 1px solid #e2e8f0;
-    display: flex;
-    justify-content: flex-end;
-    flex-shrink: 0;
-}
-
-.collapse-btn {
-    padding: 8px;
-    background: transparent;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    cursor: pointer;
-    color: #64748b;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.collapse-btn:hover {
-    background: rgba(0, 0, 0, 0.04);
-    color: #1e293b;
 }
 
 /* 展开侧边栏按钮 */
@@ -562,16 +558,12 @@
     color: #94a3b8;
 }
 
-[data-theme="dark"] .sidebar-footer {
-    border-top-color: #334155;
-}
-
-[data-theme="dark"] .collapse-btn {
+[data-theme="dark"] .sidebar-header .collapse-btn {
     color: #94a3b8;
     border-color: #334155;
 }
 
-[data-theme="dark"] .collapse-btn:hover {
+[data-theme="dark"] .sidebar-header .collapse-btn:hover {
     background: rgba(255, 255, 255, 0.05);
     color: #f1f5f9;
 }

@@ -20,18 +20,21 @@ namespace ChatBot.Controllers
         private readonly IChatService _chatService;
         private readonly IWebHostEnvironment _env;
         private readonly ChatSessionRepository _sessionRepository;
+        private readonly StreamCacheService _streamCache;
 
         public HomeController(
             ILogger<HomeController> logger,
             IChatService chatService,
             IWebHostEnvironment webHostEnvironment,
             ChatSessionRepository sessionRepository,
+            StreamCacheService streamCache,
             Microsoft.Extensions.Configuration.IConfiguration configuration)
         {
 
             _chatService = chatService;
             _env = webHostEnvironment;
             _sessionRepository = sessionRepository;
+            _streamCache = streamCache;
         }
 
         /// <summary>
@@ -610,20 +613,38 @@ namespace ChatBot.Controllers
 
 
         [HttpPost]
+        [HttpPost]
         [Route("/api/chat/stream")]
         public async Task StreamChat([FromBody] ChatRequest request)
         {
+            // 创建 streamId 用于断线重连
+            var streamId = _streamCache.CreateStream();
 
-            //Response.Headers.Append("Content-Type", "text/event-stream");
-            //Response.Headers.Append("Cache-Control", "no-cache");
-            //Response.Headers.Append("Connection", "keep-alive");
-            //Response.Headers.Append("X-Accel-Buffering", "no");
-            var cancellationToken = HttpContext.RequestAborted;
+            // 使用独立的取消令牌，防止客户端断开连接（如锁屏）导致后端停止生成
+            // 设置 5 分钟超时作为安全限制，防止无限挂起
+            using var generationCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            var requestToken = HttpContext.RequestAborted;
+
             try
             {
+                // 先尽力发送 streamId 给前端
+                try
+                {
+                    var initData = new { streamId = streamId };
+                    await Response.WriteAsync($"data: {JsonSerializer.Serialize(initData)}\n\n", requestToken);
+                    await Response.Body.FlushAsync(requestToken);
+                }
+                catch
+                {
+                    // 忽略初始写入错误（如已断开），继续执行后端生成以便缓存
+                }
+
                 bool Incremental_output = _chatService.GetModelConfig(request.Model).Incremental_output;
-                IAsyncEnumerable<string> stream;
-                stream = _chatService.GenerateStreamAsync(request, cancellationToken);
+
+                // 关键点：传递 generationCts.Token 而不是 requestToken 给生成服务
+                // 这样即使 requestToken 取消（客户端断开），生成也会继续
+                IAsyncEnumerable<string> stream = _chatService.GenerateStreamAsync(request, generationCts.Token);
+
                 int count = 0;
                 await foreach (var chunk in stream)
                 {
@@ -633,23 +654,82 @@ namespace ChatBot.Controllers
                         str = chunk.Substring(count);
                         count = chunk.Length;
                     }
-                    var data = new { content = str };
 
-                    await Response.WriteAsync($"data: {JsonSerializer.Serialize(data)}\n\n");
-                    await Response.Body.FlushAsync();
+                    // 写入缓存 (这是最重要的，供 Resume 使用)
+                    _streamCache.AppendContent(streamId, str);
+
+                    // 尝试推送到当前连接
+                    // 如果客户端还在连接，就推送；如果断开了，catch 住错误但继续循环
+                    if (!requestToken.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            var data = new { content = str };
+                            await Response.WriteAsync($"data: {JsonSerializer.Serialize(data)}\n\n", requestToken);
+                            await Response.Body.FlushAsync(requestToken);
+                        }
+                        catch
+                        {
+                            // 网络写入失败，仅仅忽略，不中断生成循环
+                        }
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
 
-                var errorData = new { error = "在处理您的请求时发生了错误。" };
-                await Response.WriteAsync($"data: {JsonSerializer.Serialize(errorData)}\n\n");
+                // 只有在生成循环完整结束后，才标记完成
+                _streamCache.MarkCompleted(streamId);
+            }
+            catch (Exception)
+            {
+                // 生成过程发生内部错误，或者 generationCts 超时
+                if (!requestToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        var errorData = new { error = "在处理您的请求时发生了错误。" };
+                        await Response.WriteAsync($"data: {JsonSerializer.Serialize(errorData)}\n\n", requestToken);
+                    }
+                    catch { }
+                }
+                _streamCache.MarkCompleted(streamId);
             }
             finally
             {
-                await Response.WriteAsync("data: [DONE]\n\n");
-                await Response.Body.FlushAsync();
+                if (!requestToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Response.WriteAsync("data: [DONE]\n\n", requestToken);
+                        await Response.Body.FlushAsync(requestToken);
+                    }
+                    catch { }
+                }
             }
+        }
+
+        /// <summary>
+        /// 恢复断线的流式传输，获取从指定偏移量开始的缓存内容
+        /// </summary>
+        [HttpGet]
+        [Route("/api/chat/stream/{streamId}/resume")]
+        public IActionResult ResumeStream(string streamId, [FromQuery] int offset = 0)
+        {
+            if (string.IsNullOrEmpty(streamId))
+            {
+                return BadRequest(new { error = "streamId 不能为空" });
+            }
+
+            var result = _streamCache.GetContentFromOffset(streamId, offset);
+            if (result == null)
+            {
+                return NotFound(new { error = "流不存在或已过期" });
+            }
+
+            return Ok(new
+            {
+                content = result.Content,
+                totalLength = result.TotalLength,
+                isCompleted = result.IsCompleted
+            });
         }
 
 

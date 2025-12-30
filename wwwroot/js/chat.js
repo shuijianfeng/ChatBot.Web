@@ -52,6 +52,12 @@ class ChatUI {
         this.sessionSearchQuery = '';
         this.allSessions = []; // 保存完整会话列表用于搜索过滤
 
+        // 断线重连相关
+        this.currentStreamId = null; // 当前流式传输的 streamId
+        this.receivedContentLength = 0; // 已接收的内容长度
+        this.isStreaming = false; // 是否正在流式传输
+        this.setupVisibilityHandler(); // 设置页面可见性监听
+
         // 设置图片上传事件监听
         this.uploadImageButton.addEventListener('click', () => this.imageInput.click());
         this.imageInput.addEventListener('change', (event) => this.handleImageUpload(event));
@@ -1940,17 +1946,23 @@ class ChatUI {
 
     appendStreamContent(content) {
         if (this.currentMessageElement) {
-            const fullMessageDiv = this.currentMessageElement.querySelector('.full-message');
             const contentDiv = this.currentMessageElement.querySelector('.message-content');
 
-            if (fullMessageDiv && contentDiv) {
+            if (contentDiv) {
                 this.messageBuffer += content;
-                fullMessageDiv.textContent = this.messageBuffer;
+                // full-message类似乎不存在，直接忽略
+                // const fullMessageDiv = this.currentMessageElement.querySelector('.full-message');
+                // if (fullMessageDiv) fullMessageDiv.textContent = this.messageBuffer;
+
+
 
                 try {
 
                     // 渲染 markdown 内容
                     contentDiv.innerHTML = marked.parse(this.messageBuffer);
+
+                    // 更新 rawContent 数据属性，以便于复制等功能
+                    contentDiv.dataset.rawContent = this.messageBuffer;
 
                     // 处理所有代码块
                     contentDiv.querySelectorAll('pre code').forEach((block) => {
@@ -1969,6 +1981,22 @@ class ChatUI {
                 }
 
                 this.scrollToBottom();
+            } else {
+
+                // 尝试自愈：如果在当前消息元素里找不到 contentDiv，可能是引用错乱，尝试重新获取最后一条消息
+                const lastMsg = this.messagesContainer.querySelector('.message.assistant:last-child');
+                if (lastMsg && lastMsg !== this.currentMessageElement) {
+                    this.currentMessageElement = lastMsg;
+                    this.appendStreamContent(content); // 递归重试一次
+                }
+            }
+        } else {
+
+            // 自愈：如果没有当前消息元素，尝试获取最后一条
+            const lastMsg = this.messagesContainer.querySelector('.message.assistant:last-child');
+            if (lastMsg) {
+                this.currentMessageElement = lastMsg;
+                this.appendStreamContent(content); // 递归重试一次
             }
         }
     }
@@ -2019,7 +2047,15 @@ class ChatUI {
         this.messageInput.value = '';
         this.removeAllImages(); // 清除图片预览
         this.autoResizeTextarea();
-        //this.uploadedImageUrl = null; // 清除已上传的图片URL
+
+        // 重置断线重连相关状态
+        this.currentStreamId = null;
+        this.receivedContentLength = 0;
+        this.isStreaming = true;
+
+        // 标记流是否正常完成（收到 [DONE] 或用户取消）
+        let streamCompleted = false;
+
         try {
             const message = this.messageInput.value.trim();
 
@@ -2063,14 +2099,31 @@ class ChatUI {
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             const data = line.slice(6);
-                            if (data === '[DONE]') continue;
+                            if (data === '[DONE]') {
+                                streamCompleted = true; // 正常完成
+                                this.isStreaming = false;
+                                continue;
+                            }
 
                             try {
                                 const parsed = JSON.parse(data);
+
+                                // 处理 streamId（首次响应）
+                                if (parsed.streamId) {
+                                    this.currentStreamId = parsed.streamId;
+                                    // 同时保存到 savedStreamId，方便锁屏恢复
+                                    this.savedStreamId = parsed.streamId;
+                                    this.savedContentLength = 0;
+                                    continue;
+                                }
+
                                 if (parsed.error) {
                                     throw new Error(parsed.error);
                                 }
                                 if (parsed.content) {
+                                    this.receivedContentLength += parsed.content.length;
+                                    // 同步更新 savedContentLength
+                                    this.savedContentLength = this.receivedContentLength;
                                     this.appendMessage('assistant', parsed.content, this.stream);
                                 }
                             } catch (e) {
@@ -2082,8 +2135,17 @@ class ChatUI {
             }
             catch (error) {
                 if (error.name === 'AbortError') {
-                    console.log('请求被用户取消');
+                    if (this.needsResume) {
+                        // 锁屏自动中止，不标记为完成，保留状态
+                        console.log('锁屏中止，保留状态以便恢复');
+                    } else {
+                        // 用户主动取消
+                        console.log('用户取消');
+                        streamCompleted = true;
+                    }
                 } else {
+                    // 连接异常断开，不标记为完成，保留状态以便恢复
+                    console.log('连接异常断开，保留状态以便恢复');
                     throw error;
                 }
             } finally {
@@ -2092,66 +2154,82 @@ class ChatUI {
         } catch (error) {
             console.error('错误:', error);
             if (error.name === 'AbortError') {
-                this.appendStreamContent('\n\n[已停止生成]');
+                if (this.needsResume) {
+                    // 锁屏中止，不显示提示
+                } else {
+                    // 用户主动取消
+                    this.appendStreamContent('\n\n[已停止生成]');
+                    streamCompleted = true;
+                }
             } else {
-                this.appendStreamContent('\n\n[发生错误]');
+                // 网络错误等，不显示错误信息，等待恢复
+                console.log('流式传输中断，等待恢复。streamId:', this.currentStreamId);
             }
 
         } finally {
             this.setLoadingState(false);
 
+            // 只有正常完成时才清理状态
+            if (streamCompleted) {
+                this.isStreaming = false;
 
-            if (this.currentMessageElement) {
-                try {
-                    // 等待数学公式渲染完成
-                    await this.renderMath(this.currentMessageElement);
-                } catch (error) {
-                    console.error('MathJax 渲染错误:', error);
-                }
-                // 查找并渲染所有 mermaid 图表
-                const mermaidCharts = this.currentMessageElement.querySelectorAll('.mermaid-chart');
-                if (mermaidCharts.length > 0) {
-                    for (const chart of mermaidCharts) {
-                        try {
-                            const code = chart.textContent;
-                            const id = chart.id;
-                            await this.renderMermaidChart(code, id);
-                        } catch (error) {
-                            console.error('Error rendering chart:', error);
-                            chart.innerHTML = `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
-                        }
+                if (this.currentMessageElement) {
+                    try {
+                        // 等待数学公式渲染完成
+                        await this.renderMath(this.currentMessageElement);
+                    } catch (error) {
+                        console.error('MathJax 渲染错误:', error);
                     }
-                }
-
-                const jsmindCharts = this.currentMessageElement.querySelectorAll('.jsmind-chart');
-                if (jsmindCharts.length > 0) {
-                    for (const chart of jsmindCharts) {
-                        try {
-
-                            var options = {
-                                container: chart.id, // [必选] 容器的ID
-                                editable: false,                // [可选] 是否启用编辑
-                                theme: 'orange'                // [可选] 主题
-                            };
-                            if (window.jsMind) {
-                                var jm = new jsMind(options);
-                                jm.show();
+                    // 查找并渲染所有 mermaid 图表
+                    const mermaidCharts = this.currentMessageElement.querySelectorAll('.mermaid-chart');
+                    if (mermaidCharts.length > 0) {
+                        for (const chart of mermaidCharts) {
+                            try {
+                                const code = chart.textContent;
+                                const id = chart.id;
+                                await this.renderMermaidChart(code, id);
+                            } catch (error) {
+                                console.error('Error rendering chart:', error);
+                                chart.innerHTML = `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
                             }
+                        }
+                    }
 
-                        } catch (error) {
-                            console.error('Error rendering chart:', error);
-                            chart.innerHTML = `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
+                    const jsmindCharts = this.currentMessageElement.querySelectorAll('.jsmind-chart');
+                    if (jsmindCharts.length > 0) {
+                        for (const chart of jsmindCharts) {
+                            try {
+
+                                var options = {
+                                    container: chart.id, // [必选] 容器的ID
+                                    editable: false,                // [可选] 是否启用编辑
+                                    theme: 'orange'                // [可选] 主题
+                                };
+                                if (window.jsMind) {
+                                    var jm = new jsMind(options);
+                                    jm.show();
+                                }
+
+                            } catch (error) {
+                                console.error('Error rendering chart:', error);
+                                chart.innerHTML = `<div class="chart-error">Failed to render chart: ${error.message}</div>`;
+                            }
                         }
                     }
                 }
-            }
-            this.currentMessageElement = null;
-            this.toggleStopButton(false); // 隐藏停止按钮
-            this.controller = null;
-            this.uploadedImageUrls = []; // 清除已上传的图片URLs
+                this.currentMessageElement = null;
+                this.currentStreamId = null; // 只有正常完成才清除 streamId
+                this.toggleStopButton(false);
+                this.controller = null;
+                this.uploadedImageUrls = [];
 
-            // 自动保存会话
-            this.saveCurrentSession();
+                // 自动保存会话
+                this.saveCurrentSession();
+            } else {
+                // 连接中断，保留 isStreaming 和 currentStreamId，等待页面恢复后重连
+                this.toggleStopButton(false);
+                this.controller = null;
+            }
         }
     }
 
@@ -2655,6 +2733,201 @@ class ChatUI {
         } catch (error) {
             console.error('删除会话失败:', error);
             alert('删除会话失败，请重试');
+        }
+    }
+
+    // 设置页面可见性变化监听（用于断线重连）
+    setupVisibilityHandler() {
+        // 调试面板更新
+        this.updateDebug = (event) => {
+            const el = document.getElementById('debug-info');
+            if (el) {
+                // 简单追加日志
+                const current = el.innerHTML;
+                const lines = current.split('<br>');
+                if (lines.length > 15) lines.shift(); // 增加到15行
+                lines.push(event);
+                el.innerHTML = lines.join('<br>');
+            }
+        };
+
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'hidden') {
+                // 页面变为不可见（锁屏、切换标签页等）
+                // 如果正在流式传输，主动中止请求以便稍后重连
+                if (this.isStreaming && this.controller && this.savedStreamId) {
+                    // savedStreamId 已在接收时持续更新，这里只需标记和中止
+                    this.needsResume = true;
+                    this.controller.abort();
+                }
+            } else if (document.visibilityState === 'visible') {
+                // 页面重新可见，检查是否需要恢复流式传输
+                if (this.needsResume && this.savedStreamId) {
+                    const sid = this.savedStreamId;
+                    const slen = this.savedContentLength;
+                    this.needsResume = false;
+                    this.savedStreamId = null;
+                    this.savedContentLength = 0;
+                    // 等待一小段时间让中止完成
+                    await new Promise(r => setTimeout(r, 200));
+                    await this.tryResumeStreamWithId(sid, slen);
+                }
+            }
+        });
+
+        // 也监听 focus 事件作为备选
+        window.addEventListener('focus', async () => {
+            if (this.needsResume && this.savedStreamId) {
+                this.needsResume = false;
+                await new Promise(r => setTimeout(r, 200));
+                await this.tryResumeStreamWithId(this.savedStreamId, this.savedContentLength);
+                this.savedStreamId = null;
+                this.savedContentLength = 0;
+            }
+        });
+    }
+
+    // 尝试恢复断线的流式传输
+    async tryResumeStream() {
+        // 只需要有 streamId 就尝试恢复
+        if (!this.currentStreamId) {
+            return;
+        }
+
+        try {
+            const url = `/api/chat/stream/${this.currentStreamId}/resume?offset=${this.receivedContentLength}`;
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    // 流已过期
+                    this.isStreaming = false;
+                    this.currentStreamId = null;
+                    return;
+                }
+                throw new Error('恢复流失败: ' + response.status);
+            }
+
+            const result = await response.json();
+
+            // 重要：总是同步后端返回的总长度，防止offset偏差
+            if (typeof result.totalLength === 'number') {
+                this.receivedContentLength = result.totalLength;
+            }
+
+            // 如果有新内容，追加显示
+            if (result.content && result.content.length > 0) {
+                // 确保有消息元素可以追加（如果断线时丢失了引用）
+                if (!this.currentMessageElement) {
+                    // 查找页面上最后一个助手消息
+                    const assistantMessages = this.messagesContainer.querySelectorAll('.message.assistant');
+                    if (assistantMessages.length > 0) {
+                        this.currentMessageElement = assistantMessages[assistantMessages.length - 1];
+                    }
+                }
+
+                this.appendStreamContent(result.content);
+            }
+
+            // 如果流已完成
+            if (result.isCompleted) {
+                this.isStreaming = false;
+                this.setLoadingState(false);
+                this.toggleStopButton(false);
+
+                // 渲染最终内容
+                if (this.currentMessageElement) {
+                    try {
+                        await this.renderMath(this.currentMessageElement);
+                    } catch (error) {
+                        console.error('MathJax 渲染错误:', error);
+                    }
+                }
+
+                this.currentMessageElement = null;
+                this.currentStreamId = null;
+                this.saveCurrentSession();
+            } else {
+                // 流还在继续，设置定时轮询
+                setTimeout(() => this.tryResumeStream(), 1000);
+            }
+        } catch (error) {
+            console.error('恢复流式传输失败:', error);
+        }
+    }
+
+    // 使用指定的 streamId 恢复流式传输（用于锁屏恢复）
+    async tryResumeStreamWithId(streamId, offset) {
+        // 恢复流式状态：禁用输入，显示停止按钮
+        this.isStreaming = true;
+        this.setLoadingState(true);
+        this.toggleStopButton(true);
+
+        try {
+            // 创建一个新的 Controller 用于此次恢复请求，以便支持手动停止
+            this.controller = new AbortController();
+            const signal = this.controller.signal;
+
+            const url = `/api/chat/stream/${streamId}/resume?offset=${offset}`;
+            const response = await fetch(url, { signal });
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    this.isStreaming = false;
+                    this.setLoadingState(false);
+                    this.toggleStopButton(false);
+                    return;
+                }
+                throw new Error('恢复流失败: ' + response.status);
+            }
+
+            const result = await response.json();
+
+            // 重要：总是同步后端返回的总长度
+            if (typeof result.totalLength === 'number') {
+                this.receivedContentLength = result.totalLength;
+            }
+
+            // 如果有新内容，追加显示
+            if (result.content && result.content.length > 0) {
+                // 确保有消息元素可以追加（如果断线时丢失了引用）
+                if (!this.currentMessageElement) {
+                    const assistantMessages = this.messagesContainer.querySelectorAll('.message.assistant');
+                    if (assistantMessages.length > 0) {
+                        this.currentMessageElement = assistantMessages[assistantMessages.length - 1];
+                    }
+                }
+
+                this.appendStreamContent(result.content);
+            }
+
+
+            // 如果流已完成
+            if (result.isCompleted) {
+                if (this.updateDebug) this.updateDebug('completed');
+                this.isStreaming = false;
+                this.setLoadingState(false);
+                this.toggleStopButton(false);
+
+                if (this.currentMessageElement) {
+                    try {
+                        await this.renderMath(this.currentMessageElement);
+                    } catch (error) {
+                        console.error('MathJax 渲染错误:', error);
+                    }
+                }
+
+                this.currentMessageElement = null;
+                this.currentStreamId = null;
+                this.saveCurrentSession();
+            } else {
+                // 流还在继续，设置定时轮询
+                this.currentStreamId = streamId; // 恢复 streamId 以便继续轮询
+                setTimeout(() => this.tryResumeStream(), 1000);
+            }
+        } catch (error) {
+            if (this.updateDebug) this.updateDebug(`err:${error.message}`);
+            console.error('恢复流式传输失败:', error);
         }
     }
 
