@@ -527,32 +527,52 @@ class ChatUI {
 
                 if (language.toLowerCase() === 'thoughts') {
 
-                    header.style.maxWidth = '700px'
-                    wrapper.style.maxWidth = '700px'
+                    header.style.display = 'none'; // 隐藏原标题栏
 
-                    pre.style.maxWidth = '700px'
+                    wrapper.style.maxWidth = '700px';
+                    wrapper.style.width = '100%';
+                    wrapper.style.height = 'auto';
+                    wrapper.className = 'code-block-wrapper thoughts-wrapper';
 
-                    header.style.width = '100%'; // 添加这行代码，设置宽度为100%
+                    pre.style.maxWidth = '700px';
+                    pre.style.width = '100%';
+                    pre.style.height = 'auto';
+                    pre.style.overflow = 'hidden';
+                    pre.style.whiteSpace = 'pre-wrap';
+                    pre.style.overflowWrap = 'break-word';
+                    pre.style.wordWrap = 'break-word';
 
-                    wrapper.style.width = '100%'; // 添加这行代码，设置宽度为100%
-                    wrapper.style.height = 'auto'
-
-                    pre.style.width = '100%';          // 代码块宽度100%
-                    pre.style.height = 'auto';         // 代码块高度自动
-
-                    pre.style.overflow = 'hidden';     // 隐藏滚动条
-                    pre.style.whiteSpace = 'pre-wrap'; // 允许内容自动换行
-                    pre.style.overflowwrap = 'break-word';      // 防止长内容不换行
-                    pre.style.wordWrap = 'break-word';      // 防止长内容不换行
-                    code.style.width = '100%';          // 代码块宽度100%
+                    code.style.width = '100%';
                     code.style.height = 'auto';
-                    code.style.overflow = 'hidden';     // 隐藏滚动条
-                    code.style.whiteSpace = 'pre-wrap'; // 允许内容自动换行
-                    code.style.overflowwrap = 'break-word';      // 防止长内容不换行
+                    code.style.overflow = 'hidden';
+                    code.style.whiteSpace = 'pre-wrap';
+                    code.style.overflowWrap = 'break-word';
 
+                    // 使用 details/summary 实现可折叠，默认展开
                     const details = document.createElement('details');
                     details.open = true;
+                    details.className = 'thoughts-details';
+
                     const summary = document.createElement('summary');
+                    summary.className = 'thoughts-summary';
+
+                    // 创建箭头图标
+                    const arrow = document.createElement('span');
+                    arrow.className = 'thoughts-arrow';
+                    arrow.textContent = '∨'; // 展开时向下箭头
+
+                    // 监听展开/折叠状态变化
+                    details.addEventListener('toggle', () => {
+                        arrow.textContent = details.open ? '∨' : '❯';
+                    });
+
+                    // 创建文本
+                    const textSpan = document.createElement('span');
+                    const thinkTime = Math.max(3, Math.min(30, Math.floor(code.textContent.length / 100)));
+                    textSpan.textContent = `Thought for ${thinkTime}s`;
+
+                    summary.appendChild(arrow);
+                    summary.appendChild(textSpan);
                     details.appendChild(summary);
                     details.appendChild(pre);
                     wrapper.appendChild(details);

@@ -641,3 +641,98 @@
 [data-theme="dark"] .search-highlight {
     background: rgba(88, 166, 255, 0.3);
 }
+
+/* ==================== Thoughts 折叠框样式 ==================== */
+
+/* Thoughts 包装器 */
+.thoughts-wrapper {
+    border: none !important;
+    background: transparent !important;
+}
+
+/* Thoughts 折叠容器 */
+.thoughts-details {
+    width: 100%;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    margin: 0;
+}
+
+/* Thoughts 折叠摘要 - 参照图样式 */
+.thoughts-summary {
+    padding: 4px 0 0 0;
+    margin-bottom: -1px;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    color: #6b7280;
+    font-size: 14px;
+    user-select: none;
+    border-bottom: none;
+    background: transparent;
+    position: relative;
+    z-index: 1;
+}
+
+.thoughts-summary::-webkit-details-marker {
+    display: none;
+}
+
+/* 箭头图标样式 - 更清晰更大 */
+.thoughts-arrow {
+    margin-right: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    display: inline-block;
+    color: #374151;
+    line-height: 1;
+}
+
+/* 折叠状态 - 隐藏内容 */
+.thoughts-details:not([open]) pre {
+    display: none;
+}
+
+/* Thoughts 内容区域样式 */
+.thoughts-details pre {
+    background: #f9fafb !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    margin-top: 8px !important;
+    padding: 12px 16px !important;
+}
+
+.thoughts-details code {
+    background: transparent !important;
+    color: #374151 !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+}
+
+/* 深色主题 - Thoughts 折叠框 */
+[data-theme="dark"] .thoughts-wrapper {
+    background: transparent !important;
+}
+
+[data-theme="dark"] .thoughts-details {
+    background: transparent;
+}
+
+[data-theme="dark"] .thoughts-summary {
+    color: #9ca3af;
+}
+
+[data-theme="dark"] .thoughts-arrow {
+    color: #d1d5db;
+}
+
+[data-theme="dark"] .thoughts-details pre {
+    background: #1f2937 !important;
+    border-color: #374151 !important;
+}
+
+[data-theme="dark"] .thoughts-details code {
+    color: #d1d5db !important;
+}
