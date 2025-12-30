@@ -25,6 +25,9 @@ builder.Services.AddScoped<JinaSearch>();
 builder.Services.AddScoped<OpenWeather>();
 builder.Services.AddScoped<ChatSessionRepository>();
 
+// 流式消息缓存服务（用于断线重连）
+builder.Services.AddSingleton<StreamCacheService>();
+
 
 var app = builder.Build();
 
