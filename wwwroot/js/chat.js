@@ -438,6 +438,10 @@ class ChatUI {
             } finally {
                 this.controller = null;
                 this.toggleStopButton(false);
+                // 清理流式传输状态，防止轮询继续
+                this.isStreaming = false;
+                this.currentStreamId = null;
+                this.setLoadingState(false);
             }
         }
     }
@@ -1009,7 +1013,7 @@ class ChatUI {
 
                 imagesHtml += `<img src="${url}" alt="上传的图片" class="uploaded-image-preview" />\n`;
             });
-            contentDiv.innerHTML = imagesHtml + marked.parse(content);
+            contentDiv.innerHTML = imagesHtml + marked.parse(this.preprocessMarkdown(content));
             // 为所有上传的图片添加双击事件
             contentDiv.querySelectorAll('.uploaded-image-preview').forEach(img => {
                 img.addEventListener('dblclick', () => {
@@ -1027,7 +1031,7 @@ class ChatUI {
         }
         else {
             try {
-                contentDiv.innerHTML = marked.parse(content);
+                contentDiv.innerHTML = marked.parse(this.preprocessMarkdown(content));
                 // 为所有图片添加双击事件和样式
                 contentDiv.querySelectorAll('img').forEach(img => {
                     // 添加样式类
@@ -1494,10 +1498,36 @@ class ChatUI {
         const renderer = new marked.Renderer();
         const originalCode = renderer.code.bind(renderer);
 
-        // 添加预处理函数，用于处理连续的引用链接
+
+        // 添加预处理函数，用于处理连续的引用链接和 think 标签
         this.preprocessMarkdown = (content) => {
-            // 在连续的引用链接之间添加空格，如 [2][3][8] -> [2] [3] [8]
-            return content.replace(/(\[\d+\])(?=\[\d+\])/g, '$1 ');
+            // 1. 在连续的引用链接之间添加空格，如 [2][3][8] -> [2] [3] [8]
+            let result = content.replace(/(\[\d+\])(?=\[\d+\])/g, '$1 ');
+
+            // 2. 处理完整的 think 块 - 使用更宽松的匹配
+            // 匹配 <think>...~~~Thoughts...内容...~~~...</think>
+            result = result.replace(/<think>[\s\S]*?~~~\s*Thoughts\s*([\s\S]*?)~~~[\s\S]*?<\/think>/gi, '\n```thoughts\n$1\n```\n');
+
+            // 3. 处理不完整的 think 块（流式传输中间状态）
+            // 开始标记：<think>...~~~Thoughts
+            result = result.replace(/<think>[\s\S]*?~~~\s*Thoughts\s*/gi, '\n```thoughts\n');
+            // 结束标记：~~~...</think>
+            result = result.replace(/~~~[\s\S]*?<\/think>/gi, '\n```\n');
+
+            // 4. 清理任何残留的 think 标签
+            result = result.replace(/<\/?think>/gi, '');
+
+            // 5. 处理其他未处理的 ~~~ 代码围栏
+            result = result.replace(/^~~~(\w+)/gm, '```$1');
+            result = result.replace(/^~~~\s*$/gm, '```');
+
+            // 调试：输出预处理前后的内容（如果包含 think 或 ~~~）
+            if (content.includes('<think>') || content.includes('~~~')) {
+                console.log('[DEBUG preprocessMarkdown] 输入包含 think/~~~:', content.substring(0, 200));
+                console.log('[DEBUG preprocessMarkdown] 输出:', result.substring(0, 200));
+            }
+
+            return result;
         };
 
         // 修改链接渲染器，增加对引用式链接的支持
@@ -1537,24 +1567,31 @@ class ChatUI {
 
 
         renderer.code = (code, language) => {
+            // 处理 mermaid 图表
             if (language === 'mermaid') {
                 const chartId = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
                 return `<div class="mermaid-chart" id="${chartId}">${code}</div>`;
             }
-            else {
-                if (language && hljs.getLanguage(language)) {
-                    try {
-                        return hljs.highlight(code, {
-                            language: language,
-                            ignoreIllegals: true
-                        }).value;
-                    } catch (e) {
-                        console.error('代码高亮错误:', e);
-                    }
-                }
 
-                /*return code;*/
+            // 处理 thoughts 代码块 - 确保生成正确的 class
+            if (language && language.toLowerCase() === 'thoughts') {
+                // 返回带有正确 class 的 pre/code 结构，后续由 enhanceCodeBlock 处理
+                return `<pre><code class="language-thoughts">${code}</code></pre>`;
             }
+
+            // 处理其他语言
+            if (language && hljs.getLanguage(language)) {
+                try {
+                    return hljs.highlight(code, {
+                        language: language,
+                        ignoreIllegals: true
+                    }).value;
+                } catch (e) {
+                    console.error('代码高亮错误:', e);
+                }
+            }
+
+            // 默认处理
             return originalCode(code, language);
         };
         // 初始化链接预览功能
@@ -1970,6 +2007,11 @@ class ChatUI {
 
             if (contentDiv) {
                 this.messageBuffer += content;
+
+                // 同步更新内存中最后一条消息的内容（修复锁屏恢复后内容无法保存的问题）
+                if (this.messages.length > 0 && this.messages[this.messages.length - 1].role === 'assistant') {
+                    this.messages[this.messages.length - 1].content = this.messageBuffer;
+                }
                 // full-message类似乎不存在，直接忽略
                 // const fullMessageDiv = this.currentMessageElement.querySelector('.full-message');
                 // if (fullMessageDiv) fullMessageDiv.textContent = this.messageBuffer;
@@ -1978,8 +2020,11 @@ class ChatUI {
 
                 try {
 
+                    // 预处理内容（移除 think 标签，转换 ~~~ 为 ```）
+                    const processedContent = this.preprocessMarkdown(this.messageBuffer);
+
                     // 渲染 markdown 内容
-                    contentDiv.innerHTML = marked.parse(this.messageBuffer);
+                    contentDiv.innerHTML = marked.parse(processedContent);
 
                     // 更新 rawContent 数据属性，以便于复制等功能
                     contentDiv.dataset.rawContent = this.messageBuffer;
@@ -1991,6 +2036,10 @@ class ChatUI {
                         if (language) {
                             block.parentElement.classList.add('language-' + language.replace('language-', ''));
                         }
+
+                        // 注意：流式传输期间不调用 enhanceCodeBlock，
+                        // 因为代码块可能不完整，会导致 DOM 问题
+                        // enhanceCodeBlock 会在流式传输完成后由其他逻辑调用
 
                         // 应用高亮
                         hljs.highlightElement(block);
@@ -2004,7 +2053,7 @@ class ChatUI {
             } else {
 
                 // 尝试自愈：如果在当前消息元素里找不到 contentDiv，可能是引用错乱，尝试重新获取最后一条消息
-                const lastMsg = this.messagesContainer.querySelector('.message.assistant:last-child');
+                const lastMsg = this.messagesContainer.querySelector('.message.assistant-message:last-child');
                 if (lastMsg && lastMsg !== this.currentMessageElement) {
                     this.currentMessageElement = lastMsg;
                     this.appendStreamContent(content); // 递归重试一次
@@ -2013,7 +2062,7 @@ class ChatUI {
         } else {
 
             // 自愈：如果没有当前消息元素，尝试获取最后一条
-            const lastMsg = this.messagesContainer.querySelector('.message.assistant:last-child');
+            const lastMsg = this.messagesContainer.querySelector('.message.assistant-message:last-child');
             if (lastMsg) {
                 this.currentMessageElement = lastMsg;
                 this.appendStreamContent(content); // 递归重试一次
@@ -2050,6 +2099,34 @@ class ChatUI {
 
     scrollToBottom() {
         this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
+
+    // 从 DOM 重新同步 messages 数组，确保消息顺序和内容正确
+    syncMessagesFromDOM() {
+        const allMessages = this.messagesContainer.querySelectorAll('.message');
+        const syncedMessages = [];
+
+        allMessages.forEach(msgElement => {
+            const isUser = msgElement.classList.contains('user-message');
+            const isAssistant = msgElement.classList.contains('assistant-message');
+
+            if (!isUser && !isAssistant) return;
+
+            const contentDiv = msgElement.querySelector('.message-content');
+            if (!contentDiv) return;
+
+            // 优先使用 rawContent，否则使用 textContent
+            const content = contentDiv.dataset.rawContent || contentDiv.textContent || '';
+
+            syncedMessages.push({
+                role: isUser ? 'user' : 'assistant',
+                content: content,
+                images: [] // 图片信息可能丢失，但至少顺序正确
+            });
+        });
+
+        // 用同步后的数组替换原数组
+        this.messages = syncedMessages;
     }
 
     // 发送消息
@@ -2236,6 +2313,14 @@ class ChatUI {
                             }
                         }
                     }
+
+                    // 流式传输完成后，处理所有未增强的代码块（包括 Thoughts 折叠处理）
+                    this.currentMessageElement.querySelectorAll('pre code').forEach((block) => {
+                        const pre = block.parentElement;
+                        if (!pre.closest('.code-block-wrapper')) {
+                            this.enhanceCodeBlock(pre);
+                        }
+                    });
                 }
                 this.currentMessageElement = null;
                 this.currentStreamId = null; // 只有正常完成才清除 streamId
@@ -2773,9 +2858,12 @@ class ChatUI {
 
         document.addEventListener('visibilitychange', async () => {
             if (document.visibilityState === 'hidden') {
-                // 页面变为不可见（锁屏、切换标签页等）
-                // 如果正在流式传输，主动中止请求以便稍后重连
-                if (this.isStreaming && this.controller && this.savedStreamId) {
+                // 检测是否为移动设备（移动设备锁屏可能导致网络中断，需要主动中止以便恢复）
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+                // 只在移动设备上主动中止流式传输
+                // 桌面浏览器切换标签页时保持传输不中断
+                if (isMobile && this.isStreaming && this.controller && this.savedStreamId) {
                     // savedStreamId 已在接收时持续更新，这里只需标记和中止
                     this.needsResume = true;
                     this.controller.abort();
@@ -2809,14 +2897,18 @@ class ChatUI {
 
     // 尝试恢复断线的流式传输
     async tryResumeStream() {
-        // 只需要有 streamId 就尝试恢复
-        if (!this.currentStreamId) {
+        // 检查是否应该继续轮询
+        if (!this.currentStreamId || !this.isStreaming) {
             return;
         }
 
         try {
+            // 创建 AbortController 以支持停止按钮
+            this.controller = new AbortController();
+            const signal = this.controller.signal;
+
             const url = `/api/chat/stream/${this.currentStreamId}/resume?offset=${this.receivedContentLength}`;
-            const response = await fetch(url);
+            const response = await fetch(url, { signal });
 
             if (!response.ok) {
                 if (response.status === 404) {
@@ -2840,7 +2932,7 @@ class ChatUI {
                 // 确保有消息元素可以追加（如果断线时丢失了引用）
                 if (!this.currentMessageElement) {
                     // 查找页面上最后一个助手消息
-                    const assistantMessages = this.messagesContainer.querySelectorAll('.message.assistant');
+                    const assistantMessages = this.messagesContainer.querySelectorAll('.message.assistant-message');
                     if (assistantMessages.length > 0) {
                         this.currentMessageElement = assistantMessages[assistantMessages.length - 1];
                     }
@@ -2857,22 +2949,45 @@ class ChatUI {
 
                 // 渲染最终内容
                 if (this.currentMessageElement) {
+                    const contentDiv = this.currentMessageElement.querySelector('.message-content');
+                    if (contentDiv) {
+                        // 重新渲染整个内容，确保预处理正确应用
+                        const processedContent = this.preprocessMarkdown(this.messageBuffer);
+                        contentDiv.innerHTML = marked.parse(processedContent);
+                        contentDiv.dataset.rawContent = this.messageBuffer;
+                    }
+
                     try {
                         await this.renderMath(this.currentMessageElement);
                     } catch (error) {
                         console.error('MathJax 渲染错误:', error);
                     }
+
+                    // 处理所有未增强的代码块（包括 Thoughts 折叠处理）
+                    this.currentMessageElement.querySelectorAll('pre code').forEach((block) => {
+                        const pre = block.parentElement;
+                        if (!pre.closest('.code-block-wrapper')) {
+                            this.enhanceCodeBlock(pre);
+                        }
+                    });
                 }
 
                 this.currentMessageElement = null;
                 this.currentStreamId = null;
                 this.saveCurrentSession();
             } else {
-                // 流还在继续，设置定时轮询
-                setTimeout(() => this.tryResumeStream(), 1000);
+                // 流还在继续，设置定时轮询（先检查是否仍在流式传输中）
+                if (this.isStreaming) {
+                    setTimeout(() => this.tryResumeStream(), 1000);
+                }
             }
         } catch (error) {
-            console.error('恢复流式传输失败:', error);
+            // 如果是用户主动停止，不显示错误
+            if (error.name === 'AbortError') {
+                console.log('用户停止了流式传输');
+            } else {
+                console.error('恢复流式传输失败:', error);
+            }
         }
     }
 
@@ -2882,6 +2997,24 @@ class ChatUI {
         this.isStreaming = true;
         this.setLoadingState(true);
         this.toggleStopButton(true);
+
+        // 恢复 messageBuffer - 从最后一条消息获取已有内容（修复恢复后内容拼接问题）
+        // 无论 currentMessageElement 是否存在，都需要确保 messageBuffer 正确同步
+        const assistantMessages = this.messagesContainer.querySelectorAll('.message.assistant-message');
+        if (assistantMessages.length > 0) {
+            this.currentMessageElement = assistantMessages[assistantMessages.length - 1];
+            const contentDiv = this.currentMessageElement.querySelector('.message-content');
+            if (contentDiv) {
+                // 优先从 rawContent 恢复，其次从 messages 数组恢复
+                if (contentDiv.dataset.rawContent) {
+                    this.messageBuffer = contentDiv.dataset.rawContent;
+                } else if (this.messages.length > 0 && this.messages[this.messages.length - 1].role === 'assistant') {
+                    this.messageBuffer = this.messages[this.messages.length - 1].content || '';
+                } else {
+                    this.messageBuffer = '';
+                }
+            }
+        }
 
         try {
             // 创建一个新的 Controller 用于此次恢复请求，以便支持手动停止
@@ -2912,7 +3045,7 @@ class ChatUI {
             if (result.content && result.content.length > 0) {
                 // 确保有消息元素可以追加（如果断线时丢失了引用）
                 if (!this.currentMessageElement) {
-                    const assistantMessages = this.messagesContainer.querySelectorAll('.message.assistant');
+                    const assistantMessages = this.messagesContainer.querySelectorAll('.message.assistant-message');
                     if (assistantMessages.length > 0) {
                         this.currentMessageElement = assistantMessages[assistantMessages.length - 1];
                     }
@@ -2930,24 +3063,53 @@ class ChatUI {
                 this.toggleStopButton(false);
 
                 if (this.currentMessageElement) {
+                    const contentDiv = this.currentMessageElement.querySelector('.message-content');
+                    if (contentDiv) {
+                        // 重新渲染整个内容，确保预处理正确应用
+                        const processedContent = this.preprocessMarkdown(this.messageBuffer);
+                        contentDiv.innerHTML = marked.parse(processedContent);
+                        contentDiv.dataset.rawContent = this.messageBuffer;
+                    }
+
                     try {
                         await this.renderMath(this.currentMessageElement);
                     } catch (error) {
                         console.error('MathJax 渲染错误:', error);
                     }
+
+                    // 处理所有未增强的代码块（包括 Thoughts 折叠处理）
+                    this.currentMessageElement.querySelectorAll('pre code').forEach((block) => {
+                        const pre = block.parentElement;
+                        if (!pre.closest('.code-block-wrapper')) {
+                            this.enhanceCodeBlock(pre);
+                        }
+                    });
                 }
 
                 this.currentMessageElement = null;
                 this.currentStreamId = null;
+
+                // 从 DOM 重新同步 messages 数组，确保顺序正确
+                this.syncMessagesFromDOM();
+
                 this.saveCurrentSession();
+
             } else {
-                // 流还在继续，设置定时轮询
-                this.currentStreamId = streamId; // 恢复 streamId 以便继续轮询
-                setTimeout(() => this.tryResumeStream(), 1000);
+                // 流还在继续，设置定时轮询（先检查是否仍在流式传输中）
+                if (this.isStreaming) {
+                    this.currentStreamId = streamId; // 恢复 streamId 以便继续轮询
+                    setTimeout(() => this.tryResumeStream(), 1000);
+                }
             }
         } catch (error) {
-            if (this.updateDebug) this.updateDebug(`err:${error.message}`);
-            console.error('恢复流式传输失败:', error);
+            // 如果是用户主动停止，不显示错误
+            if (error.name === 'AbortError') {
+                if (this.updateDebug) this.updateDebug('stopped');
+                console.log('用户停止了流式传输');
+            } else {
+                if (this.updateDebug) this.updateDebug(`err:${error.message}`);
+                console.error('恢复流式传输失败:', error);
+            }
         }
     }
 
