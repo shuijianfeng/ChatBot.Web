@@ -56,6 +56,7 @@ class ChatUI {
         this.currentStreamId = null; // 当前流式传输的 streamId
         this.receivedContentLength = 0; // 已接收的内容长度
         this.isStreaming = false; // 是否正在流式传输
+        this.mathRenderDebounceTimer = null; // 公式渲染防抖计时器
         this.setupVisibilityHandler(); // 设置页面可见性监听
 
         // 设置图片上传事件监听
@@ -1096,13 +1097,16 @@ class ChatUI {
 
     async exportMessageToDocx(content) {
         try {
+            // 导出前移除推理内容
+            const filteredContent = this.removeThoughtsForExport(content);
+
             const response = await fetch('/api/chat/export-message-docx', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    content: content
+                    content: filteredContent
                 })
             });
 
@@ -1138,13 +1142,16 @@ class ChatUI {
 
     async exportMessageToPdf(content) {
         try {
+            // 导出前移除推理内容
+            const filteredContent = this.removeThoughtsForExport(content);
+
             const response = await fetch('/api/chat/export-message-pdf', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    content: content
+                    content: filteredContent
                 })
             });
 
@@ -1530,6 +1537,34 @@ class ChatUI {
             return result;
         };
 
+        // 导出时移除 Thoughts 推理内容的方法
+        this.removeThoughtsForExport = (content) => {
+            if (!content) return content;
+
+            let result = content;
+
+            // 1. 移除完整的 <think>...</think> 块（包含所有内容）
+            result = result.replace(/<think>[\s\S]*?<\/think>/gi, '');
+
+            // 2. 移除 ```thoughts...``` 代码块
+            result = result.replace(/```thoughts[\s\S]*?```/gi, '');
+
+            // 3. 移除 ~~~Thoughts...~~~ 代码块
+            result = result.replace(/~~~\s*Thoughts[\s\S]*?~~~/gi, '');
+
+            // 4. 移除不完整的 think 标签（流式传输残留）
+            result = result.replace(/<think>[\s\S]*/gi, '');
+            result = result.replace(/[\s\S]*<\/think>/gi, '');
+
+            // 5. 清理多余的空行（连续3个以上空行变成2个）
+            result = result.replace(/\n{3,}/g, '\n\n');
+
+            // 6. 清理开头的空行
+            result = result.replace(/^\s*\n+/, '');
+
+            return result;
+        };
+
         // 修改链接渲染器，增加对引用式链接的支持
         renderer.link = (href, title, text) => {
             // 处理 href 为对象的情况
@@ -1625,6 +1660,33 @@ class ChatUI {
         // 导出renderMath方法供外部使用
         this.renderMath = renderMath;
 
+        // 检测内容是否包含数学公式语法
+        this.hasMathContent = (content) => {
+            // 检测行内公式 $...$ 或块级公式 $$...$$
+            // 排除代码块内的内容
+            const withoutCodeBlocks = content.replace(/```[\s\S]*?```/g, '').replace(/`[^`]+`/g, '');
+            return /\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g.test(withoutCodeBlocks);
+        };
+
+        // 检测公式是否完整并渲染
+        this.renderMathIfReady = (element, content) => {
+            // 排除代码块内的内容
+            const withoutCodeBlocks = content.replace(/```[\s\S]*?```/g, '').replace(/`[^`]+`/g, '');
+
+            // 计算 $$ 和 $ 的数量，判断公式是否完整
+            const blockMathCount = (withoutCodeBlocks.match(/\$\$/g) || []).length;
+            const allDollarCount = (withoutCodeBlocks.match(/\$/g) || []).length;
+            // 块级公式 $$ 必须成对
+            const blockMathComplete = blockMathCount % 2 === 0;
+            // 行内公式 $ 数量（排除 $$ 后）必须成对
+            const inlineDollarCount = allDollarCount - blockMathCount * 2;
+            const inlineMathComplete = inlineDollarCount % 2 === 0;
+
+            // 只有当所有公式都完整时才渲染
+            if (blockMathComplete && inlineMathComplete && (blockMathCount > 0 || inlineDollarCount > 0)) {
+                renderMath(element);
+            }
+        };
 
 
     }
@@ -2044,6 +2106,18 @@ class ChatUI {
                         // 应用高亮
                         hljs.highlightElement(block);
                     });
+
+                    // 公式实时渲染 - 使用防抖机制避免频繁调用
+                    if (this.hasMathContent(processedContent)) {
+                        // 清除之前的防抖计时器
+                        if (this.mathRenderDebounceTimer) {
+                            clearTimeout(this.mathRenderDebounceTimer);
+                        }
+                        // 设置防抖延迟（300ms）
+                        this.mathRenderDebounceTimer = setTimeout(() => {
+                            this.renderMathIfReady(contentDiv, processedContent);
+                        }, 300);
+                    }
                 } catch (e) {
                     console.error('Markdown 渲染错误:', e);
                     contentDiv.textContent = this.messageBuffer;
@@ -2957,6 +3031,12 @@ class ChatUI {
                         contentDiv.dataset.rawContent = this.messageBuffer;
                     }
 
+                    // 更新 copyButton 的内容，确保导出数据完整
+                    const copyButton = this.currentMessageElement.querySelector('.copy-button');
+                    if (copyButton) {
+                        copyButton.dataset.copyContent = this.messageBuffer;
+                    }
+
                     try {
                         await this.renderMath(this.currentMessageElement);
                     } catch (error) {
@@ -3069,6 +3149,12 @@ class ChatUI {
                         const processedContent = this.preprocessMarkdown(this.messageBuffer);
                         contentDiv.innerHTML = marked.parse(processedContent);
                         contentDiv.dataset.rawContent = this.messageBuffer;
+                    }
+
+                    // 更新 copyButton 的内容，确保导出数据完整
+                    const copyButton = this.currentMessageElement.querySelector('.copy-button');
+                    if (copyButton) {
+                        copyButton.dataset.copyContent = this.messageBuffer;
                     }
 
                     try {
