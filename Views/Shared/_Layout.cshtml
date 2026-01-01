@@ -13,27 +13,26 @@
     <title>@ViewData["Title"] - AI助手</title>
 
 
-    <script src="~/lib/mathjax/tex-mml-chtml.js" id="MathJax-script" async></script>
+    <!-- MathJax 配置必须在脚本加载之前 -->
     <script>
-        MathJax = {
+        window.MathJax = {
             tex: {
                 inlineMath: [['$', '$']],
                 displayMath: [['$$', '$$']],
                 processEscapes: true,
-
             },
             svg: {
                 fontCache: 'global'
             },
             options: {
-                skipHtmlTags: ['pre', 'code', 'script', 'noscript', 'style', 'textarea', 'match']
+                skipHtmlTags: ['pre', 'code', 'script', 'noscript', 'style', 'textarea'],
+                renderActions: {
+                    addMenu: [0, '', '']
+                }
             },
             startup: {
                 ready: () => {
-
                     MathJax.startup.defaultReady();
-
-
                     MathJax.startup.promise.then(() => {
                         console.log('MathJax initial typesetting complete');
                     });
@@ -44,10 +43,11 @@
                 typeset: false
             }
         };
-
-
     </script>
-
+    <!-- MathJax 脚本加载 - 使用 CDN（本地库路径结构不兼容） -->
+    @* <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+        </script> *@
+    <script src="~/lib/mathjax/tex-mml-chtml.js" id="MathJax-script" async></script>
     <link rel="stylesheet" href="~/lib/jsmind/style/jsmind.css" />
     <link rel="stylesheet" href="~/lib/bootstrap/css/bootstrap.css" />
     <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.css" />
@@ -155,7 +155,7 @@
     <script src="~/lib/highlight.js/languages/xml.min.js"></script>
     <script src="~/lib/highlight.js/languages/json.min.js"></script>
     <script src="~/lib/highlight.js/languages/css.min.js"></script>
-
+    
     <script src="~/js/chat.js?v=@Guid.NewGuid().ToString("N")"></script>
 
 
@@ -171,7 +171,7 @@
             @if (ViewBag.DefaultTheme != null)
                 {
                     <text>
-                            // 接收控制器设置的主题
+                                // 接收控制器设置的主题
                         const initialTheme = '@ViewBag.DefaultTheme';
 
                         localStorage.setItem('theme', initialTheme);

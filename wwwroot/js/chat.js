@@ -1644,17 +1644,38 @@ class ChatUI {
 
         });
         // 6. 在内容更新后触发渲染
-        const renderMath = (element) => {
-            if (this.MathJax && this.MathJax.typesetPromise) {
+        const renderMath = async (element) => {
+            try {
+                // 等待 MathJax 加载完成（移动端可能加载较慢）
+                if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
+                    await window.MathJax.startup.promise;
+                }
 
-                this.MathJax.typesetPromise([element])
-                    .catch(err => console.error('MathJax 渲染错误:', err));
-            } else if (window.MathJax && window.MathJax.typesetPromise) {
-                // 备用方案，使用全局 MathJax
-                window.MathJax.typesetPromise([element])
-                    .catch(err => console.error('备用 MathJax 渲染错误:', err));
+                if (window.MathJax && window.MathJax.typesetPromise) {
+                    // 使用 setTimeout 确保 DOM 已完全更新
+                    await new Promise(resolve => setTimeout(resolve, 50));
+
+                    // 重置 MathJax 内部状态，确保能重新处理元素
+                    if (window.MathJax.texReset) {
+                        window.MathJax.texReset();
+                    }
+
+                    // 清除之前渲染的公式
+                    if (window.MathJax.typesetClear) {
+                        window.MathJax.typesetClear([element]);
+                    }
+
+                    // 重新渲染公式
+                    await window.MathJax.typesetPromise([element]);
+                } else if (this.MathJax && this.MathJax.typesetPromise) {
+                    await this.MathJax.typesetPromise([element]);
+                } else {
+                    // MathJax 尚未加载，延迟重试
+                    setTimeout(() => renderMath(element), 500);
+                }
+            } catch (err) {
+                console.error('MathJax 渲染错误:', err);
             }
-
         };
 
         // 导出renderMath方法供外部使用
@@ -2718,6 +2739,9 @@ class ChatUI {
                     // 显示消息（appendMessageWithoutSave 会通过 appendMessage 添加到 this.messages）
                     this.appendMessageWithoutSave(msg.role, msg.content, msg.imageUrls);
                 });
+
+                // 加载完成后渲染公式
+                this.renderMath(this.messagesContainer);
             }
 
             // 保存原始会话数据快照（用于脏标志比较）
@@ -2954,6 +2978,11 @@ class ChatUI {
                     await new Promise(r => setTimeout(r, 200));
                     await this.tryResumeStreamWithId(sid, slen);
                 }
+
+                // 页面恢复可见后，重新渲染所有公式（移动端锁屏恢复时需要）
+                if (this.messagesContainer && this.renderMath) {
+                    this.renderMath(this.messagesContainer);
+                }
             }
         });
 
@@ -2965,6 +2994,11 @@ class ChatUI {
                 await this.tryResumeStreamWithId(this.savedStreamId, this.savedContentLength);
                 this.savedStreamId = null;
                 this.savedContentLength = 0;
+            }
+
+            // focus 时也重新渲染公式
+            if (this.messagesContainer && this.renderMath) {
+                this.renderMath(this.messagesContainer);
             }
         });
     }
