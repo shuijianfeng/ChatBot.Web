@@ -611,8 +611,80 @@ namespace ChatBot.Controllers
             return Ok(new { url = imageUrl });
         }
 
-
+        /// <summary>
+        /// 保存 HTML 内容到服务器并返回可分享的链接
+        /// </summary>
         [HttpPost]
+        [Route("/api/chat/save-html")]
+        public async Task<IActionResult> SaveHtml([FromBody] SaveHtmlRequest request)
+        {
+            if (string.IsNullOrEmpty(request?.HtmlContent))
+            {
+                return BadRequest(new { error = "HTML内容不能为空" });
+            }
+
+            try
+            {
+                // 生成唯一文件名
+                var fileName = $"page-{Guid.NewGuid():N}.html";
+                var htmlFolder = Path.Combine(_env.WebRootPath, "html");
+
+                // 确保目录存在
+                if (!Directory.Exists(htmlFolder))
+                {
+                    Directory.CreateDirectory(htmlFolder);
+                }
+
+                var filePath = Path.Combine(htmlFolder, fileName);
+
+                // 构建完整的 HTML 页面
+                var fullHtml = $@"<!DOCTYPE html>
+<html lang=""zh-CN"">
+<head>
+    <meta charset=""utf-8"">
+    <meta name=""viewport"" content=""width=device-width, initial-scale=1"">
+    <title>{(string.IsNullOrEmpty(request.Title) ? "AI 生成的页面" : System.Web.HttpUtility.HtmlEncode(request.Title))}</title>
+    <style>
+        body {{
+            margin: 0;
+            padding: 16px;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #fff;
+        }}
+        img {{ max-width: 100%; height: auto; }}
+        * {{ box-sizing: border-box; }}
+        @media (max-width: 768px) {{
+            body {{ padding: 8px; }}
+        }}
+    </style>
+</head>
+<body>
+{request.HtmlContent}
+</body>
+</html>";
+
+                // 保存文件
+                await System.IO.File.WriteAllTextAsync(filePath, fullHtml, Encoding.UTF8);
+
+                // 返回可分享的 URL
+                var shareUrl = $"{Request.Scheme}://{Request.Host}/html/{fileName}";
+                return Ok(new { url = shareUrl, fileName });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = $"保存HTML失败: {ex.Message}" });
+            }
+        }
+
+        public class SaveHtmlRequest
+        {
+            public string? HtmlContent { get; set; }
+            public string? Title { get; set; }
+        }
+
+
         [HttpPost]
         [Route("/api/chat/stream")]
         public async Task StreamChat([FromBody] ChatRequest request)
