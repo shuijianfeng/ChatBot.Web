@@ -2491,6 +2491,7 @@ namespace ChatBot.Web.Services
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 reasoning = OpenAiThinkingLevel(modelconfg),
                 tools = tools,
+                max_tokens = modelconfg.MaxTokens > 0 ? (int?)modelconfg.MaxTokens : null,
             };
 
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
