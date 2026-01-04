@@ -1270,7 +1270,12 @@ namespace ChatBot.Web.Services
 
                                                         });
 
-                                                        toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+                                                        var queryStr = outquery.GetString();
+                                                        if (string.IsNullOrEmpty(queryStr))
+                                                        {
+                                                            throw new ArgumentNullException(nameof(outquery), "Query cannot be null or empty.");
+                                                        }
+                                                        toolResult = await JinaAiSearch(queryStr);
                                                         break;
                                                     }
                                                 case nameof(SearchTrainTicket):
@@ -1300,7 +1305,7 @@ namespace ChatBot.Web.Services
 
                                                         });
 
-                                                        toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                                        toolResult = await SearchTrainTicket(startingplace.GetString() ?? string.Empty, arrivalplace.GetString() ?? string.Empty, date.GetString() ?? string.Empty);
                                                         break;
                                                     }
                                                 case nameof(GetWeather):
@@ -1338,7 +1343,7 @@ namespace ChatBot.Web.Services
                                                         {
                                                             // 处理 input：将 partial_json 反序列化为 object
                                                             object inputValue = !string.IsNullOrEmpty(pair.partial_json)
-                                                                ? JsonSerializer.Deserialize<object>(pair.partial_json, _jsonOptions)
+                                                                ? JsonSerializer.Deserialize<object>(pair.partial_json, _jsonOptions) ?? new { }
                                                                 : new { };
 
                                                             content.Add(new
@@ -1492,7 +1497,7 @@ namespace ChatBot.Web.Services
                                             toolsmessages.Add(new
                                             {
                                                 role = "assistant",
-                                                content = content
+                                                content = content1
 
 
                                             });
@@ -1502,7 +1507,8 @@ namespace ChatBot.Web.Services
                                         }
                                     case nameof(SearchTrainTicket):
                                         {
-                                            using JsonDocument argumentsJson = JsonDocument.Parse(pair.input.ToString());
+                                            var inputStr = pair.input?.ToString() ?? "{}";
+                                            using JsonDocument argumentsJson = JsonDocument.Parse(inputStr);
                                             bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
 
                                             query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
@@ -1512,12 +1518,16 @@ namespace ChatBot.Web.Services
                                                 throw new ArgumentNullException(nameof(query), "The location argument is required.");
                                             }
 
+                                            var startingplaceStr = startingplace.GetString() ?? string.Empty;
+                                            var arrivalplaceStr = arrivalplace.GetString() ?? string.Empty;
+                                            var dateStr = date.GetString() ?? string.Empty;
+
                                             content1.Add(new
                                             {
                                                 type = "tool_use",
                                                 id = pair.id,
                                                 name = pair.name,
-                                                input = new { startingplace = startingplace.GetString(), arrivalplace = arrivalplace.GetString(), date = date.GetString() }
+                                                input = new { startingplace = startingplaceStr, arrivalplace = arrivalplaceStr, date = dateStr }
                                             });
                                             toolsmessages.Add(new
                                             {
@@ -1527,12 +1537,13 @@ namespace ChatBot.Web.Services
 
                                             });
 
-                                            toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                            toolResult = await SearchTrainTicket(startingplaceStr, arrivalplaceStr, dateStr);
                                             break;
                                         }
                                     case nameof(JinaAiSearch):
                                         {
-                                            using JsonDocument argumentsJson = JsonDocument.Parse(pair.input.ToString());
+                                            var inputStrJina = pair.input?.ToString() ?? "{}";
+                                            using JsonDocument argumentsJson = JsonDocument.Parse(inputStrJina);
                                             bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
 
 
@@ -1555,12 +1566,14 @@ namespace ChatBot.Web.Services
 
                                             });
                                             text = string.Empty;
-                                            toolResult = await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null."));
+                                            var queryValue = outquery.GetString() ?? throw new ArgumentNullException(nameof(outquery), "Query cannot be null.");
+                                            toolResult = await JinaAiSearch(queryValue);
                                             break;
                                         }
                                     case nameof(GetWeather):
                                         {
-                                            using JsonDocument argumentsJson = JsonDocument.Parse(pair.input.ToString());
+                                            var inputStrWeather = pair.input?.ToString() ?? "{}";
+                                            using JsonDocument argumentsJson = JsonDocument.Parse(inputStrWeather);
                                             bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
 
 
@@ -1751,11 +1764,12 @@ namespace ChatBot.Web.Services
             List<GeminiToolCall> tool_calls = new();
             bool isThinkingStarted = false;  // 思考内容是否已开始
             bool isThinkingEnded = false;    // 思考内容是否已结束
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 if (modelconfg.Stream)
                 {
                     var line = await reader.ReadLineAsync(cancellationToken);
+                    if (line == null) break; // 流结束
                     if (string.IsNullOrEmpty(line)) continue;
                     if (line.StartsWith("data: "))
                     {
@@ -2015,11 +2029,12 @@ namespace ChatBot.Web.Services
             var contentBuilder = new StringBuilder();
             //List<GeminiFunctionCall> functionCalls = new();
             List<GeminiToolCall> tool_calls = new();
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 if (modelconfg.Stream)
                 {
                     var line = await reader.ReadLineAsync(cancellationToken);
+                    if (line == null) break; // 流结束
                     if (string.IsNullOrEmpty(line)) continue;
                     if (line.StartsWith("data: "))
                     {
@@ -2369,9 +2384,10 @@ namespace ChatBot.Web.Services
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 using var reader = new StreamReader(stream);
 
-                while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+                while (!cancellationToken.IsCancellationRequested)
                 {
                     var line = await reader.ReadLineAsync(cancellationToken);
+                    if (line == null) break; // 流结束
                     if (string.IsNullOrEmpty(line)) continue;
 
                     if (line.StartsWith("data: "))
@@ -2505,11 +2521,12 @@ namespace ChatBot.Web.Services
                 bool hasCitations = false;
                 string citationsString = string.Empty;
 
-                while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+                while (!cancellationToken.IsCancellationRequested)
                 {
                     if (modelconfg.Stream)
                     {
                         var line = await reader.ReadLineAsync(cancellationToken);
+                        if (line == null) break; // 流结束
                         if (string.IsNullOrEmpty(line)) continue;
                         if (line.StartsWith("data: "))
                         {
@@ -4304,25 +4321,25 @@ namespace ChatBot.Web.Services
 
         #endregion
         #region tools
-        private async Task<string>? JinaAiSearch(string query)
+        private async Task<string> JinaAiSearch(string query)
         {
             var result = await _jinaSearch.Search(query);
-            return await Task.FromResult(result);
+            return result ?? string.Empty;
         }
 
-        private async Task<string>? GetWeather(string query)
+        private async Task<string> GetWeather(string query)
         {
             var result = await _openWeather.GetWeatherAsync(query);
-            return await Task.FromResult(result);
+            return result;
         }
 
-        private async Task<string>? SearchTrainTicket(string startingplace, string arrivalplace, string date)
+        private async Task<string> SearchTrainTicket(string startingplace, string arrivalplace, string date)
         {
             var result = await _jinaSearch.SearchTrainTicket(startingplace, arrivalplace, date);
-            return await Task.FromResult(result);
+            return result;
         }
 
-        private async Task<string>? GetCurrentDataTime()
+        private async Task<string> GetCurrentDataTime()
         {
 
             var result = DateTime.Now.ToString(" 日期: yyyy年M月dd日 dddd 时间：HH:mm:ss ");
