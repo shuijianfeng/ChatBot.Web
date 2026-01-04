@@ -145,16 +145,17 @@
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/js/bootstrap.bundle.js"></script>
     <script src="~/lib/marked/marked.min.js"></script>
-    <script src="~/lib/mermaid/mermaid.js"></script>
+   
+    <script src="~/lib/mermaid/dist/mermaid.min.js"></script>
     <script src="~/lib/jsmind/es6/jsmind.js"></script>
+   
     <script src="~/lib/highlight.js/highlight.min.js"></script>
-    <script src="~/lib/highlight.js/languages/csharp.min.js"></script>
-    <script src="~/lib/highlight.js/languages/java.min.js"></script>
-    <script src="~/lib/highlight.js/languages/python.min.js"></script>
-    <script src="~/lib/highlight.js/languages/javascript.min.js"></script>
-    <script src="~/lib/highlight.js/languages/xml.min.js"></script>
-    <script src="~/lib/highlight.js/languages/json.min.js"></script>
-    <script src="~/lib/highlight.js/languages/css.min.js"></script>
+    <script src="~/lib/highlight.js/es/languages/csharp.min.js"></script>
+    <script src="~/lib/highlight.js/es/languages/java.min.js"></script>
+    <script src="~/lib/highlight.js/es/languages/python.min.js"></script>
+    <script src="~/lib/highlight.js/es/languages/java.min.js"></script>
+    <script src="~/lib/highlight.js/es/languages/xml.min.js"></script>
+    <script src="~/lib/highlight.js/es/languages/json.min.js"></script>
 
     <script src="~/js/chat.js?v=@Guid.NewGuid().ToString("N")"></script>
 
@@ -171,7 +172,7 @@
             @if (ViewBag.DefaultTheme != null)
                 {
                     <text>
-                            // 接收控制器设置的主题
+                                // 接收控制器设置的主题
                         const initialTheme = '@ViewBag.DefaultTheme';
 
                         localStorage.setItem('theme', initialTheme);
