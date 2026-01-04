@@ -829,19 +829,10 @@ class ChatUI {
                 });
 
             });
-
-            // 为 HTML 代码块添加分享按钮
-            const shareButton = document.createElement('button');
-            shareButton.className = 'share-html-button';
-            shareButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.5 3a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 3a3 3 0 01-5.175 2.066l-3.92 2.179a3.005 3.005 0 010 1.51l3.92 2.179a3 3 0 11-.73 1.31l-3.92-2.178a3 3 0 110-4.133l3.92-2.178A3 3 0 1115 3zm-1.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm-10-5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"></path></svg> 分享';
-            shareButton.title = '保存HTML并生成分享链接';
-            header.appendChild(shareButton);
-
-            // 分享HTML代码
-            shareButton.addEventListener('click', async () => {
-                await this.shareHtml(code);
-            });
         }
+
+
+
 
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-button';
@@ -855,7 +846,6 @@ class ChatUI {
 
         return header;
     }
-
     addCopyButtonListener(button) {
         button.addEventListener('click', async () => {
             const code = button.dataset.copyContent;
@@ -869,131 +859,13 @@ class ChatUI {
         });
     }
 
-    /**
-     * 保存 HTML 到服务器并显示分享链接
-     * @param {string} htmlCode HTML代码内容
-     */
-    async shareHtml(htmlCode) {
-        try {
-            // 显示加载状态
-            const loadingOverlay = document.createElement('div');
-            loadingOverlay.className = 'share-loading-overlay';
-            loadingOverlay.innerHTML = `
-                <div class="share-loading-content">
-                    <div class="loading-spinner"></div>
-                    <p>正在生成分享链接...</p>
-                </div>
-            `;
-            document.body.appendChild(loadingOverlay);
-
-            // 调用后端 API 保存 HTML
-            const response = await fetch('/api/chat/save-html', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    htmlContent: htmlCode,
-                    title: 'AI 生成的页面'
-                })
-            });
-
-            // 移除加载状态
-            document.body.removeChild(loadingOverlay);
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || '保存失败');
-            }
-
-            const data = await response.json();
-            const shareUrl = data.url;
-
-            // 显示分享链接弹窗
-            this.showShareDialog(shareUrl);
-
-        } catch (error) {
-            console.error('分享HTML失败:', error);
-            alert('分享失败: ' + error.message);
-        }
-    }
-
-    /**
-     * 显示分享链接对话框
-     * @param {string} shareUrl 分享链接
-     */
-    showShareDialog(shareUrl) {
-        // 创建遮罩层
-        const overlay = document.createElement('div');
-        overlay.className = 'share-dialog-overlay';
-
-        // 创建对话框
-        const dialog = document.createElement('div');
-        dialog.className = 'share-dialog';
-        dialog.innerHTML = `
-            <div class="share-dialog-header">
-                <h3>分享链接已生成</h3>
-                <button class="share-dialog-close">&times;</button>
-            </div>
-            <div class="share-dialog-body">
-                <p>您可以通过以下链接分享此 HTML 页面：</p>
-                <div class="share-url-container">
-                    <input type="text" class="share-url-input" value="${shareUrl}" readonly>
-                    <button class="share-copy-btn">复制</button>
-                </div>
-                <div class="share-actions">
-                    <a href="${shareUrl}" target="_blank" class="share-open-btn">在新标签页打开</a>
-                </div>
-            </div>
-        `;
-
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-
-        // 绑定事件
-        const closeBtn = dialog.querySelector('.share-dialog-close');
-        const copyBtn = dialog.querySelector('.share-copy-btn');
-        const urlInput = dialog.querySelector('.share-url-input');
-
-        closeBtn.addEventListener('click', () => {
-            document.body.removeChild(overlay);
-        });
-
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                document.body.removeChild(overlay);
-            }
-        });
-
-        copyBtn.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(shareUrl);
-                copyBtn.textContent = '已复制!';
-                copyBtn.classList.add('copied');
-                setTimeout(() => {
-                    copyBtn.textContent = '复制';
-                    copyBtn.classList.remove('copied');
-                }, 2000);
-            } catch (err) {
-                urlInput.select();
-                document.execCommand('copy');
-                copyBtn.textContent = '已复制!';
-                setTimeout(() => {
-                    copyBtn.textContent = '复制';
-                }, 2000);
-            }
-        });
-
-        // 自动选中链接
-        urlInput.select();
-    }
 
 
     /**
-    * 显示复制操作的反馈
-    * @param {HTMLElement} button 按钮元素
-    * @param {boolean} success 是否成功
-    */
+ * 显示复制操作的反馈
+ * @param {HTMLElement} button 按钮元素
+ * @param {boolean} success 是否成功
+ */
     showCopyFeedback(button, success) {
         if (!button) return;
 
