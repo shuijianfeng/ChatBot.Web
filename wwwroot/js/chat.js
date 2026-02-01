@@ -831,6 +831,79 @@ class ChatUI {
             });
         }
 
+        // 添加分享按钮
+        const shareButton = document.createElement('button');
+        shareButton.type = 'button'; // 显式设置为 button 类型，防止意外提交
+        shareButton.className = 'share-html-button';
+        shareButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.5 3a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zM15 3a3 3 0 0 1-5.175 2.066l-3.92 2.179a3.005 3.005 0 0 1 0 1.51l3.92 2.179a3 3 0 1 1-.73 1.31l-3.92-2.178a3 3 0 1 1 0-4.133l3.92-2.178A3 3 0 1 1 15 3zm-1.5 10a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0zm-9-5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0z"/></svg> 分享';
+        shareButton.title = '保存并生成分享链接';
+        header.appendChild(shareButton);
+
+        // 分享按钮点击事件
+        const self = this; // 保存 this 引用
+        shareButton.addEventListener('click', async (e) => {
+            e.stopPropagation(); // 阻止事件冒泡
+            e.preventDefault();
+            console.log('[Share] 分享按钮被点击');
+
+            // 显示加载状态
+            const originalHTML = shareButton.innerHTML;
+            shareButton.innerHTML = '<span class="share-loading"></span> 保存中...';
+            shareButton.disabled = true;
+
+            try {
+                console.log('[Share] 开始调用 API');
+                const response = await fetch('/api/chat/save-html', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ htmlContent: code })
+                });
+
+                const result = await response.json();
+                console.log('[Share] API 响应:', result);
+
+                if (result.success && result.url) {
+                    console.log('[Share] 保存成功，准备显示对话框');
+                    // 直接调用显示对话框
+                    self.showShareDialog(result.url);
+                    console.log('[Share] 对话框调用完成，准备恢复按钮');
+
+                    // 检查按钮是否仍然存在于 DOM 中
+                    if (document.body.contains(shareButton)) {
+                        console.log('[Share] 按钮仍在 DOM 中，开始恢复状态');
+                        // 恢复按钮
+                        shareButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg> 已保存';
+                        shareButton.classList.add('share-success');
+                        setTimeout(() => {
+                            if (document.body.contains(shareButton)) {
+                                shareButton.innerHTML = originalHTML;
+                                shareButton.classList.remove('share-success');
+                            }
+                        }, 2000);
+                    } else {
+                        console.warn('[Share] 按钮已从 DOM 中移除！');
+                    }
+                } else {
+                    throw new Error(result.error || '保存失败');
+                }
+            } catch (error) {
+                console.error('[Share] 分享失败:', error);
+                shareButton.innerHTML = '分享失败';
+                shareButton.classList.add('share-error');
+                setTimeout(() => {
+                    shareButton.innerHTML = originalHTML;
+                    shareButton.classList.remove('share-error');
+                }, 2000);
+            } finally {
+                shareButton.disabled = false;
+            }
+
+            return false;
+        });
+
+
 
 
 
@@ -862,10 +935,10 @@ class ChatUI {
 
 
     /**
- * 显示复制操作的反馈
- * @param {HTMLElement} button 按钮元素
- * @param {boolean} success 是否成功
- */
+    * 显示复制操作的反馈
+    * @param {HTMLElement} button 按钮元素
+    * @param {boolean} success 是否成功
+    */
     showCopyFeedback(button, success) {
         if (!button) return;
 
@@ -892,6 +965,109 @@ class ChatUI {
             button.innerHTML = originalHTML;
             button.classList.remove('copy-success', 'copy-failure');
         }, 2000);
+    }
+
+    /**
+     * 显示分享对话框
+     * @param {string} url 分享链接
+     */
+    showShareDialog(url) {
+        console.log('[Share] showShareDialog 被调用，url:', url);
+
+        // 检查是否已存在模态框，如果存在则移除
+        const existingModal = document.getElementById('shareDialogModal');
+        if (existingModal) {
+            console.log('[Share] 移除已存在的模态框');
+            existingModal.remove();
+        }
+
+        // 创建 Bootstrap 模态框 - 使用 static backdrop 防止意外关闭
+        const modalHTML = `
+            <div class="modal fade" id="shareDialogModal" tabindex="-1" aria-labelledby="shareDialogLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content share-dialog">
+                        <div class="modal-header share-dialog-header">
+                            <h5 class="modal-title" id="shareDialogLabel">分享链接</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                        </div>
+                        <div class="modal-body share-dialog-body">
+                            <p>HTML 页面已保存，复制以下链接分享：</p>
+                            <div class="share-url-container">
+                                <input type="text" class="share-url-input form-control" value="${url}" readonly />
+                                <button class="share-copy-btn btn btn-outline-secondary" title="复制链接">
+                                    <svg viewBox="0 0 16 16" width="16" height="16">
+                                        <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/>
+                                        <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="share-dialog-actions mt-3">
+                                <button class="share-open-btn btn btn-primary">在新标签页打开</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 添加到页面
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        console.log('[Share] 模态框 HTML 已添加到 DOM');
+
+        const modalElement = document.getElementById('shareDialogModal');
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: 'static',
+            keyboard: false
+        });
+        console.log('[Share] Bootstrap Modal 实例已创建');
+
+        // 监听模态框事件
+        modalElement.addEventListener('shown.bs.modal', () => {
+            console.log('[Share] 模态框已显示 (shown.bs.modal)');
+        });
+        modalElement.addEventListener('hide.bs.modal', () => {
+            console.log('[Share] 模态框即将隐藏 (hide.bs.modal)');
+            console.trace('[Share] 隐藏调用堆栈');
+        });
+
+        // 复制按钮事件
+        const copyBtn = modalElement.querySelector('.share-copy-btn');
+        const urlInput = modalElement.querySelector('.share-url-input');
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(url);
+                copyBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>';
+                copyBtn.classList.add('btn-success');
+                copyBtn.classList.remove('btn-outline-secondary');
+                setTimeout(() => {
+                    copyBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>';
+                    copyBtn.classList.remove('btn-success');
+                    copyBtn.classList.add('btn-outline-secondary');
+                }, 2000);
+            } catch (err) {
+                console.error('复制失败:', err);
+                urlInput.select();
+            }
+        });
+
+        // 新标签页打开按钮事件
+        const openBtn = modalElement.querySelector('.share-open-btn');
+        openBtn.addEventListener('click', () => {
+            window.open(url, '_blank');
+        });
+
+        // 自动选中输入框内容
+        urlInput.addEventListener('click', () => {
+            urlInput.select();
+        });
+
+        // 模态框关闭后移除 DOM
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            modalElement.remove();
+        });
+
+        // 显示模态框
+        modal.show();
     }
 
     observeNewMessages() {

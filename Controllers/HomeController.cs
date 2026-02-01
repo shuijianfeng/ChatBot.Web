@@ -566,6 +566,84 @@ namespace ChatBot.Controllers
             public string Url { get; set; }
         }
 
+        /// <summary>
+        /// 保存 HTML 内容到服务器并返回可分享链接
+        /// </summary>
+        [HttpPost]
+        [Route("/api/chat/save-html")]
+        public async Task<IActionResult> SaveHtml([FromBody] SaveHtmlRequest request)
+        {
+            if (string.IsNullOrEmpty(request?.HtmlContent))
+            {
+                return BadRequest(new { error = "HTML内容不能为空" });
+            }
+
+            try
+            {
+                // 生成唯一文件名
+                var fileName = $"page-{Guid.NewGuid():N}.html";
+                // 修改保存路径到 Data/SharedHtml，避免 wwwroot 变动触发 dotnet watch 刷新
+                var dataFolder = Path.Combine(Directory.GetCurrentDirectory(), "Data", "SharedHtml");
+
+                // 确保目录存在
+                if (!Directory.Exists(dataFolder))
+                {
+                    Directory.CreateDirectory(dataFolder);
+                }
+
+                var filePath = Path.Combine(dataFolder, fileName);
+
+                // 保存 HTML 文件
+                await System.IO.File.WriteAllTextAsync(filePath, request.HtmlContent, Encoding.UTF8);
+
+                // 返回动态访问链接
+                var shareUrl = $"{Request.Scheme}://{Request.Host}/share/view/{fileName}";
+                return Ok(new { success = true, url = shareUrl, fileName });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = $"保存失败: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// 获取分享的 HTML 页面
+        /// </summary>
+        [HttpGet]
+        [Route("/share/view/{fileName}")]
+        public async Task<IActionResult> GetHtml(string fileName)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(fileName) || !fileName.EndsWith(".html"))
+                {
+                    return BadRequest("无效的文件名");
+                }
+
+                // 安全检查：只允许访问文件名，不允许路径遍历
+                fileName = Path.GetFileName(fileName);
+                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "SharedHtml", fileName);
+
+                if (!System.IO.File.Exists(filePath))
+                {
+                    return NotFound("页面不存在或已过期");
+                }
+
+                var content = await System.IO.File.ReadAllTextAsync(filePath, Encoding.UTF8);
+                return Content(content, "text/html");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"获取页面失败: {ex.Message}");
+            }
+        }
+
+
+        public class SaveHtmlRequest
+        {
+            public string HtmlContent { get; set; } = string.Empty;
+        }
+
         [HttpGet]
         [Route("/api/chat/GetChatModels")]
         public IActionResult GetChatModels()

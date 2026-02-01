@@ -738,3 +738,248 @@
 [data-theme="dark"] .thoughts-details code {
     color: #9ca3af !important;
 }
+
+/* ==================== HTML 分享功能样式 ==================== */
+
+/* 分享按钮样式 */
+.share-html-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.share-html-button:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.share-html-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.share-html-button.share-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.share-html-button.share-error {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+/* 分享加载动画 */
+.share-loading {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: share-spin 0.8s linear infinite;
+}
+
+@keyframes share-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* 分享对话框遮罩层 */
+.share-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s ease;
+}
+
+/* 分享对话框 */
+.share-dialog {
+    background: white;
+    border-radius: 16px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    animation: slideUp 0.3s ease;
+    overflow: hidden;
+}
+
+.share-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.share-dialog-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.share-dialog-close {
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    color: #64748b;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+.share-dialog-close:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #1e293b;
+}
+
+.share-dialog-body {
+    padding: 20px;
+}
+
+.share-dialog-body p {
+    margin: 0 0 16px 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+/* 分享链接容器 */
+.share-url-container {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.share-url-input {
+    flex: 1;
+    padding: 12px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #1e293b;
+    background: #f8fafc;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.share-url-input:focus {
+    border-color: #10b981;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.share-copy-btn {
+    padding: 12px 14px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.share-copy-btn:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+}
+
+.share-copy-btn.copied {
+    background: #10b981;
+    border-color: #10b981;
+    color: white;
+}
+
+/* 分享对话框操作按钮 */
+.share-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.share-open-btn {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.share-open-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* ==================== 深色主题 - 分享功能 ==================== */
+
+[data-theme="dark"] .share-dialog {
+    background: #1e293b;
+}
+
+[data-theme="dark"] .share-dialog-header {
+    border-bottom-color: #334155;
+}
+
+[data-theme="dark"] .share-dialog-header h3 {
+    color: #f1f5f9;
+}
+
+[data-theme="dark"] .share-dialog-close {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .share-dialog-close:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #f1f5f9;
+}
+
+[data-theme="dark"] .share-dialog-body p {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .share-url-input {
+    background: #0d1117;
+    border-color: #30363d;
+    color: #c9d1d9;
+}
+
+[data-theme="dark"] .share-url-input:focus {
+    border-color: #10b981;
+    background: #161b22;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+
+[data-theme="dark"] .share-copy-btn {
+    background: #21262d;
+    border-color: #30363d;
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .share-copy-btn:hover {
+    background: #30363d;
+    color: #c9d1d9;
+}
