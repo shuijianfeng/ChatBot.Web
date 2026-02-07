@@ -7,8 +7,8 @@
 
 <!-- 页面容器：侧边栏 + 主内容 -->
 <div class="page-wrapper">
-    <!-- 侧边栏 -->
-    <aside class="sidebar" id="sidebar">
+    <!-- 侧边栏 - 默认折叠 -->
+    <aside class="sidebar collapsed" id="sidebar">
         <div class="sidebar-header">
             <button class="new-chat-btn" id="new-chat-btn" title="新建会话">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -45,8 +45,8 @@
 
     </aside>
 
-    <!-- 侧边栏折叠后的展开按钮 -->
-    <button class="expand-sidebar-btn" id="expand-sidebar-btn" title="展开侧边栏" style="display: none;">
+    <!-- 侧边栏折叠后的展开按钮 - 默认显示（因为侧边栏默认折叠） -->
+    <button class="expand-sidebar-btn" id="expand-sidebar-btn" title="展开侧边栏" style="display: flex;">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="9 18 15 12 9 6"></polyline>
         </svg>
