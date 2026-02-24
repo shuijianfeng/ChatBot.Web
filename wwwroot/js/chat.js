@@ -832,75 +832,75 @@ class ChatUI {
 
             // 添加分享按钮（仅HTML代码块）
             const shareButton = document.createElement('button');
-        shareButton.type = 'button'; // 显式设置为 button 类型，防止意外提交
-        shareButton.className = 'share-html-button';
-        shareButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.5 3a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zM15 3a3 3 0 0 1-5.175 2.066l-3.92 2.179a3.005 3.005 0 0 1 0 1.51l3.92 2.179a3 3 0 1 1-.73 1.31l-3.92-2.178a3 3 0 1 1 0-4.133l3.92-2.178A3 3 0 1 1 15 3zm-1.5 10a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0zm-9-5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0z"/></svg> 分享';
-        shareButton.title = '保存并生成分享链接';
-        header.appendChild(shareButton);
+            shareButton.type = 'button'; // 显式设置为 button 类型，防止意外提交
+            shareButton.className = 'share-html-button';
+            shareButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.5 3a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zM15 3a3 3 0 0 1-5.175 2.066l-3.92 2.179a3.005 3.005 0 0 1 0 1.51l3.92 2.179a3 3 0 1 1-.73 1.31l-3.92-2.178a3 3 0 1 1 0-4.133l3.92-2.178A3 3 0 1 1 15 3zm-1.5 10a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0zm-9-5a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0z"/></svg> 分享';
+            shareButton.title = '保存并生成分享链接';
+            header.appendChild(shareButton);
 
-        // 分享按钮点击事件
-        const self = this; // 保存 this 引用
-        shareButton.addEventListener('click', async (e) => {
-            e.stopPropagation(); // 阻止事件冒泡
-            e.preventDefault();
-            console.log('[Share] 分享按钮被点击');
+            // 分享按钮点击事件
+            const self = this; // 保存 this 引用
+            shareButton.addEventListener('click', async (e) => {
+                e.stopPropagation(); // 阻止事件冒泡
+                e.preventDefault();
+                console.log('[Share] 分享按钮被点击');
 
-            // 显示加载状态
-            const originalHTML = shareButton.innerHTML;
-            shareButton.innerHTML = '<span class="share-loading"></span> 保存中...';
-            shareButton.disabled = true;
+                // 显示加载状态
+                const originalHTML = shareButton.innerHTML;
+                shareButton.innerHTML = '<span class="share-loading"></span> 保存中...';
+                shareButton.disabled = true;
 
-            try {
-                console.log('[Share] 开始调用 API');
-                const response = await fetch('/api/chat/save-html', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ htmlContent: code })
-                });
+                try {
+                    console.log('[Share] 开始调用 API');
+                    const response = await fetch('/api/chat/save-html', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ htmlContent: code })
+                    });
 
-                const result = await response.json();
-                console.log('[Share] API 响应:', result);
+                    const result = await response.json();
+                    console.log('[Share] API 响应:', result);
 
-                if (result.success && result.url) {
-                    console.log('[Share] 保存成功，准备显示对话框');
-                    // 直接调用显示对话框
-                    self.showShareDialog(result.url);
-                    console.log('[Share] 对话框调用完成，准备恢复按钮');
+                    if (result.success && result.url) {
+                        console.log('[Share] 保存成功，准备显示对话框');
+                        // 直接调用显示对话框
+                        self.showShareDialog(result.url);
+                        console.log('[Share] 对话框调用完成，准备恢复按钮');
 
-                    // 检查按钮是否仍然存在于 DOM 中
-                    if (document.body.contains(shareButton)) {
-                        console.log('[Share] 按钮仍在 DOM 中，开始恢复状态');
-                        // 恢复按钮
-                        shareButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg> 已保存';
-                        shareButton.classList.add('share-success');
-                        setTimeout(() => {
-                            if (document.body.contains(shareButton)) {
-                                shareButton.innerHTML = originalHTML;
-                                shareButton.classList.remove('share-success');
-                            }
-                        }, 2000);
+                        // 检查按钮是否仍然存在于 DOM 中
+                        if (document.body.contains(shareButton)) {
+                            console.log('[Share] 按钮仍在 DOM 中，开始恢复状态');
+                            // 恢复按钮
+                            shareButton.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg> 已保存';
+                            shareButton.classList.add('share-success');
+                            setTimeout(() => {
+                                if (document.body.contains(shareButton)) {
+                                    shareButton.innerHTML = originalHTML;
+                                    shareButton.classList.remove('share-success');
+                                }
+                            }, 2000);
+                        } else {
+                            console.warn('[Share] 按钮已从 DOM 中移除！');
+                        }
                     } else {
-                        console.warn('[Share] 按钮已从 DOM 中移除！');
+                        throw new Error(result.error || '保存失败');
                     }
-                } else {
-                    throw new Error(result.error || '保存失败');
+                } catch (error) {
+                    console.error('[Share] 分享失败:', error);
+                    shareButton.innerHTML = '分享失败';
+                    shareButton.classList.add('share-error');
+                    setTimeout(() => {
+                        shareButton.innerHTML = originalHTML;
+                        shareButton.classList.remove('share-error');
+                    }, 2000);
+                } finally {
+                    shareButton.disabled = false;
                 }
-            } catch (error) {
-                console.error('[Share] 分享失败:', error);
-                shareButton.innerHTML = '分享失败';
-                shareButton.classList.add('share-error');
-                setTimeout(() => {
-                    shareButton.innerHTML = originalHTML;
-                    shareButton.classList.remove('share-error');
-                }, 2000);
-            } finally {
-                shareButton.disabled = false;
-            }
 
-            return false;
-        });
+                return false;
+            });
         }
 
 
@@ -2892,6 +2892,15 @@ class ChatUI {
                     // 显示消息（appendMessageWithoutSave 会通过 appendMessage 添加到 this.messages）
                     this.appendMessageWithoutSave(msg.role, msg.content, msg.imageUrls);
                 });
+            }
+
+            // 渲染数学公式
+            if (this.renderMath && this.messagesContainer) {
+                try {
+                    await this.renderMath(this.messagesContainer);
+                } catch (error) {
+                    console.error('历史会话 MathJax 渲染错误:', error);
+                }
             }
 
             // 保存原始会话数据快照（用于脏标志比较）
