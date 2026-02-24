@@ -307,7 +307,7 @@
 .expand-sidebar-btn {
     padding: 6px 8px;
     background: transparent;
-    border: 1px solid #e2e8f0;
+    border: none;
     border-radius: 8px;
     cursor: pointer;
     color: #64748b;
@@ -322,7 +322,7 @@
 .expand-sidebar-btn:hover {
     background: #f1f5f9;
     color: #1e293b;
-    border-color: #cbd5e1;
+}
 }
 
 /* 聊天主区域 - 填充剩余空间 */
@@ -536,13 +536,12 @@
 
 [data-theme="dark"] .expand-sidebar-btn {
     background: transparent;
-    border-color: #334155;
+    border: none;
     color: #94a3b8;
 }
 
 [data-theme="dark"] .expand-sidebar-btn:hover {
     background: rgba(255, 255, 255, 0.07);
-    border-color: #475569;
     color: #f1f5f9;
 }
 
