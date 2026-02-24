@@ -169,26 +169,6 @@
     transform: translateY(0);
 }
 
-/* 头部收缩按钮 */
-.sidebar-header .collapse-btn {
-    padding: 8px;
-    background: transparent;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    cursor: pointer;
-    color: #64748b;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.sidebar-header .collapse-btn:hover {
-    background: rgba(0, 0, 0, 0.04);
-    color: #1e293b;
-}
-
 /* 会话列表 */
 .sessions-list {
     flex: 1;
@@ -323,30 +303,26 @@
     color: #ef4444;
 }
 
-/* 展开侧边栏按钮 */
+/* 展开侧边栏按钮（navbar 内联样式） */
 .expand-sidebar-btn {
-    position: fixed;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    padding: 12px 8px 12px 4px;
-    background: #f8fafc;
+    padding: 6px 8px;
+    background: transparent;
     border: 1px solid #e2e8f0;
-    border-left: none;
-    border-radius: 0 12px 12px 0;
+    border-radius: 8px;
     cursor: pointer;
     color: #64748b;
-    transition: all 0.3s ease;
-    z-index: 99;
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    margin-right: 8px;
+    flex-shrink: 0;
 }
 
 .expand-sidebar-btn:hover {
-    padding-right: 12px;
     background: #f1f5f9;
     color: #1e293b;
+    border-color: #cbd5e1;
 }
 
 /* 聊天主区域 - 填充剩余空间 */
@@ -558,24 +534,15 @@
     color: #94a3b8;
 }
 
-[data-theme="dark"] .sidebar-header .collapse-btn {
-    color: #94a3b8;
-    border-color: #334155;
-}
-
-[data-theme="dark"] .sidebar-header .collapse-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: #f1f5f9;
-}
-
 [data-theme="dark"] .expand-sidebar-btn {
-    background: #1e293b;
+    background: transparent;
     border-color: #334155;
     color: #94a3b8;
 }
 
 [data-theme="dark"] .expand-sidebar-btn:hover {
-    background: #334155;
+    background: rgba(255, 255, 255, 0.07);
+    border-color: #475569;
     color: #f1f5f9;
 }
 

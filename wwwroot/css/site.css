@@ -71,6 +71,17 @@ body {
     box-shadow: 0 0 0 0.25rem rgba(255, 255, 255, 0.2);
 }
 
+/* 使用 !important 确保样式优先级 */
+/*@media (prefers-color-scheme: dark) {
+    .navbar-toggler {
+        border-color: rgba(255, 255, 255, 0.3) !important;
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
+
+    .navbar-toggler-icon {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255, 255, 255, 0.8)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
+    }
+}*/
 
 /* 消息容器 */
 .messages-container {
@@ -87,13 +98,13 @@ body {
     padding: 4px 0;
     margin-bottom: 20px;
     position: relative;
-    max-width: 95%;
+    max-width: 100%;
     border-bottom: 1px solid var(--color-border-default);
 }
 
 /* 用户消息靠右显示 */
 .user-message {
-    max-width: 80%;
+    max-width: 90%;
     margin-left: auto;
     flex-direction: row-reverse;
 }
@@ -138,21 +149,21 @@ body {
 
 /* 消息内容样式 */
 .message-content {
-    padding: 12px 16px;
+    padding: 6px 6px;
     border-radius: 6px;
-    font-size: 14px;
+    font-size: 12px;
     line-height: 1.5;
     cursor: text;
     overflow-wrap: break-word;
     /*xing*/
     flex: 1;
     min-width: 0;
-    margin-left: 12px;
+    margin-left: 2px;
     overflow-x: auto;
 }
 /* 消息容器样式 */
 .message-container {
-    padding: 8px 16px;
+    padding: 4px 8px;
 }
 
 /* 消息头部样式 */
@@ -714,9 +725,9 @@ body {
         color: var(--color-fg-default);
     }
 
-    markdown-body.header-title svg {
-        color: var(--color-fg-default);
-    }
+        .markdown-body.header-title svg {
+            color: var(--color-fg-default);
+        }
     /* 表头单元格的上边框 */
     .markdown-body table th:not(:first-child) {
         border-left: 1px solid var(--color-neutral-emphasis);
@@ -759,7 +770,7 @@ body {
     background-color: var(--color-neutral-subtle);
 }
 
-
+/*顶部标题栏*/
 .header {
     background-color: var(--header-bg);
     border-bottom: 1px solid var(--header-border);
@@ -904,7 +915,7 @@ body {
 
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 468px) {
 
 
     .messages-container {
@@ -952,27 +963,7 @@ pre {
     font-weight: 500;
 }
 
-/* 复制按钮样式 */
-/*.delete-button,
-.copy-button {
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 4px 8px;
-    background: !important;
-    border: none !important;*/ /* 强制移除边框 */
-/*outline: none !important;*/ /* 移除轮廓 */
 
-/*cursor: pointer;
-    color: #6c757d;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-}
-.delete-button:hover,
-.copy-button:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-    color: #212529;
-}*/
 
 /* 代码块容器 */
 .code-block-wrapper {
@@ -1117,7 +1108,23 @@ pre {
     margin: 1rem 0;
 }
 
+/* 基础容器 */
+/*.code-block-wrapper {
+    margin: 1rem 0;
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    overflow: hidden;
+}*/
 
+/* 代码头部 */
+/*.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--color-canvas-subtle);
+    border-bottom: 1px solid var(--color-border-default);
+}*/
 
 /* Mermaid图表容器 */
 .mermaid-chart {
@@ -1312,87 +1319,7 @@ img.image-preview-img {
     }
 
 
-/* 复制按钮样式 */
-/*.delete-button {
-    display: flex;
-    align-items: center;
-    padding: 4px 8px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: #6c757d;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-}
 
-    .delete-button:hover {
-        background-color: var(--color-neutral-muted);
-        color: var(--color-fg-default);
-    }
-
-    .delete-button svg {
-        width: 16px;
-        height: 16px;
-    }*/
-
-/* 复制按钮图标大小 */
-/*.delete-button .octicon {
-        width: 16px;
-        height: 16px;
-    }*/
-/* 复制图标悬停效果 */
-/*.delete-button:hover .icon {
-        color: var(--color-accent-fg);
-    }*/
-
-/* 删除按钮基础样式 */
-/*.delete-button {
-    display: inline-flex !important;*/ /* 使用 !important 确保显示 */
-/*align-items: center !important;
-    justify-content: center !important;
-    padding: 4px 8px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--color-fg-muted);
-    border-radius: 4px;
-    transition: all 0.2s ease;
-    opacity: 1 !important;*/ /* 确保可见 */
-/*visibility: visible !important;
-}*/
-
-/* 删除按钮悬停样式 */
-/*.delete-button:hover {
-        background-color: var(--color-neutral-muted);
-        color: var(--color-danger-fg);
-    }*/
-
-/* 删除按钮图标样式 */
-/*.delete-button svg {
-        width: 16px;
-        height: 16px;
-        display: block !important;*/ /* 确保图标显示 */
-/*}*/
-
-/* 删除按钮内的SVG图标样式 */
-/*.delete-button svg {
-        width: 16px !important;*/ /* 强制设置宽度 */
-/*height: 16px !important;*/ /* 强制设置高度 */
-/*display: block !important;*/ /* 确保显示 */
-/*min-width: 16px;*/ /* 设置最小宽度 */
-/*min-height: 16px;*/ /* 设置最小高度 */
-/*}*/
-
-/* 删除按钮和图标样式 */
-/*.delete-button {
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 4px 8px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-}*/
 .delete-button svg.icon {
     width: 20px !important;
     height: 20px !important;
@@ -1420,7 +1347,6 @@ img.image-preview-img {
     z-index: 1000;
     cursor: pointer;
 }
-
 
 /* 全屏图片样式 */
 .fullsize-image {
@@ -1722,23 +1648,7 @@ img.image-preview-img {
         transform: scale(1.05);
     }
 
-/*优化预览内容布局*/
-/*.link-preview .preview-content {
-    padding: 12px 16px;
-    border-top: 1px solid var(--color-border-muted, #d0d7de);
-}
 
-.link-preview .preview-title {
-    font-weight: 600;
-    margin-bottom: 4px;
-    color: var(--color-fg-default, #24292f);
-    line-height: 1.4;
-}*/
-
-/*确保预览加载平滑*/
-/*.link-preview, .link-preview-simple, .link-preview-image {
-    min-height: 80px;
-}*/
 
 
 
@@ -1878,8 +1788,6 @@ img.image-preview-img {
     }
 }
 
-
-
 /* HTML 内容渲染样式 */
 .rendered-html-content {
     position: relative;
@@ -1915,7 +1823,6 @@ img.image-preview-img {
     justify-content: flex-end;
     margin-bottom: 8px;
     gap: 8px;
-    width: 100%;
 }
 
 .html-control-button {
@@ -2024,7 +1931,6 @@ img.image-preview-img {
     border-radius: 4px;
     max-width: 80%;
 }
-
 
 /* 下载按钮样式 */
 .download-code-button {

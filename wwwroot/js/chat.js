@@ -564,11 +564,13 @@ class ChatUI {
                     // 创建箭头图标
                     const arrow = document.createElement('span');
                     arrow.className = 'thoughts-arrow';
-                    arrow.textContent = '∨'; // 展开时向下箭头
+                    arrow.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>';
 
                     // 监听展开/折叠状态变化
                     details.addEventListener('toggle', () => {
-                        arrow.textContent = details.open ? '∨' : '❯';
+                        arrow.innerHTML = details.open
+                            ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>'
+                            : '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>';
                     });
 
                     // 创建文本
@@ -2678,10 +2680,13 @@ class ChatUI {
             expandSidebarBtn.addEventListener('click', () => this.toggleSidebar());
         }
 
-        // 应用初始折叠状态
+        // 应用初始折叠状态（侧边栏默认折叠）
         if (this.sidebarCollapsed) {
             sidebar.classList.add('collapsed');
-            if (expandSidebarBtn) expandSidebarBtn.style.display = 'flex';
+            if (expandSidebarBtn) expandSidebarBtn.title = '展开侧边栏';
+        } else {
+            sidebar.classList.remove('collapsed');
+            if (expandSidebarBtn) expandSidebarBtn.title = '折叠侧边栏';
         }
 
         // 加载会话列表
@@ -2693,19 +2698,17 @@ class ChatUI {
     // 切换侧边栏折叠状态
     toggleSidebar() {
         const sidebar = document.getElementById('sidebar');
-        const expandBtn = document.getElementById('expand-sidebar-btn');
-        const chatMain = document.getElementById('chat-main');
-
+        const toggleBtn = document.getElementById('expand-sidebar-btn');
         if (!sidebar) return;
 
         this.sidebarCollapsed = !this.sidebarCollapsed;
 
         if (this.sidebarCollapsed) {
             sidebar.classList.add('collapsed');
-            if (expandBtn) expandBtn.style.display = 'flex';
+            if (toggleBtn) toggleBtn.title = '展开侧边栏';
         } else {
             sidebar.classList.remove('collapsed');
-            if (expandBtn) expandBtn.style.display = 'none';
+            if (toggleBtn) toggleBtn.title = '折叠侧边栏';
         }
     }
 
