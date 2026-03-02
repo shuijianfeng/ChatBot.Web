@@ -3826,123 +3826,123 @@ namespace ChatBot.Web.Services
 
             var tools = new List<object>();
 
-            if (search)
-            {
-                tools.Add(new
-                {
-                    name = nameof(JinaAiSearch),
-                    description = "执行网页搜索并返回结果",
-                    parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new
-                            {
-                                type = "string",
-                                description = "搜索词"
-                            }
-                        },
-                        required = new[] { "query" }
-                    }
-                });
-            }
+            //if (search)
+            //{
+            //    tools.Add(new
+            //    {
+            //        name = nameof(JinaAiSearch),
+            //        description = "执行网页搜索并返回结果",
+            //        parameters = new
+            //        {
+            //            type = "object",
+            //            properties = new
+            //            {
+            //                query = new
+            //                {
+            //                    type = "string",
+            //                    description = "搜索词"
+            //                }
+            //            },
+            //            required = new[] { "query" }
+            //        }
+            //    });
+            //}
 
-            tools.Add(new
-            {
-                name = nameof(GetWeather),
-                description = "获取指定城市未来8天天气预报",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        city = new
-                        {
-                            type = "string",
-                            description = "城市(用英文表示)"
-                        }
-                    },
-                    required = new[] { "city" }
-                }
-            });
+            //tools.Add(new
+            //{
+            //    name = nameof(GetWeather),
+            //    description = "获取指定城市未来8天天气预报",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            city = new
+            //            {
+            //                type = "string",
+            //                description = "城市(用英文表示)"
+            //            }
+            //        },
+            //        required = new[] { "city" }
+            //    }
+            //});
 
-            tools.Add(new
-            {
-                name = nameof(GetCurrentDataTime),
-                description = "获取当前日期和时间",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new { }
-                }
-            });
+            //tools.Add(new
+            //{
+            //    name = nameof(GetCurrentDataTime),
+            //    description = "获取当前日期和时间",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new { }
+            //    }
+            //});
 
-            tools.Add(new
-            {
-                name = nameof(SearchTrainTicket),
-                description = "获取指定日期的火车票、火车车次",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        startingplace = new
-                        {
-                            type = "string",
-                            description = "起始城市"
-                        },
-                        arrivalplace = new
-                        {
-                            type = "string",
-                            description = "到达城市"
-                        },
-                        date = new
-                        {
-                            type = "string",
-                            description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
-                        }
-                    },
-                    required = new[] { "startingplace", "arrivalplace", "date" }
-                }
-            });
-
-
-            // 加载 MCP 工具
-            if (_mcpClientManager.IsEnabled)
-            {
-                try
-                {
-                    var mcpTools = await _mcpClientManager.GetAllToolsAsync(cancellationToken);
-                    foreach (var mcpTool in mcpTools)
-                    {
-                        // 从 MCP InputSchema 中动态提取字段，过滤掉 Gemini 不支持的字段
-                        object? inputSchema;
-                        if (mcpTool.InputSchema.HasValue)
-                        {
-                            // 使用辅助方法递归过滤不支持的字段（如 format, $schema, additionalProperties, default, examples, title 等）
-                            inputSchema = FilterGeminiUnsupportedSchemaFields(mcpTool.InputSchema.Value);
+            //tools.Add(new
+            //{
+            //    name = nameof(SearchTrainTicket),
+            //    description = "获取指定日期的火车票、火车车次",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            startingplace = new
+            //            {
+            //                type = "string",
+            //                description = "起始城市"
+            //            },
+            //            arrivalplace = new
+            //            {
+            //                type = "string",
+            //                description = "到达城市"
+            //            },
+            //            date = new
+            //            {
+            //                type = "string",
+            //                description = "日期(查询日期需要大于或等于今天日期,格式:YYYY-MM-DD)"
+            //            }
+            //        },
+            //        required = new[] { "startingplace", "arrivalplace", "date" }
+            //    }
+            //});
 
 
-                        }
-                        else
-                        {
-                            inputSchema = new { type = "object", properties = new { } };
-                        }
-                        tools.Add(new
-                        {
-                            name = mcpTool.Name,
-                            description = mcpTool.Description,
-                            parameters = inputSchema
-                        });
-                    }
-                    _logger.LogInformation("加载了 {Count} 个 MCP 工具", mcpTools.Count);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "加载 MCP 工具失败");
-                }
-            }
+            //// 加载 MCP 工具
+            //if (_mcpClientManager.IsEnabled)
+            //{
+            //    try
+            //    {
+            //        var mcpTools = await _mcpClientManager.GetAllToolsAsync(cancellationToken);
+            //        foreach (var mcpTool in mcpTools)
+            //        {
+            //            // 从 MCP InputSchema 中动态提取字段，过滤掉 Gemini 不支持的字段
+            //            object? inputSchema;
+            //            if (mcpTool.InputSchema.HasValue)
+            //            {
+            //                // 使用辅助方法递归过滤不支持的字段（如 format, $schema, additionalProperties, default, examples, title 等）
+            //                inputSchema = FilterGeminiUnsupportedSchemaFields(mcpTool.InputSchema.Value);
+
+
+            //            }
+            //            else
+            //            {
+            //                inputSchema = new { type = "object", properties = new { } };
+            //            }
+            //            tools.Add(new
+            //            {
+            //                name = mcpTool.Name,
+            //                description = mcpTool.Description,
+            //                parameters = inputSchema
+            //            });
+            //        }
+            //        _logger.LogInformation("加载了 {Count} 个 MCP 工具", mcpTools.Count);
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        _logger.LogWarning(ex, "加载 MCP 工具失败");
+            //    }
+            //}
 
             object File_search = null;
             if (!string.IsNullOrWhiteSpace(config.File_search_store_names))

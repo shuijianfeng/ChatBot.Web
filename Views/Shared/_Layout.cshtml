@@ -1,5 +1,6 @@
 @* _Layout.cshtml *@
 @inject ChatBot.Web.Services.IChatService ChatService
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
 
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -79,32 +80,7 @@
                     <button class="expand-sidebar-btn navbar-expand-btn" id="expand-sidebar-btn" title="展开侧边栏" style="display: flex;">
                         <i class="bi bi-layout-sidebar" style="font-size: 18px;"></i>
                     </button>
-                    @* Logo和品牌名 *@
-                    @* <a class="navbar-brand d-flex align-items-center" href="~/" id="navbar-brand">
-                        <i class="bi bi-github me-2"></i>
-                        <span>Ai助手</span>
-                    </a> *@
-
-                    @* 移动端菜单按钮 *@
-                    @* <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
-                        data-bs-target=".navbar-collapse" id="navbar-toggler">
-                        <span class="navbar-toggler-icon" id="navbar-toggler-icon"></span>
-                    </button> *@
-
-                    @* 导航菜单 *@
-                    @* <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between" id="navbar-collapse">
-                        <ul class="navbar-nav flex-grow-1">
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Home" asp-action="Index"> *@
-                                    @* <i class="bi bi-chat-dots me-1"></i>聊天 *@
-                               @*  </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" asp-controller="Home" asp-action="About"> *@
-                                    @* <i class="bi bi-info-circle me-1"></i>关于 *@
-                              @*   </a>
-                            </li>
-                        </ul> *@
+                    
 
                         @* 右侧工具栏 *@
                         <div class="d-flex align-items-center">
@@ -117,10 +93,7 @@
                                     </label>
                                 </div>
                             </div>
-                            @* <div class="px-3 py-2">
-                                <label class="form-label mb-1">模型</label>
-
-                            </div> *@
+                            
                             <div class="modeldropdown">
                                 <select class="form-select form-select-sm" id="global-model-selector">
                                     @foreach (var chatModel in ChatService.GetAvailableModels())
@@ -135,7 +108,7 @@
                             </div>
                             @* 设置下拉菜单 - 已移除 *@
                         </div>
-                    </div>
+                   
                 </div>
             </nav>
         </header>
@@ -145,13 +118,7 @@
             @RenderBody()
         </main>
 
-        @* 页脚 *@
-        @* <footer class="footer border-top">
-            <div class="container-fluid text-center py-3">
-                <span class="text-muted">© @DateTime.Now.Year - Ai助手 - </span>
-                <a asp-controller="Home" asp-action="Privacy">隐私政策</a>
-            </div>
-        </footer> *@
+        
     </div>
 
     @* 基础脚本 *@
@@ -247,5 +214,3 @@
         return tokens.RequestToken;
     }
 }
-
-@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
