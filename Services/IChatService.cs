@@ -3,9 +3,6 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Office2013.Excel;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
-using A = DocumentFormat.OpenXml.Drawing;
-using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
-using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 using iText.Commons.Utils;
 using iText.Html2pdf;
 using iText.Layout.Font;
@@ -13,18 +10,22 @@ using iText.StyledXmlParser.Resolver.Resource;
 using Markdig;
 using Microsoft.Extensions.Options;
 using Npgsql;
-
+using OpenAI.Chat;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
 using System.Data;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using A = DocumentFormat.OpenXml.Drawing;
 using Color = DocumentFormat.OpenXml.Wordprocessing.Color;
+using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using HtmlConverter = HtmlToOpenXml.HtmlConverter;
+using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 
 
 
@@ -54,6 +55,10 @@ namespace ChatBot.Web.Services
         List<string> GetAvailableModels();
         List<ChatModelConfig> GetModels();
         ChatModelConfig GetModelConfig(string modelName);
+        /// <summary>
+        /// 获取可用的技能列表
+        /// </summary>
+        List<SkillConfig> GetSkills();
         Task<byte[]> ExportMessageToPdf(string content);
         Task<byte[]> ExportMessageToDocx(string content);
         public string CreateJavaScriptCommand(string functionName, params object[] args);
@@ -72,6 +77,7 @@ namespace ChatBot.Web.Services
         private readonly ILogger<ChatService> _logger;
         private readonly JsonSerializerOptions _jsonOptions;
         private readonly ChatModelSettings _modelSettings;
+        private readonly SkillLoaderService _skillLoaderService;
         private readonly JinaSearch _jinaSearch;
         private readonly OpenWeather _openWeather;
         private readonly CtripSearch _ctripSearch;
@@ -84,12 +90,14 @@ namespace ChatBot.Web.Services
             IConfiguration configuration,
             ILogger<ChatService> logger,
             IOptions<ChatModelSettings> modelOptions,
+            SkillLoaderService skillLoaderService,
             IMcpClientManager mcpClientManager)
         {
             _httpClientFactory = httpClientFactory;
             _configuration = configuration;
             _logger = logger;
             _modelSettings = modelOptions.Value;
+            _skillLoaderService = skillLoaderService;
             // 配置JSON序列化选项
             _jsonOptions = new JsonSerializerOptions
             {
@@ -164,12 +172,41 @@ namespace ChatBot.Web.Services
             }
             throw new ArgumentException($"模型名称 '{modelName}' 未配置。");
         }
+
+        /// <summary>
+        /// 获取可用的技能列表
+        /// </summary>
+        public List<SkillConfig> GetSkills()
+        {
+            return _skillLoaderService.GetSkills();
+        }
+
+        /// <summary>
+        /// 根据技能名称获取技能的系统提示词
+        /// </summary>
+        private string GetSkillPrompt(string? skillName)
+        {
+            return _skillLoaderService.GetSkillPrompt(skillName);
+        }
         #endregion
 
         #region chat
         public async IAsyncEnumerable<string> GenerateStreamAsync(ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             var config = GetModelConfig(request.Model);
+
+            // 获取技能提示词并临时追加到模型系统提示词
+            var skillPrompt = GetSkillPrompt(request.Skill);
+            var originalSystemPrompt = config.Systemprompt;
+            if (!string.IsNullOrWhiteSpace(skillPrompt))
+            {
+                config.Systemprompt = string.IsNullOrWhiteSpace(config.Systemprompt)
+                    ? skillPrompt
+                    : config.Systemprompt + "\n\n" + skillPrompt;
+            }
+
+            try
+            {
             if (config.Isprompt)
             {
                 await foreach (var item in GenerateStreamViaDashScopeAsync(config, request, cancellationToken))
@@ -259,6 +296,12 @@ namespace ChatBot.Web.Services
                         }
                 }
 
+            }
+            }
+            finally
+            {
+                // 恢复原始系统提示词
+                config.Systemprompt = originalSystemPrompt;
             }
         }
 
@@ -1308,6 +1351,36 @@ namespace ChatBot.Web.Services
                                                         toolResult = await SearchTrainTicket(startingplace.GetString() ?? string.Empty, arrivalplace.GetString() ?? string.Empty, date.GetString() ?? string.Empty);
                                                         break;
                                                     }
+                                                case nameof(RunPythonFile):
+                                                    {
+                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
+                                                        bool query = argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
+
+                                                        query = argumentsJson.RootElement.TryGetProperty("arguments", out JsonElement arguments);
+                                                        query = argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                                                        if (!query)
+                                                        {
+                                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                        }
+
+                                                        content.Add(new
+                                                        {
+                                                            type = "tool_use",
+                                                            id = pair.id,
+                                                            name = pair.name,
+                                                            input = new { filePath = Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString() ?? string.Empty), arguments = arguments.GetString() ?? string.Empty }
+                                                        });
+                                                        toolsmessages.Add(new
+                                                        {
+                                                            role = "assistant",
+                                                            content = content
+
+
+                                                        });
+
+                                                        toolResult = await RunPythonFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString() ?? string.Empty), arguments.GetString() ?? string.Empty);
+                                                        break;
+                                                    }
                                                 case nameof(GetWeather):
                                                     {
                                                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
@@ -1540,6 +1613,39 @@ namespace ChatBot.Web.Services
                                             toolResult = await SearchTrainTicket(startingplaceStr, arrivalplaceStr, dateStr);
                                             break;
                                         }
+                                    case nameof(RunPythonFile):
+                                        {
+                                            var inputStr = pair.input?.ToString() ?? "{}";
+                                            using JsonDocument argumentsJson = JsonDocument.Parse(inputStr);
+                                            bool query = argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
+
+                                            query = argumentsJson.RootElement.TryGetProperty("arguments", out JsonElement arguments);
+                                            if (!query)
+                                            {
+                                                throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                            }
+
+                                            var filePathStr = filePath.GetString() ?? string.Empty;
+                                            var argumentsStr = arguments.GetString() ?? string.Empty;
+
+                                            content1.Add(new
+                                            {
+                                                type = "tool_use",
+                                                id = pair.id,
+                                                name = pair.name,
+                                                input = new { filePath = filePathStr, arguments = argumentsStr }
+                                            });
+                                            toolsmessages.Add(new
+                                            {
+                                                role = "assistant",
+                                                content = content1
+
+
+                                            });
+
+                                            toolResult = await RunPythonFile(filePathStr, argumentsStr);
+                                            break;
+                                        }
                                     case nameof(JinaAiSearch):
                                         {
                                             var inputStrJina = pair.input?.ToString() ?? "{}";
@@ -1680,9 +1786,9 @@ namespace ChatBot.Web.Services
         //Gemini
         public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
         {
-            // 验证配置AQ.Ab8RN6LQoXO75Ty1A9x4EEogc0XS97bVZPZwz-ytddNBxMvvrg
+           
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            //var apiKey = "AQ.Ab8RN6LQoXO75Ty1A9x4EEogc0XS97bVZPZwz-ytddNBxMvvrg";
+            
             var apiEndpoint = modelconfg.ApiEndpoint;
             apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
 
@@ -1707,10 +1813,13 @@ namespace ChatBot.Web.Services
             messages.AddRange(toolsmessages);
 
             // 准备工具定义
-            List<object> tools = await PrepareGeminiTools(request.EnableSearch, cancellationToken);
+            List<object> geminitools = await PrepareGeminiTools(request.EnableSearch, cancellationToken);
 
             // 获取思考配置
-            var thinkingConfig = GeminiThinkingConfig(modelconfg);
+            var thinkingConfig = new
+            {
+                thinkingLevel = modelconfg.ThinkingLevel
+            };
 
             HttpResponseMessage response = null;
             if (modelconfg.Temperature >= 0)
@@ -1723,7 +1832,7 @@ namespace ChatBot.Web.Services
                     },
                     contents = messages,
                     generationConfig = new { temperature = modelconfg.Temperature, thinkingConfig = thinkingConfig },
-                    tools = tools
+                    tools = geminitools
                 };
 
                 response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
@@ -1741,7 +1850,7 @@ namespace ChatBot.Web.Services
                     },
                     contents = messages,
                     generationConfig = thinkingConfig != null ? new { thinkingConfig = thinkingConfig } : null,
-                    tools = tools
+                    tools = geminitools
                 };
 
                 response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
@@ -1974,10 +2083,14 @@ namespace ChatBot.Web.Services
             messages.AddRange(toolsmessages);
 
             // 准备工具定义
-            List<object> tools = await PrepareGeminiFileSearchTools(request.EnableSearch, modelconfg, cancellationToken);
+            List<object> geminitools = await PrepareGeminiFileSearchTools(request.EnableSearch, modelconfg, cancellationToken);
 
             // 获取思考配置
-            var thinkingConfig = GeminiThinkingConfig(modelconfg);
+           
+            var thinkingConfig = new
+            {
+                thinkingLevel = modelconfg.ThinkingLevel
+            };
 
             HttpResponseMessage response = null;
             if (modelconfg.Temperature >= 0)
@@ -1990,7 +2103,7 @@ namespace ChatBot.Web.Services
                     },
                     contents = messages,
                     generationConfig = new { temperature = modelconfg.Temperature, thinkingConfig = thinkingConfig },
-                    tools = tools
+                    tools = geminitools
                 };
                 string str = JsonSerializer.Serialize(requestContent, _jsonOptions);
                 response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
@@ -2008,7 +2121,7 @@ namespace ChatBot.Web.Services
                     },
                     contents = messages,
                     generationConfig = thinkingConfig != null ? new { thinkingConfig = thinkingConfig } : null,
-                    tools = tools
+                    tools = geminitools
                 };
 
                 response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
@@ -2235,7 +2348,16 @@ namespace ChatBot.Web.Services
                         );
                     }
                     break;
-
+                case nameof(RunPythonFile):
+                    if (argsJson.TryGetProperty("filePath", out var filePathValue) &&
+                        argsJson.TryGetProperty("arguments", out var argumentsValue))
+                    {
+                        toolResult = await RunPythonFile(
+                            Path.Combine(  _skillLoaderService.SkillsDirectory  ,  filePathValue.GetString()),
+                            argumentsValue.GetString()
+                        );
+                    }
+                    break;
                 case nameof(GetWeather):
                     if (argsJson.TryGetProperty("city", out var cityValue))
                     {
@@ -2769,7 +2891,14 @@ namespace ChatBot.Web.Services
                         }
                         return await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
                     }
-
+                case nameof(RunPythonFile):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
+                        argumentsJson.RootElement.TryGetProperty("arguments", out JsonElement arguments);
+                        
+                        return await RunPythonFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString()), arguments.GetString());
+                    }
                 case nameof(GetWeather):
                     {
                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
@@ -2938,6 +3067,34 @@ namespace ChatBot.Web.Services
                    required = new[] { "startingplace", "arrivalplace", "date" }
                });
 
+            tools.Add(
+               new
+               {
+                   type = "function",
+
+                   name = nameof(RunPythonFile),
+                   description = "运行指定的Python文件并返回结果",
+                   parameters = new
+                   {
+                       type = "object",
+                       properties = new
+                       {
+
+                           filePath = new
+                           {
+                               type = "string",
+                               description = "Python文件路径"
+                           },
+                           arguments = new
+                           {
+                               type = "string",
+                               description = "传递给Python文件的参数"
+                           }
+                       }
+                   },
+                   required = new[] { "filePath", "arguments" }
+               });
+                              
             // 携程酒店搜索
             tools.Add(
                new
@@ -3129,6 +3286,35 @@ namespace ChatBot.Web.Services
                         }
                     });
             }
+            tools.Add(
+               new
+               {
+                   type = "function",
+                   function = new
+                   {
+                       name = nameof(RunPythonFile),
+                       description = "运行指定的Python文件并返回结果",
+                       parameters = new
+                       {
+                           type = "object",
+                           properties = new
+                           {
+
+                               filePath = new
+                               {
+                                   type = "string",
+                                   description = "Python文件路径"
+                               },
+                               arguments = new
+                               {
+                                   type = "string",
+                                   description = "传递给Python文件的参数"
+                               }
+                           }
+                       },
+                       required = new[] { "filePath", "arguments" }
+                   }
+               });
 
             tools.Add(
                  new
@@ -3425,7 +3611,31 @@ namespace ChatBot.Web.Services
                         required = new[] { "startingplace", "arrivalplace", "date" }
                     }
                 });
+            tools.Add(
+               new
+               {
+                   name = nameof(RunPythonFile),
+                   description = "运行指定的Python文件并返回结果",
+                   input_schema = new
+                   {
+                       type = "object",
+                       properties = new
+                       {
 
+                           filePath = new
+                           {
+                               type = "string",
+                               description = "Python文件路径"
+                           },
+                           arguments = new
+                           {
+                               type = "string",
+                               description = "传递给Python文件的参数"
+                           }
+                       }
+                   },
+                   required = new[] { "filePath", "arguments" }
+               });
             //// 携程酒店搜索
             //tools.Add(
             //    new
@@ -3705,7 +3915,21 @@ namespace ChatBot.Web.Services
                     required = new[] { "startingplace", "arrivalplace", "date" }
                 }
             });
-
+            tools.Add(new
+            {
+                name = nameof(RunPythonFile),
+                description = "运行指定的Python文件并返回结果",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        filePath = new { type = "string", description = "Python文件路径" },
+                        arguments = new { type = "string", description = "传递给Python文件的参数" }
+                    },
+                    required = new[] { "filePath", "arguments" } // <-- 正确：放在 parameters 内部
+                }
+            });
             //// 携程酒店搜索
             //tools.Add(new
             //{
@@ -4321,6 +4545,79 @@ namespace ChatBot.Web.Services
 
         #endregion
         #region tools
+
+        private async Task<string> ProcessRunPythonFileAsync(ChatToolCall toolCall)
+        {
+            using JsonDocument argumentsJson = JsonDocument.Parse(toolCall.FunctionArguments);
+            if (!argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePathElement))
+            {
+                throw new ArgumentNullException("filePath", "The filePath argument is required.");
+            }
+
+            string filePath = filePathElement.GetString() ?? throw new ArgumentNullException("filePath", "filePath cannot be null.");
+            string arguments = string.Empty;
+
+            if (argumentsJson.RootElement.TryGetProperty("arguments", out JsonElement argsElement))
+            {
+                arguments = argsElement.GetString() ?? string.Empty;
+            }
+
+            return await RunPythonFile(filePath, arguments);
+        }
+
+        private async Task<string> RunPythonFile(string filePath, string arguments)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(filePath))
+                {
+                    return $"执行失败: 找不到文件 '{filePath}'。";
+                }
+
+                var processStartInfo = new ProcessStartInfo
+                {
+                    FileName = "python",
+                    Arguments = string.IsNullOrWhiteSpace(arguments) ? $"\"{filePath}\"" : $"\"{filePath}\" {arguments}",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+
+                using var process = Process.Start(processStartInfo);
+                if (process == null) return "执行失败: 无法启动 python 进程，请确保系统已安装 Python 并配置了环境变量。";
+
+                var outputTask = process.StandardOutput.ReadToEndAsync();
+                var errorTask = process.StandardError.ReadToEndAsync();
+
+                // 为了防止卡死，设置一个超时时间，比如60秒
+                var completedTask = await Task.WhenAny(Task.WhenAll(outputTask, errorTask), Task.Delay(TimeSpan.FromSeconds(60)));
+
+                if (completedTask != Task.WhenAll(outputTask, errorTask))
+                {
+                    try { process.Kill(); } catch { }
+                    return "执行失败: 脚本执行超时 (60秒)。";
+                }
+
+                string output = await outputTask;
+                string error = await errorTask;
+
+                if (!string.IsNullOrWhiteSpace(error) && process.ExitCode != 0)
+                {
+                    return $"执行失败 (退出代码 {process.ExitCode}):\n{error}\n标准输出:\n{output}";
+                }
+
+                return string.IsNullOrWhiteSpace(output) && string.IsNullOrWhiteSpace(error)
+                    ? "执行成功，无任何输出。"
+                    : (!string.IsNullOrWhiteSpace(output) ? output : error);
+            }
+            catch (Exception ex)
+            {
+                return $"执行脚本时发生异常: {ex.Message}";
+            }
+        }
         private async Task<string> JinaAiSearch(string query)
         {
             var result = await _jinaSearch.Search(query);

@@ -47,6 +47,11 @@ namespace ChatBot.Models
         public string File_search_store_names { get; set; } = string.Empty;
 
         public string ThinkingLevel { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 该模型关联的技能名称列表（为空或 null 表示不加载任何技能）
+        /// </summary>
+        public List<string>? Skills { get; set; }
     }
 
     public class ChatModelSettings : List<ChatModelConfig>
@@ -144,5 +149,43 @@ namespace ChatBot.Models
         /// MCP 服务器列表
         /// </summary>
         public List<McpServerConfig> Servers { get; set; } = new List<McpServerConfig>();
+    }
+
+    /// <summary>
+    /// 技能配置
+    /// </summary>
+    public class SkillConfig
+    {
+        /// <summary>
+        /// 技能名称（来自 SKILL.md 的 name 字段）
+        /// </summary>
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 技能文件夹名称
+        /// </summary>
+        public string FolderName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 技能图标（Emoji）
+        /// </summary>
+        public string Icon { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 技能描述（来自 SKILL.md 的 description 字段）
+        /// </summary>
+        public string Description { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 技能的系统提示词（SKILL.md 的 markdown 正文）
+        /// </summary>
+        public string SystemPrompt { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// 技能设置列表
+    /// </summary>
+    public class SkillSettings : List<SkillConfig>
+    {
     }
 }

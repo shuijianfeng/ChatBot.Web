@@ -17,6 +17,7 @@ body {
     background-color: var(--color-canvas-default);
     padding: 0;
 }
+
 /* 主布局 */
 .chat-main {
     display: flex;
@@ -38,8 +39,10 @@ body {
 
 /* 浅色模式下的导航栏折叠按钮样式 */
 .navbar-light .navbar-toggler {
-    border-color: rgba(0, 0, 0, 0.1); /* 浅色边框 */
-    color: rgba(0, 0, 0, 0.5); /* 按钮图标颜色 */
+    border-color: rgba(0, 0, 0, 0.1);
+    /* 浅色边框 */
+    color: rgba(0, 0, 0, 0.5);
+    /* 按钮图标颜色 */
 }
 
 .navbar-light .navbar-toggler-icon {
@@ -87,8 +90,12 @@ body {
 .messages-container {
     flex: 1;
     overflow-y: auto;
-    padding: 42px 6px 6px 6px;
+    padding: 24px 24px 12px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
     scroll-behavior: smooth;
+    min-height: 0;
 }
 
 /* 消息基础样式 */
@@ -108,6 +115,7 @@ body {
     margin-left: auto;
     flex-direction: row-reverse;
 }
+
 /* 头像样式 */
 .avatar {
     width: 32px;
@@ -116,11 +124,11 @@ body {
     flex-shrink: 0;
 }
 
-    .avatar img {
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
-    }
+.avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+}
 
 /* AI头像样式 */
 .ai-avatar {
@@ -130,6 +138,7 @@ body {
     justify-content: center;
     color: white;
 }
+
 /* AI 助手图标颜色 */
 .ai-icon {
     color: #2DA44E;
@@ -161,6 +170,7 @@ body {
     margin-left: 2px;
     overflow-x: auto;
 }
+
 /* 消息容器样式 */
 .message-container {
     padding: 4px 8px;
@@ -173,14 +183,18 @@ body {
     justify-content: space-between;
     padding: 4px 0;
     margin-bottom: 4px;
-    min-height: 24px; /* 设置最小高度 */
-    gap: 8px; /* 增加header内元素的间距 */
+    min-height: 24px;
+    /* 设置最小高度 */
+    gap: 8px;
+    /* 增加header内元素的间距 */
 }
+
 /* 角色容器样式 */
 .role-container {
     display: flex;
     align-items: center;
 }
+
 /* 用户消息头部靠右 */
 .user-message .message-header {
     justify-content: flex-end;
@@ -190,20 +204,25 @@ body {
     font-weight: 600;
     font-size: 14px;
     color: var(--color-fg-default);
-    line-height: 1.2; /* 减小行高 */
+    line-height: 1.2;
+    /* 减小行高 */
 }
+
 /* 用户消息特殊样式 */
 .user-message .message-role {
     color: var(--color-success-fg);
 }
+
 /* 消息操作按钮容器 */
 .message-actions {
     display: flex;
     align-items: center;
     opacity: 0;
     transition: opacity 0.2s;
-    gap: 1px; /* 增加按钮之间的间距 */
-    margin-left: 16px; /* 增加与 message-role 的间距 */
+    gap: 1px;
+    /* 增加按钮之间的间距 */
+    margin-left: 16px;
+    /* 增加与 message-role 的间距 */
 }
 
 /* AI 消息特殊样式 */
@@ -247,29 +266,31 @@ body {
     background: transparent;
 }
 
-    .delete-button:hover,
-    .copy-button:hover {
-        background-color: var(--color-neutral-muted);
-        color: var(--color-fg-default);
-    }
+.delete-button:hover,
+.copy-button:hover {
+    background-color: var(--color-neutral-muted);
+    color: var(--color-fg-default);
+}
 
-    .delete-button svg,
-    .copy-button svg {
-        width: 20px;
-        height: 20px;
-    }
+.delete-button svg,
+.copy-button svg {
+    width: 20px;
+    height: 20px;
+}
 
-    /* 复制按钮图标大小 */
-    .delete-button .octicon,
-    .copy-button .octicon {
-        width: 20px;
-        height: 20px;
-    }
-    /* 复制图标悬停效果 */
-    .delete-button:hover .icon,
-    .copy-button:hover .icon {
-        color: var(--color-accent-fg);
-    }
+/* 复制按钮图标大小 */
+.delete-button .octicon,
+.copy-button .octicon {
+    width: 20px;
+    height: 20px;
+}
+
+/* 复制图标悬停效果 */
+.delete-button:hover .icon,
+.copy-button:hover .icon {
+    color: var(--color-accent-fg);
+}
+
 /* 复制成功动画 */
 @keyframes copySuccess {
     0% {
@@ -289,6 +310,7 @@ body {
     animation: copySuccess 0.3s ease-in-out;
     color: var(--color-success-fg);
 }
+
 /* 头像样式 */
 .message-avatar {
     flex-shrink: 0;
@@ -309,6 +331,7 @@ body {
     background-color: #2da44e;
     color: white;
 }
+
 /* 复制成功提示 */
 .copy-toast {
     position: fixed;
@@ -325,10 +348,10 @@ body {
     z-index: 1000;
 }
 
-    .copy-toast.show {
-        transform: translateX(-50%) translateY(0);
-        opacity: 1;
-    }
+.copy-toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
 
 
 /* AI 助手消息样式 */
@@ -350,17 +373,14 @@ body {
     text-align: center;
 }
 
-/* 输入区域 */
 .chat-input-area {
-    position: sticky;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    position: relative;
     background: var(--color-canvas-default);
     border-top: 1px solid var(--color-border-default);
     padding: 24px;
     z-index: 100;
 }
+
 /* 停止按钮样式 */
 .stop-button {
     position: absolute;
@@ -377,7 +397,8 @@ body {
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    color: var(--color-danger-fg); /*使用 GitHub 的危险色*/
+    color: var(--color-danger-fg);
+    /*使用 GitHub 的危险色*/
     transition: all 0.2s;
 }
 
@@ -385,13 +406,15 @@ body {
 .stop-icon {
     width: 14px;
     height: 14px;
-    fill: #cf222e; /*GitHub 的红色 */
+    fill: #cf222e;
+    /*GitHub 的红色 */
 }
 
 /*悬停效果 */
 .stop-button:hover {
     background-color: var(--color-danger-subtle);
-    fill: #a40e26; /*更深的红色*/
+    fill: #a40e26;
+    /*更深的红色*/
 }
 
 /*点击效果*/
@@ -412,10 +435,10 @@ body {
     max-width: 1280px;
 }
 
-    .input-container:focus-within {
-        border-color: var(--color-accent-fg);
-        box-shadow: 0 0 0 2px var(--color-accent-fg-muted);
-    }
+.input-container:focus-within {
+    border-color: var(--color-accent-fg);
+    box-shadow: 0 0 0 2px var(--color-accent-fg-muted);
+}
 
 /*文本输入框 */
 #message-input {
@@ -431,14 +454,14 @@ body {
     color: var(--color-fg-default);
 }
 
-    #message-input:focus {
-        outline: none;
-        box-shadow: none;
-    }
+#message-input:focus {
+    outline: none;
+    box-shadow: none;
+}
 
-    #message-input::placeholder {
-        color: var(--color-fg-subtle);
-    }
+#message-input::placeholder {
+    color: var(--color-fg-subtle);
+}
 
 /* 发送按钮 */
 .send-button {
@@ -459,15 +482,15 @@ body {
     transition: all 0.2s;
 }
 
-    .send-button:hover:not(:disabled) {
-        color: var(--color-accent-fg);
-        background-color: var(--color-neutral-muted);
-    }
+.send-button:hover:not(:disabled) {
+    color: var(--color-accent-fg);
+    background-color: var(--color-neutral-muted);
+}
 
-    .send-button:disabled {
-        color: var(--color-primer-fg-disabled);
-        cursor: not-allowed;
-    }
+.send-button:disabled {
+    color: var(--color-primer-fg-disabled);
+    cursor: not-allowed;
+}
 
 .send-icon {
     width: 16px;
@@ -519,9 +542,9 @@ body {
     border-radius: 6px;
 }
 
-    ::-webkit-scrollbar-thumb:hover {
-        background-color: var(--color-fg-muted);
-    }
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-fg-muted);
+}
 
 /* Markdown 样式 */
 .markdown-body {
@@ -530,37 +553,38 @@ body {
     line-height: 1.5;
 }
 
-    .markdown-body h1,
-    .markdown-body h2,
-    .markdown-body h3,
-    .markdown-body h4,
-    .markdown-body h5,
-    .markdown-body h6 {
-        margin-top: 24px;
-        margin-bottom: 16px;
-        font-weight: 600;
-        color: var(--color-fg-default);
-    }
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    color: var(--color-fg-default);
+}
 
-    /* 行内代码样式 */
-    .markdown-body code {
-        padding: 2px 6px;
-        margin: 0 2px;
-        font-size: 13px;
-        background-color: var(--color-neutral-muted);
-        border-radius: 4px;
-        font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
-    }
+/* 行内代码样式 */
+.markdown-body code {
+    padding: 2px 6px;
+    margin: 0 2px;
+    font-size: 13px;
+    background-color: var(--color-neutral-muted);
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+}
 
-    /* 代码块基础样式 */
-    .markdown-body pre {
-        margin: 8px 0;
-        padding: 12px;
-        background-color: var(--color-canvas-subtle);
-        border-radius: 6px;
-        border: 1px solid var(--color-border-default);
-        overflow: auto;
-    }
+/* 代码块基础样式 */
+.markdown-body pre {
+    margin: 8px 0;
+    padding: 12px;
+    background-color: var(--color-canvas-subtle);
+    border-radius: 6px;
+    border: 1px solid var(--color-border-default);
+    overflow: auto;
+}
+
 /* 确保用户消息和AI消息的代码块样式一致 */
 .user-message .markdown-body pre,
 .assistant-message .markdown-body pre {
@@ -581,15 +605,18 @@ body {
     tab-size: 4;
     background-color: transparent;
 }
+
 /* 确保代码块内的滚动条样式 */
 .markdown-body pre::-webkit-scrollbar {
     height: 6px;
     width: 6px;
 }
+
 /* 消息容器内的代码块调整 */
 .message-content pre {
     margin: 8px 0 !important;
 }
+
 /* 用户消息和AI消息的统一样式 */
 .user-message .message-content,
 .assistant-message .message-content {
@@ -606,13 +633,14 @@ body {
 }
 
 .markdown-body a {
-    color: #58a6ff; /* 更鲜明的链接颜色 */
+    color: #58a6ff;
+    /* 更鲜明的链接颜色 */
     text-decoration: none;
 }
 
-    .markdown-body a:hover {
-        text-decoration: underline;
-    }
+.markdown-body a:hover {
+    text-decoration: underline;
+}
 
 .markdown-body ul,
 .markdown-body ol {
@@ -638,30 +666,31 @@ body {
     border: 2px solid var(--color-border-default) !important;
 }
 
-    /* 表格行样式 */
-    .markdown-body table tr {
-        border: 1px solid var(--color-border-default) !important;
-    }
+/* 表格行样式 */
+.markdown-body table tr {
+    border: 1px solid var(--color-border-default) !important;
+}
 
-        /* 表格行交替颜色 */
-        .markdown-body table tr:nth-child(2n) {
-            background-color: var(--color-canvas-subtle);
-        }
+/* 表格行交替颜色 */
+.markdown-body table tr:nth-child(2n) {
+    background-color: var(--color-canvas-subtle);
+}
 
-    /* 表头和单元格通用样式 */
-    .markdown-body table th,
-    .markdown-body table td {
-        padding: 8px 16px;
-        border: 1px solid var(--color-border-default) !important;
-        background-color: var(--color-canvas-default);
-    }
+/* 表头和单元格通用样式 */
+.markdown-body table th,
+.markdown-body table td {
+    padding: 8px 16px;
+    border: 1px solid var(--color-border-default) !important;
+    background-color: var(--color-canvas-default);
+}
 
-    /* 表头特殊样式 */
-    .markdown-body table th {
-        font-weight: 600;
-        background-color: var(--color-canvas-subtle);
-        border-bottom: 2px solid var(--color-border-default) !important;
-    }
+/* 表头特殊样式 */
+.markdown-body table th {
+    font-weight: 600;
+    background-color: var(--color-canvas-subtle);
+    border-bottom: 2px solid var(--color-border-default) !important;
+}
+
 /* 表格容器样式 */
 .table-container {
     width: 100%;
@@ -681,9 +710,9 @@ body {
         border-color: #30363d;
     }
 
-        .mermaid-chart .label {
-            fill: #c9d1d9;
-        }
+    .mermaid-chart .label {
+        fill: #c9d1d9;
+    }
 
     .chart-error {
         color: #ff7b72;
@@ -691,16 +720,20 @@ body {
         border-color: #f85149;
     }
 }
+
 /* 消息内容中的图表样式调整 */
 .message-content .mermaid-chart {
     max-width: 800px;
     margin: 1rem auto;
-    margin-top: 0; /* 移除顶部间距 */
+    margin-top: 0;
+    /* 移除顶部间距 */
     margin: 0;
     padding: 0;
 }
+
 /* 深色模式适配 */
 @media (prefers-color-scheme: dark) {
+
     .user-message .markdown-body pre,
     .assistant-message .markdown-body pre {
         background-color: var(--color-neutral-muted);
@@ -712,8 +745,10 @@ body {
         color: var(--color-fg-default);
     }
 }
+
 /* 确保表格边框在深色模式下更加醒目 */
 @media (prefers-color-scheme: dark) {
+
     /*  .header {
         background-color: var(--color-canvas-default);
     }*/
@@ -725,9 +760,10 @@ body {
         color: var(--color-fg-default);
     }
 
-        .markdown-body.header-title svg {
-            color: var(--color-fg-default);
-        }
+    .markdown-body.header-title svg {
+        color: var(--color-fg-default);
+    }
+
     /* 表头单元格的上边框 */
     .markdown-body table th:not(:first-child) {
         border-left: 1px solid var(--color-neutral-emphasis);
@@ -738,20 +774,20 @@ body {
         border: 1px solid var(--color-neutral-emphasis);
     }
 
-        /* 表格单元格之间的分隔线 */
-        .markdown-body table td {
-            border: 1px solid var(--color-neutral-emphasis);
-        }
+    /* 表格单元格之间的分隔线 */
+    .markdown-body table td {
+        border: 1px solid var(--color-neutral-emphasis);
+    }
 
-        /* 表头底部边框加粗 */
-        .markdown-body table thead th {
-            border-bottom: 2px solid var(--color-neutral-emphasis);
-        }
+    /* 表头底部边框加粗 */
+    .markdown-body table thead th {
+        border-bottom: 2px solid var(--color-neutral-emphasis);
+    }
 
-        /* 行悬停效果 */
-        .markdown-body table tr:hover {
-            background-color: var(--color-neutral-muted);
-        }
+    /* 行悬停效果 */
+    .markdown-body table tr:hover {
+        background-color: var(--color-neutral-muted);
+    }
 }
 
 /* 分割线样式 */
@@ -816,8 +852,10 @@ body {
     --color-success-fg: #1a7f37;
     --color-attention-fg: #9a6700;
     --color-danger-fg: #cf222e;
-    --color-danger-subtle: rgba(215, 58, 73, 0.1); /* GitHub 的危险色浅色背景 */
-    --color-danger-muted: rgba(215, 58, 73, 0.2); /* GitHub 的危险色更深背景 */
+    --color-danger-subtle: rgba(215, 58, 73, 0.1);
+    /* GitHub 的危险色浅色背景 */
+    --color-danger-muted: rgba(215, 58, 73, 0.2);
+    /* GitHub 的危险色更深背景 */
     --color-primer-shadow-focus: 0 0 0 3px rgba(9, 105, 218, 0.3);
     --color-primer-border-active: #FD8C73;
     --color-accent-fg-muted: rgba(9, 105, 218, 0.1);
@@ -854,8 +892,10 @@ body {
     --color-success-fg: #3fb950;
     --color-attention-fg: #d29922;
     --color-danger-fg: #f85149;
-    --color-danger-subtle: rgba(215, 58, 73, 0.1); /* GitHub 的危险色浅色背景 */
-    --color-danger-muted: rgba(215, 58, 73, 0.2); /* GitHub 的危险色更深背景 */
+    --color-danger-subtle: rgba(215, 58, 73, 0.1);
+    /* GitHub 的危险色浅色背景 */
+    --color-danger-muted: rgba(215, 58, 73, 0.2);
+    /* GitHub 的危险色更深背景 */
     --color-primer-shadow-focus: 0 0 0 3px #0c2d6b;
     --color-primer-border-active: #F78166;
     --color-accent-fg-muted: rgba(88, 166, 255, 0.3);
@@ -946,7 +986,8 @@ pre {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 4px 12px; /* 减小内边距 */
+    padding: 4px 12px;
+    /* 减小内边距 */
     background-color: #e0e3e5;
     border: 1px solid #e9ecef;
     border-top-left-radius: 6px;
@@ -954,7 +995,8 @@ pre {
     border-bottom: none;
     font-family: var(--bs-font-monospace);
     font-size: 0.875rem;
-    min-height: 32px; /* 设置最小高度 */
+    min-height: 32px;
+    /* 设置最小高度 */
 }
 
 /* 语言标识样式 */
@@ -987,19 +1029,19 @@ pre {
     color: #adb5bd;
 }
 
-    [data-bs-theme="dark"] .copy-button:hover {
-        background-color: rgba(255, 255, 255, 0.1);
-        color: #fff;
-    }
+[data-bs-theme="dark"] .copy-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
 
 [data-bs-theme="dark"] .delete-button {
     color: #adb5bd;
 }
 
-    [data-bs-theme="dark"] .delete-button:hover {
-        background-color: rgba(255, 255, 255, 0.1);
-        color: #fff;
-    }
+[data-bs-theme="dark"] .delete-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
 
 [data-bs-theme="dark"] pre {
     background-color: #1e1e1e;
@@ -1008,20 +1050,23 @@ pre {
 
 /* 确保代码块内容正确显示 */
 .code-block-wrapper pre {
-    margin: 0 !important; /* 移除默认边距 */
+    margin: 0 !important;
+    /* 移除默认边距 */
     border-top-left-radius: 0;
     border-top-right-radius: 0;
 }
 
-    .code-block-wrapper pre code {
-        display: block;
-        padding: 12px; /* 调整内边距 */
-        overflow-x: auto;
-    }
+.code-block-wrapper pre code {
+    display: block;
+    padding: 12px;
+    /* 调整内边距 */
+    overflow-x: auto;
+}
 
 /* AI 消息中的代码块样式 */
 .ai-message pre {
-    margin: 0.5rem 0 !important; /* 减小外边距 */
+    margin: 0.5rem 0 !important;
+    /* 减小外边距 */
     padding: 0 !important;
 }
 
@@ -1039,9 +1084,9 @@ pre {
     transition: opacity 0.3s ease;
 }
 
-    .copy-tooltip.show {
-        opacity: 1;
-    }
+.copy-tooltip.show {
+    opacity: 1;
+}
 
 /* 暗色主题 */
 @media (prefers-color-scheme: dark) {
@@ -1051,10 +1096,12 @@ pre {
         --math-color: #c9d1d9;
     }
 
-    .math-block, .math-inline {
+    .math-block,
+    .math-inline {
         color: var(--math-color);
     }
 }
+
 /* 数学公式容器 */
 .math-block {
     margin: 1rem 0;
@@ -1075,7 +1122,8 @@ pre {
 
 /* 图表样式 */
 .mermaid-chart {
-    margin-top: 0px 0px 0px 0px; /* 移除顶部间距 */
+    margin-top: 0px 0px 0px 0px;
+    /* 移除顶部间距 */
     margin: 0px 0px 0px 0px;
     padding: 0px 0px 0px 0px;
     background: #fff;
@@ -1084,14 +1132,16 @@ pre {
     overflow: auto;
 }
 
-    .mermaid-chart svg {
-        margin-top: 0px 0px 0px 0px; /* 移除顶部间距 */
-        margin: 0px 0px 0px 0px;
-        padding: 0px 0px 0px 0px;
-        max-width: 100%;
-        height: auto;
-        display: block;
-    }
+.mermaid-chart svg {
+    margin-top: 0px 0px 0px 0px;
+    /* 移除顶部间距 */
+    margin: 0px 0px 0px 0px;
+    padding: 0px 0px 0px 0px;
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
 /* 图表加载和错误状态 */
 .chart-loading {
     text-align: center;
@@ -1128,8 +1178,10 @@ pre {
 
 /* Mermaid图表容器 */
 .mermaid-chart {
-    padding: 0 !important; /* 移除内边距 */
-    margin: 0 !important; /* 移除外边距 */
+    padding: 0 !important;
+    /* 移除内边距 */
+    margin: 0 !important;
+    /* 移除外边距 */
 }
 
 /* Mermaid图表 */
@@ -1139,31 +1191,35 @@ pre {
     background-color: var(--color-canvas-default);
 }
 
-    /* SVG容器样式 */
-    .mermaid svg {
-        max-width: 100%;
-        height: auto;
-        width: auto;
-    }
+/* SVG容器样式 */
+.mermaid svg {
+    max-width: 100%;
+    height: auto;
+    width: auto;
+}
 
 
 /* 图片预览样式 */
 .image-preview {
-    width: 70px; /* 固定宽度为50px */
+    width: 70px;
+    /* 固定宽度为50px */
     height: auto;
     position: relative;
     margin-bottom: 10px;
 }
 
-    /* 固定图片预览宽度为50px */
-    .image-preview img {
-        width: 100%; /* 使图片宽度填满容器 */
-        height: auto;
-        border-radius: 8px;
-    }
+/* 固定图片预览宽度为50px */
+.image-preview img {
+    width: 100%;
+    /* 使图片宽度填满容器 */
+    height: auto;
+    border-radius: 8px;
+}
+
 /* 使用更高特异性确保样式应用 */
 img.image-preview-img {
-    width: 50px !important; /* 强制应用宽度 */
+    width: 50px !important;
+    /* 强制应用宽度 */
     height: auto;
     border-radius: 8px;
 }
@@ -1185,9 +1241,9 @@ img.image-preview-img {
     justify-content: center;
 }
 
-    .remove-image-button:hover {
-        background: rgba(0, 0, 0, 0.7);
-    }
+.remove-image-button:hover {
+    background: rgba(0, 0, 0, 0.7);
+}
 
 /* 上传的图片在消息中预览 */
 .uploaded-image-preview {
@@ -1206,41 +1262,48 @@ img.image-preview-img {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-fg-default); /* 使用文本颜色变量 */
+    color: var(--color-fg-default);
+    /* 使用文本颜色变量 */
 }
 
-    .icon-button i {
-        font-size: 1.5rem;
-        transition: color 0.3s;
-    }
+.icon-button i {
+    font-size: 1.5rem;
+    transition: color 0.3s;
+}
 
-    .icon-button:hover {
-        color: var(--color-accent-emphasis); /* 悬停时颜色变化 */
-    }
+.icon-button:hover {
+    color: var(--color-accent-emphasis);
+    /* 悬停时颜色变化 */
+}
 
 /* 深色模式下上传图片按钮样式 */
 [data-theme="dark"] .icon-button {
-    color: var(--color-accent-fg); /* 根据深色主题调整图标颜色 */
+    color: var(--color-accent-fg);
+    /* 根据深色主题调整图标颜色 */
 }
 
-    [data-theme="dark"] .icon-button:hover {
-        color: var(--color-accent-emphasis); /* 悬停时颜色变化 */
-    }
+[data-theme="dark"] .icon-button:hover {
+    color: var(--color-accent-emphasis);
+    /* 悬停时颜色变化 */
+}
 
 /* 使用媒体查询适配系统主题 */
 @media (prefers-color-scheme: dark) {
     .icon-button {
-        color: var(--color-accent-fg); /* 深色模式下的图标颜色 */
+        color: var(--color-accent-fg);
+        /* 深色模式下的图标颜色 */
     }
 
-        .icon-button:hover {
-            color: var(--color-accent-emphasis); /* 悬停时颜色变化 */
-        }
+    .icon-button:hover {
+        color: var(--color-accent-emphasis);
+        /* 悬停时颜色变化 */
+    }
 }
 
 .jsmind-chart {
     width: 100%;
-    height: 400px; /* 根据需要调整高度 */
+    height: 400px;
+    /* 根据需要调整高度 */
     border: 1px solid #ccc;
     margin-top: 10px;
 }
@@ -1314,9 +1377,9 @@ img.image-preview-img {
     justify-content: center;
 }
 
-    .remove-image-button:hover {
-        background-color: rgba(255, 0, 0, 0.8);
-    }
+.remove-image-button:hover {
+    background-color: rgba(255, 0, 0, 0.8);
+}
 
 
 
@@ -1328,8 +1391,10 @@ img.image-preview-img {
 }
 
 .message-model {
-    font-size: 0.8em; /* 可选：调整字体大小 */
-    color: var(--color-fg-muted); /* 设置为灰色 */
+    font-size: 0.8em;
+    /* 可选：调整字体大小 */
+    color: var(--color-fg-muted);
+    /* 设置为灰色 */
 }
 
 /* 图片遮罩层样式 */
@@ -1371,21 +1436,21 @@ img.image-preview-img {
     cursor: pointer;
 }
 
-    /* 悬停提示 */
-    .uploaded-image-preview:hover::after {
-        content: '双击查看大图';
-        position: absolute;
-        bottom: 100%;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-        white-space: nowrap;
-        pointer-events: none;
-    }
+/* 悬停提示 */
+.uploaded-image-preview:hover::after {
+    content: '双击查看大图';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
+}
 
 .external-link {
     display: inline-flex;
@@ -1397,14 +1462,14 @@ img.image-preview-img {
     border-radius: 4px;
 }
 
-    .external-link:hover {
-        background-color: var(--color-accent-fg-muted);
-        text-decoration: none;
-    }
+.external-link:hover {
+    background-color: var(--color-accent-fg-muted);
+    text-decoration: none;
+}
 
-    .external-link .link-text {
-        text-decoration: underline;
-    }
+.external-link .link-text {
+    text-decoration: underline;
+}
 
 .external-link-icon {
     flex-shrink: 0;
@@ -1436,20 +1501,20 @@ img.image-preview-img {
     transition: all 0.2s;
 }
 
-    .export-button:hover {
-        background-color: var(--color-neutral-muted);
-        color: var(--color-accent-fg);
-    }
+.export-button:hover {
+    background-color: var(--color-neutral-muted);
+    color: var(--color-accent-fg);
+}
 
-    .export-button svg {
-        width: 22px;
-        height: 22px;
-    }
+.export-button svg {
+    width: 22px;
+    height: 22px;
+}
 
-        .export-button svg text {
-            fill: currentColor;
-            font-family: "Segoe UI", Arial, sans-serif;
-        }
+.export-button svg text {
+    fill: currentColor;
+    font-family: "Segoe UI", Arial, sans-serif;
+}
 
 .export-group {
     display: flex;
@@ -1462,25 +1527,29 @@ img.image-preview-img {
     color: var(--color-fg-muted);
 }
 
-    [data-theme="dark"] .export-button:hover,
-    .dark-mode .export-button:hover {
-        background-color: var(--color-neutral-muted);
-        color: var(--color-accent-fg);
-    }
+[data-theme="dark"] .export-button:hover,
+.dark-mode .export-button:hover {
+    background-color: var(--color-neutral-muted);
+    color: var(--color-accent-fg);
+}
 
 .export-group {
     display: flex;
-    gap: 0; /* 移除间隙，让按钮连在一起 */
+    gap: 0;
+    /* 移除间隙，让按钮连在一起 */
     border: 1px solid var(--color-border-default);
     border-radius: 4px;
-    overflow: hidden; /* 确保内部按钮不会超出圆角边框 */
-    padding: 2px; /* 添加内边距，让按钮与边框有一定距离 */
+    overflow: hidden;
+    /* 确保内部按钮不会超出圆角边框 */
+    padding: 2px;
+    /* 添加内边距，让按钮与边框有一定距离 */
 }
 
 .upload-image-container {
     align-items: center;
     display: flex;
-    gap: 16px; /* 移除间隙，让按钮连在一起 */
+    gap: 16px;
+    /* 移除间隙，让按钮连在一起 */
     padding: 4px 2px 2px 10px;
 }
 
@@ -1493,7 +1562,8 @@ img.image-preview-img {
     border-radius: 8px;
     margin: 8px 0;
     cursor: pointer;
-    transition: all 0.2s ease; /* 添加过渡效果 */
+    transition: all 0.2s ease;
+    /* 添加过渡效果 */
 }
 
 /* AI助手消息中的图片样式 */
@@ -1506,14 +1576,16 @@ img.image-preview-img {
 .message-content img.message-image:hover {
     opacity: 0.9;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
-    transform: scale(1.01); /* 轻微放大效果 */
+    transform: scale(1.01);
+    /* 轻微放大效果 */
 }
 
 /* 悬停效果 - 深色模式 */
 [data-theme="dark"] .message-content img.message-image:hover,
 .dark-mode .message-content img.message-image:hover {
     opacity: 0.9;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.2); /* 使用白色阴影 */
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+    /* 使用白色阴影 */
     transform: scale(1.01);
 }
 
@@ -1532,15 +1604,17 @@ img.image-preview-img {
 /* 深色模式下的图片滤镜 */
 @media (prefers-color-scheme: dark) {
     .message-content img.message-image {
-        filter: brightness(0.9); /* 稍微降低亮度以适应深色模式 */
+        filter: brightness(0.9);
+        /* 稍微降低亮度以适应深色模式 */
     }
 
-        .message-content img.message-image:hover {
-            opacity: 0.9;
-            box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
-            transform: scale(1.01);
-            filter: brightness(1); /* 悬停时恢复正常亮度 */
-        }
+    .message-content img.message-image:hover {
+        opacity: 0.9;
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+        transform: scale(1.01);
+        filter: brightness(1);
+        /* 悬停时恢复正常亮度 */
+    }
 }
 
 
@@ -1566,11 +1640,11 @@ img.image-preview-img {
     pointer-events: auto;
 }
 
-    /*当显示时的动画效果*/
-    .link-preview-container[style*="display: block"] {
-        opacity: 1;
-        transform: translateY(0);
-    }
+/*当显示时的动画效果*/
+.link-preview-container[style*="display: block"] {
+    opacity: 1;
+    transform: translateY(0);
+}
 
 /*深色模式下的预览容器*/
 [data-theme="dark"] .link-preview-container,
@@ -1591,15 +1665,15 @@ img.image-preview-img {
     min-height: 100px;
 }
 
-    .link-preview-loading .spinner {
-        width: 24px;
-        height: 24px;
-        border: 2px solid rgba(0, 0, 0, 0.1);
-        border-radius: 50%;
-        border-top-color: var(--color-accent-emphasis, #0969da);
-        animation: spin 1s linear infinite;
-        margin-bottom: 8px;
-    }
+.link-preview-loading .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top-color: var(--color-accent-emphasis, #0969da);
+    animation: spin 1s linear infinite;
+    margin-bottom: 8px;
+}
 
 /*链接外观增强*/
 .external-link {
@@ -1611,9 +1685,9 @@ img.image-preview-img {
     transition: text-decoration-color 0.2s ease;
 }
 
-    .external-link:hover {
-        text-decoration-color: var(--color-accent-emphasis, #0969da);
-    }
+.external-link:hover {
+    text-decoration-color: var(--color-accent-emphasis, #0969da);
+}
 
 .external-link-icon {
     opacity: 0.7;
@@ -1637,16 +1711,16 @@ img.image-preview-img {
     justify-content: center;
 }
 
-    .link-preview .preview-image img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transition: transform 0.3s ease;
-    }
+.link-preview .preview-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
 
-    .link-preview .preview-image:hover img {
-        transform: scale(1.05);
-    }
+.link-preview .preview-image:hover img {
+    transform: scale(1.05);
+}
 
 
 
@@ -1664,13 +1738,13 @@ img.image-preview-img {
     padding-right: 2px;
 }
 
-    /* 引用链接编号样式 */
-    .reference-link [class^="ref-"] {
-        font-size: 0.8em;
-        vertical-align: super;
-        margin-right: 2px;
-        font-weight: 600;
-    }
+/* 引用链接编号样式 */
+.reference-link [class^="ref-"] {
+    font-size: 0.8em;
+    vertical-align: super;
+    margin-right: 2px;
+    font-weight: 600;
+}
 
 /* 确保引用式链接在预览时显示完整URL */
 .link-preview-container .preview-url {
@@ -1699,11 +1773,11 @@ img.image-preview-img {
     pointer-events: auto;
 }
 
-    /* 显示时的动画效果 */
-    .link-preview-container[style*="display: block"] {
-        opacity: 1;
-        transform: translateY(0);
-    }
+/* 显示时的动画效果 */
+.link-preview-container[style*="display: block"] {
+    opacity: 1;
+    transform: translateY(0);
+}
 
 /* 站点信息样式 */
 .preview-site-info {
@@ -1836,9 +1910,9 @@ img.image-preview-img {
     transition: all 0.2s;
 }
 
-    .html-control-button:hover {
-        background-color: var(--color-neutral-muted);
-    }
+.html-control-button:hover {
+    background-color: var(--color-neutral-muted);
+}
 
 /* 沙箱iframe样式 */
 .html-sandbox {
@@ -1862,7 +1936,8 @@ img.image-preview-img {
 
 [data-theme="dark"] .html-sandbox,
 .dark-mode .html-sandbox {
-    background-color: #ffffff; /* 保持iframe内容为浅色背景 */
+    background-color: #ffffff;
+    /* 保持iframe内容为浅色背景 */
 }
 
 
@@ -1883,13 +1958,13 @@ img.image-preview-img {
     transition: all 0.2s;
 }
 
-    .run-html-button:hover {
-        background-color: var(--color-accent-fg-muted);
-    }
+.run-html-button:hover {
+    background-color: var(--color-accent-fg-muted);
+}
 
-    .run-html-button svg {
-        margin-right: 4px;
-    }
+.run-html-button svg {
+    margin-right: 4px;
+}
 
 /* 代码块中的安全提示 */
 .html-security-notice {
@@ -1943,12 +2018,81 @@ img.image-preview-img {
     transition: all 0.2s;
 }
 
-    .download-code-button:hover {
-        opacity: 1;
-        color: var(--bs-primary);
-    }
+.download-code-button:hover {
+    opacity: 1;
+    color: var(--bs-primary);
+}
 
 .download-success {
     color: var(--bs-success) !important;
     opacity: 1;
+}
+
+/* ==================== Skill 选择器样式 ==================== */
+
+.skill-selector-area {
+    padding: 8px 24px 0;
+    max-width: 1280px;
+    margin: 0 auto;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+.skill-selector-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.skill-selector-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-fg-muted);
+}
+
+.skill-dropdown {
+    padding: 4px 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    background-color: var(--color-canvas-default);
+    color: var(--color-fg-default);
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 150px;
+}
+
+.skill-dropdown:hover {
+    border-color: var(--color-accent-fg);
+}
+
+.skill-dropdown:focus {
+    border-color: var(--color-accent-emphasis);
+    box-shadow: var(--color-primer-shadow-focus);
+}
+
+/* 深色模式 Skill 选择器样式 */
+@media (prefers-color-scheme: dark) {
+    .skill-dropdown {
+        background-color: var(--color-canvas-subtle);
+        border-color: var(--color-border-default);
+        color: var(--color-fg-default);
+    }
+
+    .skill-dropdown:hover {
+        border-color: var(--color-accent-fg);
+    }
+}
+
+[data-theme="dark"] .skill-dropdown {
+    background-color: var(--color-canvas-subtle);
+    border-color: var(--color-border-default);
+    color: var(--color-fg-default);
+}
+
+[data-theme="dark"] .skill-dropdown:hover {
+    border-color: var(--color-accent-fg);
 }

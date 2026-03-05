@@ -169,6 +169,12 @@ namespace ChatBot.Models
         /// </summary>
         [JsonPropertyName("EnableSearch")]
         public bool EnableSearch { get; set; } = false;
+
+        /// <summary>
+        /// 选择的技能名称
+        /// </summary>
+        [JsonPropertyName("skill")]
+        public string? Skill { get; set; }
     }
 
     /// <summary>

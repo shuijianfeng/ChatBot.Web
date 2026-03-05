@@ -651,6 +651,17 @@ namespace ChatBot.Controllers
             List<ChatModelConfig> chatModels = _chatService.GetModels();
             return Ok(chatModels);
         }
+
+        /// <summary>
+        /// 获取可用的技能列表
+        /// </summary>
+        [HttpGet]
+        [Route("/api/chat/GetSkills")]
+        public IActionResult GetSkills()
+        {
+            var skills = _chatService.GetSkills();
+            return Ok(skills);
+        }
         [HttpPost]
         [Route("/api/chat/upload-image")]
         public async Task<IActionResult> UploadImage([FromForm] IFormFile image)

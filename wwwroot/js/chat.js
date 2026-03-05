@@ -37,6 +37,10 @@ class ChatUI {
         this.chatModels = [];
         this.uploadedImageUrls = []; // 修改为数组以支持多张图片
 
+        // Skills 相关
+        this.skills = [];
+        this.selectedSkill = null;
+
         // 会话管理相关属性
         this.currentSessionId = this.generateSessionId();
         this.currentSessionTitle = null; // 当前会话标题，用于避免重复生成
@@ -91,6 +95,7 @@ class ChatUI {
 
         // 初始化图片上传按钮的可见性
         this.fetchChatModels();
+        this.fetchSkills();
 
         const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -159,6 +164,54 @@ class ChatUI {
             console.error('获取聊天模型配置时出错:', error);
         }
     }
+
+    // 获取 Skills 列表
+    async fetchSkills() {
+        try {
+            const response = await fetch('/api/chat/GetSkills');
+            if (!response.ok) {
+                throw new Error('无法获取技能列表');
+            }
+            const data = await response.json();
+            // 兼容返回数组或包装对象格式 { value: [...], Count: X }
+            this.skills = Array.isArray(data) ? data : (data.value || []);
+            this.renderSkillSelector();
+        } catch (error) {
+            console.error('获取技能列表失败:', error);
+        }
+    }
+
+    // 渲染 Skill 选择器
+    renderSkillSelector() {
+        const selectorArea = document.getElementById('skill-selector-area');
+        const dropdown = document.getElementById('skill-dropdown');
+
+        if (!selectorArea || !dropdown) return;
+
+        if (this.skills.length === 0) {
+            selectorArea.style.display = 'none';
+            return;
+        }
+
+        selectorArea.style.display = 'block';
+
+        dropdown.innerHTML = '<option value="">-- 未选择 --</option>' + this.skills.map(skill => `
+            <option value="${skill.name}" title="${skill.description || ''}">
+                ${skill.icon || '🔧'} ${skill.name}
+            </option>
+        `).join('');
+
+        // 绑定改变事件
+        dropdown.addEventListener('change', (e) => {
+            const skillName = e.target.value;
+            if (!skillName) {
+                this.selectedSkill = null;
+            } else {
+                this.selectedSkill = skillName;
+            }
+        });
+    }
+
     // 添加显示全屏图片的方法
     showFullSizeImage(src) {
         // 创建遮罩层
@@ -2417,8 +2470,8 @@ class ChatUI {
                     history: history,
                     model: this.modelSelect.value,
                     timestamp: new Date().toISOString(),
-                    EnableSearch: this.isNetworkEnabled
-
+                    EnableSearch: this.isNetworkEnabled,
+                    skill: this.selectedSkill
                 }),
                 signal: this.controller.signal
 

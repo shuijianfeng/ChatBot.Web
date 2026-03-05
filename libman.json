@@ -3,10 +3,6 @@
   "defaultProvider": "cdnjs",
   "libraries": [
     {
-      "library": "markdown-it@14.1.0",
-      "destination": "wwwroot/lib/markdown-it/"
-    },
-    {
       "library": "highlight.js@11.11.1",
       "destination": "wwwroot/lib/highlight.js/"
     },
@@ -19,35 +15,27 @@
       "destination": "wwwroot/lib/bootstrap-icons/"
     },
     {
-      "library": "marked@16.3.0",
+      "provider": "unpkg",
+      "library": "marked@17.0.3",
       "destination": "wwwroot/lib/marked/"
     },
-    {
-      "library": "Primer@21.1.1",
-      "destination": "wwwroot/lib/Primer/"
-    },
+
     {
       "provider": "unpkg",
-      "library": "@primer/octicons@19.18.0",
+      "library": "@primer/octicons@19.22.0",
       "destination": "wwwroot/lib/primer/octicons/"
     },
     {
-      "library": "mathjax@4.0.0",
-      "destination": "wwwroot/lib/mathjax/"
+      "provider": "unpkg",
+      "library": "mermaid@11.12.3",
+      "destination": "wwwroot/lib/mermaid/"
     },
+
     {
       "provider": "unpkg",
-      "library": "jsmind@0.8.6",
-      "destination": "wwwroot/lib/jsmind/"
-    },
-    {
-      "library": "compressorjs@1.2.1",
-      "destination": "wwwroot/lib/compressorjs/"
-    },
-    {
-      "provider": "cdnjs",
-      "library": "mermaid@11.12.0",
-      "destination": "wwwroot/lib/mermaid/"
+      "library": "mathjax@4.1.1",
+
+      "destination": "wwwroot/lib/mathjax/"
     }
   ]
 }

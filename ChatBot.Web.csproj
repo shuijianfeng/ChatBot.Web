@@ -8,10 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="wwwroot\lib\octicons\**" />
-    <Content Remove="wwwroot\lib\octicons\**" />
-    <EmbeddedResource Remove="wwwroot\lib\octicons\**" />
-    <None Remove="wwwroot\lib\octicons\**" />
+    
   </ItemGroup>
 
   <ItemGroup>
@@ -30,22 +27,23 @@
   <ItemGroup>
     <Folder Include="Pages\Shared\" />
     <Folder Include="Properties\PublishProfiles\" />
+    <Folder Include="wwwroot\html\" />
     <Folder Include="wwwroot\uploads\" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="AngleSharp" Version="1.4.0" />
-    <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
-    <PackageReference Include="itext.bouncy-castle-adapter" Version="9.4.0" />
-    <PackageReference Include="itext.bouncy-castle-fips-adapter" Version="9.4.0" />
-    <PackageReference Include="itext.pdfhtml" Version="6.3.0" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.4.1" />
+    <PackageReference Include="itext.bouncy-castle-adapter" Version="9.5.0" />
+    <PackageReference Include="itext.bouncy-castle-fips-adapter" Version="9.5.0" />
+    <PackageReference Include="itext.pdfhtml" Version="6.3.1" />
     <PackageReference Include="Lofcz.Forks.HtmlToOpenXml" Version="3.2.5" />
-    <PackageReference Include="Markdig" Version="0.44.0" />
-    <PackageReference Include="ModelContextProtocol" Version="0.5.0-preview.1" />
+    <PackageReference Include="Markdig" Version="1.1.1" />
+    <PackageReference Include="ModelContextProtocol" Version="1.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="Npgsql" Version="10.0.0" />
+    <PackageReference Include="Npgsql" Version="10.0.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
-    <PackageReference Include="System.ClientModel" Version="1.8.1" />
+    <PackageReference Include="System.ClientModel" Version="1.9.0" />
     
   </ItemGroup>
 
