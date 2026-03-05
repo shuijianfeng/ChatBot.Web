@@ -22,7 +22,7 @@ body {
 .chat-main {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
     width: 100%;
     background-color: var(--color-canvas-default);
 }
@@ -377,8 +377,15 @@ body {
     position: relative;
     background: var(--color-canvas-default);
     border-top: 1px solid var(--color-border-default);
-    padding: 24px;
+    padding: 24px 24px 12px 24px;
     z-index: 100;
+}
+
+.disclaimer-message {
+    text-align: center;
+    font-size: 12px;
+    color: var(--color-fg-muted);
+    margin-top: 10px;
 }
 
 /* 停止按钮样式 */
