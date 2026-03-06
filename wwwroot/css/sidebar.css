@@ -4,9 +4,9 @@
 
 /* 主内容区域 - 确保从导航栏下方开始 */
 .main-content {
-    padding-top: 56px;
+    margin-top: 56px;
     /* 导航栏高度 */
-    height: 100vh;
+    height: calc(100vh - 56px);
     overflow: hidden;
     background: transparent;
 }
@@ -323,6 +323,10 @@
     background: #f1f5f9;
     color: #1e293b;
 }
+
+.expand-sidebar-btn.active {
+    background: rgba(102, 126, 234, 0.1);
+    color: #667eea;
 }
 
 /* 聊天主区域 - 填充剩余空间 */
@@ -543,6 +547,11 @@
 [data-theme="dark"] .expand-sidebar-btn:hover {
     background: rgba(255, 255, 255, 0.07);
     color: #f1f5f9;
+}
+
+[data-theme="dark"] .expand-sidebar-btn.active {
+    background: rgba(102, 126, 234, 0.2);
+    color: #667eea;
 }
 
 [data-theme="dark"] .delete-confirm-dialog {

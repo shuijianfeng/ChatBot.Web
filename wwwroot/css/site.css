@@ -2081,25 +2081,32 @@ img.image-preview-img {
     box-shadow: var(--color-primer-shadow-focus);
 }
 
-/* 深色模式 Skill 选择器样式 */
-@media (prefers-color-scheme: dark) {
-    .skill-dropdown {
-        background-color: var(--color-canvas-subtle);
-        border-color: var(--color-border-default);
-        color: var(--color-fg-default);
-    }
-
-    .skill-dropdown:hover {
-        border-color: var(--color-accent-fg);
-    }
+/* 深色模式 Skill 选择器和全局模型选择器样式 */
+[data-theme="dark"] .skill-dropdown,
+[data-theme="dark"] .form-select,
+.dark-mode .skill-dropdown,
+.dark-mode .form-select {
+    background-color: #0d1117;
+    border-color: #30363d;
+    color: #c9d1d9;
 }
 
-[data-theme="dark"] .skill-dropdown {
-    background-color: var(--color-canvas-subtle);
-    border-color: var(--color-border-default);
-    color: var(--color-fg-default);
+[data-theme="dark"] .skill-dropdown:hover,
+[data-theme="dark"] .form-select:hover,
+.dark-mode .skill-dropdown:hover,
+.dark-mode .form-select:hover {
+    border-color: #58a6ff;
 }
 
-[data-theme="dark"] .skill-dropdown:hover {
-    border-color: var(--color-accent-fg);
+[data-theme="dark"] .form-select,
+.dark-mode .form-select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23c9d1d9' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+}
+
+[data-theme="dark"] .skill-dropdown option,
+[data-theme="dark"] .form-select option,
+.dark-mode .skill-dropdown option,
+.dark-mode .form-select option {
+    background-color: #0d1117;
+    color: #c9d1d9;
 }

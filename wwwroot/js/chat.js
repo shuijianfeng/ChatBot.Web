@@ -2736,10 +2736,16 @@ class ChatUI {
         // 应用初始折叠状态（侧边栏默认折叠）
         if (this.sidebarCollapsed) {
             sidebar.classList.add('collapsed');
-            if (expandSidebarBtn) expandSidebarBtn.title = '展开侧边栏';
+            if (expandSidebarBtn) {
+                expandSidebarBtn.title = '展开侧边栏';
+                expandSidebarBtn.classList.remove('active');
+            }
         } else {
             sidebar.classList.remove('collapsed');
-            if (expandSidebarBtn) expandSidebarBtn.title = '折叠侧边栏';
+            if (expandSidebarBtn) {
+                expandSidebarBtn.title = '折叠侧边栏';
+                expandSidebarBtn.classList.add('active');
+            }
         }
 
         // 加载会话列表
@@ -2758,10 +2764,16 @@ class ChatUI {
 
         if (this.sidebarCollapsed) {
             sidebar.classList.add('collapsed');
-            if (toggleBtn) toggleBtn.title = '展开侧边栏';
+            if (toggleBtn) {
+                toggleBtn.title = '展开侧边栏';
+                toggleBtn.classList.remove('active');
+            }
         } else {
             sidebar.classList.remove('collapsed');
-            if (toggleBtn) toggleBtn.title = '折叠侧边栏';
+            if (toggleBtn) {
+                toggleBtn.title = '折叠侧边栏';
+                toggleBtn.classList.add('active');
+            }
         }
     }
 

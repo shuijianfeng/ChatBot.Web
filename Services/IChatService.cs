@@ -2366,53 +2366,53 @@ namespace ChatBot.Web.Services
                     }
                     break;
 
-                case nameof(SearchCtripHotel):
-                    {
-                        argsJson.TryGetProperty("city", out var city);
-                        argsJson.TryGetProperty("checkInDate", out var checkInDate);
-                        argsJson.TryGetProperty("checkOutDate", out var checkOutDate);
-                        argsJson.TryGetProperty("keyword", out var keyword);
-                        toolResult = await SearchCtripHotel(
-                            city.GetString() ?? "",
-                            checkInDate.GetString() ?? "",
-                            checkOutDate.GetString() ?? "",
-                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
-                    }
-                    break;
+                //case nameof(SearchCtripHotel):
+                //    {
+                //        argsJson.TryGetProperty("city", out var city);
+                //        argsJson.TryGetProperty("checkInDate", out var checkInDate);
+                //        argsJson.TryGetProperty("checkOutDate", out var checkOutDate);
+                //        argsJson.TryGetProperty("keyword", out var keyword);
+                //        toolResult = await SearchCtripHotel(
+                //            city.GetString() ?? "",
+                //            checkInDate.GetString() ?? "",
+                //            checkOutDate.GetString() ?? "",
+                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                //    }
+                //    break;
 
-                case nameof(SearchCtripFlight):
-                    {
-                        argsJson.TryGetProperty("departure", out var departure);
-                        argsJson.TryGetProperty("arrival", out var arrival);
-                        argsJson.TryGetProperty("date", out var date);
-                        argsJson.TryGetProperty("isRoundTrip", out var isRoundTrip);
-                        toolResult = await SearchCtripFlight(
-                            departure.GetString() ?? "",
-                            arrival.GetString() ?? "",
-                            date.GetString() ?? "",
-                            isRoundTrip.ValueKind == JsonValueKind.True);
-                    }
-                    break;
+                //case nameof(SearchCtripFlight):
+                //    {
+                //        argsJson.TryGetProperty("departure", out var departure);
+                //        argsJson.TryGetProperty("arrival", out var arrival);
+                //        argsJson.TryGetProperty("date", out var date);
+                //        argsJson.TryGetProperty("isRoundTrip", out var isRoundTrip);
+                //        toolResult = await SearchCtripFlight(
+                //            departure.GetString() ?? "",
+                //            arrival.GetString() ?? "",
+                //            date.GetString() ?? "",
+                //            isRoundTrip.ValueKind == JsonValueKind.True);
+                //    }
+                //    break;
 
-                case nameof(SearchCtripAttraction):
-                    {
-                        argsJson.TryGetProperty("city", out var city);
-                        argsJson.TryGetProperty("keyword", out var keyword);
-                        toolResult = await SearchCtripAttraction(
-                            city.GetString() ?? "",
-                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
-                    }
-                    break;
+                //case nameof(SearchCtripAttraction):
+                //    {
+                //        argsJson.TryGetProperty("city", out var city);
+                //        argsJson.TryGetProperty("keyword", out var keyword);
+                //        toolResult = await SearchCtripAttraction(
+                //            city.GetString() ?? "",
+                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                //    }
+                //    break;
 
-                case nameof(SearchCtripTour):
-                    {
-                        argsJson.TryGetProperty("destination", out var destination);
-                        argsJson.TryGetProperty("keyword", out var keyword);
-                        toolResult = await SearchCtripTour(
-                            destination.GetString() ?? "",
-                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
-                    }
-                    break;
+                //case nameof(SearchCtripTour):
+                //    {
+                //        argsJson.TryGetProperty("destination", out var destination);
+                //        argsJson.TryGetProperty("keyword", out var keyword);
+                //        toolResult = await SearchCtripTour(
+                //            destination.GetString() ?? "",
+                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                //    }
+                //    break;
 
                 default:
                     // 尝试调用 MCP 工具
@@ -2822,150 +2822,7 @@ namespace ChatBot.Web.Services
             }
         }
 
-        // 提取工具调用执行逻辑为独立方法，减少代码重复
-        private async IAsyncEnumerable<string> ExecuteToolCallsAndContinueAsync(
-            ChatModelConfig modelconfg, ChatRequest request,
-            [EnumeratorCancellation] CancellationToken cancellationToken,
-            HttpClient client, List<object> toolsmessages,
-            List<tool_call> tool_calls, StringBuilder contentBuilder,
-            StringBuilder reasoningContentBuilder, HttpResponseMessage response)
-        {
-            List<object> tool_calls1 = new List<object>();
-            tool_calls1.AddRange(tool_calls);
-
-            var assistantMessage = reasoningContentBuilder != null
-                ? new { role = "assistant", content = contentBuilder.ToString(), reasoning_content = reasoningContentBuilder.ToString(), tool_calls = tool_calls1 }
-                : (object)new { role = "assistant", content = contentBuilder.ToString(), tool_calls = tool_calls1 };
-
-            toolsmessages.Add(assistantMessage);
-
-            foreach (var pair in tool_calls)
-            {
-                string toolResult = await ExecuteToolCallAsync(pair);
-
-                toolsmessages.Add(new
-                {
-                    role = "tool",
-                    tool_call_id = pair.id,
-                    content = toolResult
-                });
-            }
-
-            contentBuilder.Clear();
-            reasoningContentBuilder?.Clear();
-            tool_calls.Clear();
-            response.Content.Dispose();
-
-            await foreach (var item in OpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
-            {
-                yield return item;
-            }
-        }
-
-        // 提取工具执行逻辑
-        private async Task<string> ExecuteToolCallAsync(tool_call pair)
-        {
-            switch (pair.function.name)
-            {
-                case nameof(GetCurrentDataTime):
-                    return await GetCurrentDataTime();
-
-                case nameof(JinaAiSearch):
-                    {
-                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                        if (!argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery))
-                        {
-                            throw new ArgumentNullException("query", "The query argument is required.");
-                        }
-                        return await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException("query", "Query cannot be null."));
-                    }
-
-                case nameof(SearchTrainTicket):
-                    {
-                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                        argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
-                        argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
-                        if (!argumentsJson.RootElement.TryGetProperty("date", out JsonElement date))
-                        {
-                            throw new ArgumentNullException("date", "The date argument is required.");
-                        }
-                        return await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
-                    }
-                case nameof(RunPythonFile):
-                    {
-                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                        argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
-                        argumentsJson.RootElement.TryGetProperty("arguments", out JsonElement arguments);
-                        
-                        return await RunPythonFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString()), arguments.GetString());
-                    }
-                case nameof(GetWeather):
-                    {
-                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
-                        if (!argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery))
-                        {
-                            throw new ArgumentNullException("city", "The city argument is required.");
-                        }
-                        return await GetWeather(outquery.GetString() ?? throw new ArgumentNullException("city", "City cannot be null."));
-                    }
-
-                case nameof(SearchCtripHotel):
-                    {
-                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
-                        argumentsJson.RootElement.TryGetProperty("city", out JsonElement city);
-                        argumentsJson.RootElement.TryGetProperty("checkInDate", out JsonElement checkInDate);
-                        argumentsJson.RootElement.TryGetProperty("checkOutDate", out JsonElement checkOutDate);
-                        argumentsJson.RootElement.TryGetProperty("keyword", out JsonElement keyword);
-                        return await SearchCtripHotel(
-                            city.GetString() ?? "",
-                            checkInDate.GetString() ?? "",
-                            checkOutDate.GetString() ?? "",
-                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
-                    }
-
-                case nameof(SearchCtripFlight):
-                    {
-                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
-                        argumentsJson.RootElement.TryGetProperty("departure", out JsonElement departure);
-                        argumentsJson.RootElement.TryGetProperty("arrival", out JsonElement arrival);
-                        argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
-                        argumentsJson.RootElement.TryGetProperty("isRoundTrip", out JsonElement isRoundTrip);
-                        return await SearchCtripFlight(
-                            departure.GetString() ?? "",
-                            arrival.GetString() ?? "",
-                            date.GetString() ?? "",
-                            isRoundTrip.ValueKind == JsonValueKind.True);
-                    }
-
-                case nameof(SearchCtripAttraction):
-                    {
-                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
-                        argumentsJson.RootElement.TryGetProperty("city", out JsonElement city);
-                        argumentsJson.RootElement.TryGetProperty("keyword", out JsonElement keyword);
-                        return await SearchCtripAttraction(
-                            city.GetString() ?? "",
-                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
-                    }
-
-                case nameof(SearchCtripTour):
-                    {
-                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
-                        argumentsJson.RootElement.TryGetProperty("destination", out JsonElement destination);
-                        argumentsJson.RootElement.TryGetProperty("keyword", out JsonElement keyword);
-                        return await SearchCtripTour(
-                            destination.GetString() ?? "",
-                            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
-                    }
-
-                default:
-                    // 尝试调用 MCP 工具
-                    if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(pair.function.name))
-                    {
-                        return await _mcpClientManager.CallToolAsync(pair.function.name, pair.function.arguments ?? "{}");
-                    }
-                    return "未知工具调用";
-            }
-        }
+        
         #region 工具方法
         // 创建工具列表（包含内置工具和 MCP 工具）
         private async Task<List<object>> PrepareOpenAiResponsesToolsAsync(bool search, CancellationToken cancellationToken = default)
@@ -3095,133 +2952,133 @@ namespace ChatBot.Web.Services
                    required = new[] { "filePath", "arguments" }
                });
                               
-            // 携程酒店搜索
-            tools.Add(
-               new
-               {
-                   type = "function",
-                   name = nameof(SearchCtripHotel),
-                   description = "搜索携程酒店信息，获取指定城市的酒店列表、价格和评分",
-                   parameters = new
-                   {
-                       type = "object",
-                       properties = new
-                       {
-                           city = new
-                           {
-                               type = "string",
-                               description = "城市名称（如：上海、北京）"
-                           },
-                           checkInDate = new
-                           {
-                               type = "string",
-                               description = "入住日期(格式:YYYY-MM-DD)"
-                           },
-                           checkOutDate = new
-                           {
-                               type = "string",
-                               description = "离店日期(格式:YYYY-MM-DD)"
-                           },
-                           keyword = new
-                           {
-                               type = "string",
-                               description = "搜索关键词（可选，如酒店名称、地标）"
-                           }
-                       },
-                       required = new[] { "city", "checkInDate", "checkOutDate" }
-                   }
-               });
+            //// 携程酒店搜索
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       name = nameof(SearchCtripHotel),
+            //       description = "搜索携程酒店信息，获取指定城市的酒店列表、价格和评分",
+            //       parameters = new
+            //       {
+            //           type = "object",
+            //           properties = new
+            //           {
+            //               city = new
+            //               {
+            //                   type = "string",
+            //                   description = "城市名称（如：上海、北京）"
+            //               },
+            //               checkInDate = new
+            //               {
+            //                   type = "string",
+            //                   description = "入住日期(格式:YYYY-MM-DD)"
+            //               },
+            //               checkOutDate = new
+            //               {
+            //                   type = "string",
+            //                   description = "离店日期(格式:YYYY-MM-DD)"
+            //               },
+            //               keyword = new
+            //               {
+            //                   type = "string",
+            //                   description = "搜索关键词（可选，如酒店名称、地标）"
+            //               }
+            //           },
+            //           required = new[] { "city", "checkInDate", "checkOutDate" }
+            //       }
+            //   });
 
-            // 携程机票搜索
-            tools.Add(
-               new
-               {
-                   type = "function",
-                   name = nameof(SearchCtripFlight),
-                   description = "搜索携程机票信息，获取指定航线的航班列表和票价",
-                   parameters = new
-                   {
-                       type = "object",
-                       properties = new
-                       {
-                           departure = new
-                           {
-                               type = "string",
-                               description = "出发城市（如：北京、上海）"
-                           },
-                           arrival = new
-                           {
-                               type = "string",
-                               description = "到达城市（如：广州、深圳）"
-                           },
-                           date = new
-                           {
-                               type = "string",
-                               description = "出发日期(格式:YYYY-MM-DD)"
-                           },
-                           isRoundTrip = new
-                           {
-                               type = "boolean",
-                               description = "是否往返（可选，默认单程）"
-                           }
-                       },
-                       required = new[] { "departure", "arrival", "date" }
-                   }
-               });
+            //// 携程机票搜索
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       name = nameof(SearchCtripFlight),
+            //       description = "搜索携程机票信息，获取指定航线的航班列表和票价",
+            //       parameters = new
+            //       {
+            //           type = "object",
+            //           properties = new
+            //           {
+            //               departure = new
+            //               {
+            //                   type = "string",
+            //                   description = "出发城市（如：北京、上海）"
+            //               },
+            //               arrival = new
+            //               {
+            //                   type = "string",
+            //                   description = "到达城市（如：广州、深圳）"
+            //               },
+            //               date = new
+            //               {
+            //                   type = "string",
+            //                   description = "出发日期(格式:YYYY-MM-DD)"
+            //               },
+            //               isRoundTrip = new
+            //               {
+            //                   type = "boolean",
+            //                   description = "是否往返（可选，默认单程）"
+            //               }
+            //           },
+            //           required = new[] { "departure", "arrival", "date" }
+            //       }
+            //   });
 
-            // 携程景点门票搜索
-            tools.Add(
-               new
-               {
-                   type = "function",
-                   name = nameof(SearchCtripAttraction),
-                   description = "搜索携程景点门票信息，获取指定城市的景点列表和门票价格",
-                   parameters = new
-                   {
-                       type = "object",
-                       properties = new
-                       {
-                           city = new
-                           {
-                               type = "string",
-                               description = "城市名称（如：杭州、西安）"
-                           },
-                           keyword = new
-                           {
-                               type = "string",
-                               description = "景点关键词（可选，如西湖、兵马俑）"
-                           }
-                       },
-                       required = new[] { "city" }
-                   }
-               });
+            //// 携程景点门票搜索
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       name = nameof(SearchCtripAttraction),
+            //       description = "搜索携程景点门票信息，获取指定城市的景点列表和门票价格",
+            //       parameters = new
+            //       {
+            //           type = "object",
+            //           properties = new
+            //           {
+            //               city = new
+            //               {
+            //                   type = "string",
+            //                   description = "城市名称（如：杭州、西安）"
+            //               },
+            //               keyword = new
+            //               {
+            //                   type = "string",
+            //                   description = "景点关键词（可选，如西湖、兵马俑）"
+            //               }
+            //           },
+            //           required = new[] { "city" }
+            //       }
+            //   });
 
-            // 携程旅游产品搜索
-            tools.Add(
-               new
-               {
-                   type = "function",
-                   name = nameof(SearchCtripTour),
-                   description = "搜索携程旅游产品，获取跟团游、自由行等旅游线路信息",
-                   parameters = new
-                   {
-                       type = "object",
-                       properties = new
-                       {
-                           destination = new
-                           {
-                               type = "string",
-                               description = "目的地（如：三亚、丽江）"
-                           },
-                           keyword = new
-                           {
-                               type = "string",
-                               description = "关键词（可选，如亲子游、蜜月）"
-                           }
-                       },
-                       required = new[] { "destination" }
-                   }
-               });
+            //// 携程旅游产品搜索
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       name = nameof(SearchCtripTour),
+            //       description = "搜索携程旅游产品，获取跟团游、自由行等旅游线路信息",
+            //       parameters = new
+            //       {
+            //           type = "object",
+            //           properties = new
+            //           {
+            //               destination = new
+            //               {
+            //                   type = "string",
+            //                   description = "目的地（如：三亚、丽江）"
+            //               },
+            //               keyword = new
+            //               {
+            //                   type = "string",
+            //                   description = "关键词（可选，如亲子游、蜜月）"
+            //               }
+            //           },
+            //           required = new[] { "destination" }
+            //       }
+            //   });
 
 
             // 加载 MCP 工具
@@ -4190,7 +4047,150 @@ namespace ChatBot.Web.Services
             return new List<object> { new { functionDeclarations = tools }, File_search };
 
         }
+        // 提取工具调用执行逻辑为独立方法，减少代码重复
+        private async IAsyncEnumerable<string> ExecuteToolCallsAndContinueAsync(
+            ChatModelConfig modelconfg, ChatRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            HttpClient client, List<object> toolsmessages,
+            List<tool_call> tool_calls, StringBuilder contentBuilder,
+            StringBuilder reasoningContentBuilder, HttpResponseMessage response)
+        {
+            List<object> tool_calls1 = new List<object>();
+            tool_calls1.AddRange(tool_calls);
 
+            var assistantMessage = reasoningContentBuilder != null
+                ? new { role = "assistant", content = contentBuilder.ToString(), reasoning_content = reasoningContentBuilder.ToString(), tool_calls = tool_calls1 }
+                : (object)new { role = "assistant", content = contentBuilder.ToString(), tool_calls = tool_calls1 };
+
+            toolsmessages.Add(assistantMessage);
+
+            foreach (var pair in tool_calls)
+            {
+                string toolResult = await ExecuteToolCallAsync(pair);
+
+                toolsmessages.Add(new
+                {
+                    role = "tool",
+                    tool_call_id = pair.id,
+                    content = toolResult
+                });
+            }
+
+            contentBuilder.Clear();
+            reasoningContentBuilder?.Clear();
+            tool_calls.Clear();
+            response.Content.Dispose();
+
+            await foreach (var item in OpenAIAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+            {
+                yield return item;
+            }
+        }
+
+        // 提取工具执行逻辑
+        private async Task<string> ExecuteToolCallAsync(tool_call pair)
+        {
+            switch (pair.function.name)
+            {
+                case nameof(GetCurrentDataTime):
+                    return await GetCurrentDataTime();
+
+                case nameof(JinaAiSearch):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        if (!argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery))
+                        {
+                            throw new ArgumentNullException("query", "The query argument is required.");
+                        }
+                        return await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException("query", "Query cannot be null."));
+                    }
+
+                case nameof(SearchTrainTicket):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
+                        argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
+                        if (!argumentsJson.RootElement.TryGetProperty("date", out JsonElement date))
+                        {
+                            throw new ArgumentNullException("date", "The date argument is required.");
+                        }
+                        return await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                    }
+                case nameof(RunPythonFile):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
+                        argumentsJson.RootElement.TryGetProperty("arguments", out JsonElement arguments);
+
+                        return await RunPythonFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString()), arguments.GetString());
+                    }
+                case nameof(GetWeather):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        if (!argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery))
+                        {
+                            throw new ArgumentNullException("city", "The city argument is required.");
+                        }
+                        return await GetWeather(outquery.GetString() ?? throw new ArgumentNullException("city", "City cannot be null."));
+                    }
+
+                //case nameof(SearchCtripHotel):
+                //    {
+                //        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
+                //        argumentsJson.RootElement.TryGetProperty("city", out JsonElement city);
+                //        argumentsJson.RootElement.TryGetProperty("checkInDate", out JsonElement checkInDate);
+                //        argumentsJson.RootElement.TryGetProperty("checkOutDate", out JsonElement checkOutDate);
+                //        argumentsJson.RootElement.TryGetProperty("keyword", out JsonElement keyword);
+                //        return await SearchCtripHotel(
+                //            city.GetString() ?? "",
+                //            checkInDate.GetString() ?? "",
+                //            checkOutDate.GetString() ?? "",
+                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                //    }
+
+                //case nameof(SearchCtripFlight):
+                //    {
+                //        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
+                //        argumentsJson.RootElement.TryGetProperty("departure", out JsonElement departure);
+                //        argumentsJson.RootElement.TryGetProperty("arrival", out JsonElement arrival);
+                //        argumentsJson.RootElement.TryGetProperty("date", out JsonElement date);
+                //        argumentsJson.RootElement.TryGetProperty("isRoundTrip", out JsonElement isRoundTrip);
+                //        return await SearchCtripFlight(
+                //            departure.GetString() ?? "",
+                //            arrival.GetString() ?? "",
+                //            date.GetString() ?? "",
+                //            isRoundTrip.ValueKind == JsonValueKind.True);
+                //    }
+
+                //case nameof(SearchCtripAttraction):
+                //    {
+                //        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
+                //        argumentsJson.RootElement.TryGetProperty("city", out JsonElement city);
+                //        argumentsJson.RootElement.TryGetProperty("keyword", out JsonElement keyword);
+                //        return await SearchCtripAttraction(
+                //            city.GetString() ?? "",
+                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                //    }
+
+                //case nameof(SearchCtripTour):
+                //    {
+                //        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments ?? "{}");
+                //        argumentsJson.RootElement.TryGetProperty("destination", out JsonElement destination);
+                //        argumentsJson.RootElement.TryGetProperty("keyword", out JsonElement keyword);
+                //        return await SearchCtripTour(
+                //            destination.GetString() ?? "",
+                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                //    }
+
+                default:
+                    // 尝试调用 MCP 工具
+                    if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(pair.function.name))
+                    {
+                        return await _mcpClientManager.CallToolAsync(pair.function.name, pair.function.arguments ?? "{}");
+                    }
+                    return "未知工具调用";
+            }
+        }
         /// <summary>
         /// 根据配置返回 OpenAI Responses API 的 reasoning 配置
         /// OpenAI API 使用 effort 来控制推理强度: "low", "medium", "high"
