@@ -820,6 +820,30 @@ namespace ChatBot.Web.Services
                                                             }
                                                             break;
                                                         }
+                                                    case nameof(ReadFile):
+                                                        {
+                                                            if (string.IsNullOrWhiteSpace(pair.arguments) || pair.arguments == "{}")
+                                                            {
+                                                                toolResult = "错误：读取文件参数不能为空";
+                                                                break;
+                                                            }
+                                                            using (JsonDocument argumentsJson = JsonDocument.Parse(pair.arguments))
+                                                            {
+                                                                if (!argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePathElement))
+                                                                {
+                                                                    toolResult = "错误：缺少 filePath 参数";
+                                                                    break;
+                                                                }
+                                                                var filePathStr = filePathElement.GetString();
+                                                                if (string.IsNullOrEmpty(filePathStr))
+                                                                {
+                                                                    toolResult = "错误：filePath 参数不能为空";
+                                                                    break;
+                                                                }
+                                                                toolResult = await ReadFile(filePathStr);
+                                                            }
+                                                            break;
+                                                        }
                                                     case nameof(SearchTrainTicket):
                                                         {
                                                             if (string.IsNullOrWhiteSpace(pair.arguments) || pair.arguments == "{}")
@@ -984,6 +1008,30 @@ namespace ChatBot.Web.Services
                                                     break;
                                                 }
                                                 toolResult = await JinaAiSearch(queryStr);
+                                            }
+                                            break;
+                                        }
+                                    case nameof(ReadFile):
+                                        {
+                                            if (string.IsNullOrWhiteSpace(item.arguments) || item.arguments == "{}")
+                                            {
+                                                toolResult = "错误：读取文件参数不能为空";
+                                                break;
+                                            }
+                                            using (JsonDocument argumentsJson = JsonDocument.Parse(item.arguments))
+                                            {
+                                                if (!argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePathElement))
+                                                {
+                                                    toolResult = "错误：缺少 filePath 参数";
+                                                    break;
+                                                }
+                                                var filePathStr = filePathElement.GetString();
+                                                if (string.IsNullOrEmpty(filePathStr))
+                                                {
+                                                    toolResult = "错误：filePath 参数不能为空";
+                                                    break;
+                                                }
+                                                toolResult = await ReadFile(filePathStr);
                                             }
                                             break;
                                         }
@@ -1381,6 +1429,37 @@ namespace ChatBot.Web.Services
                                                         toolResult = await RunPythonFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString() ?? string.Empty), arguments.GetString() ?? string.Empty);
                                                         break;
                                                     }
+
+                                                case nameof(ReadFile):
+                                                    {
+                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
+                                                        bool query = argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
+
+
+                                                        if (!query)
+                                                        {
+                                                            throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                                        }
+
+                                                        content.Add(new
+                                                        {
+                                                            type = "tool_use",
+                                                            id = pair.id,
+                                                            name = pair.name,
+                                                            input = new { filePath = Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString() ?? string.Empty) }
+                                                        });
+                                                        toolsmessages.Add(new
+                                                        {
+                                                            role = "assistant",
+                                                            content = content
+
+
+                                                        });
+
+                                                        toolResult = await ReadFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString() ?? string.Empty));
+                                                        break;
+                                                    }
+
                                                 case nameof(GetWeather):
                                                     {
                                                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
@@ -1633,7 +1712,7 @@ namespace ChatBot.Web.Services
                                                 type = "tool_use",
                                                 id = pair.id,
                                                 name = pair.name,
-                                                input = new { filePath = filePathStr, arguments = argumentsStr }
+                                                input = new { filePath = Path.Combine(_skillLoaderService.SkillsDirectory, filePathStr), arguments = argumentsStr }
                                             });
                                             toolsmessages.Add(new
                                             {
@@ -1643,7 +1722,40 @@ namespace ChatBot.Web.Services
 
                                             });
 
-                                            toolResult = await RunPythonFile(filePathStr, argumentsStr);
+                                            toolResult = await RunPythonFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePathStr), argumentsStr);
+                                            break;
+                                        }
+                                    case nameof(ReadFile):
+                                        {
+                                            var inputStr = pair.input?.ToString() ?? "{}";
+                                            using JsonDocument argumentsJson = JsonDocument.Parse(inputStr);
+                                            bool query = argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
+
+                                            
+                                            if (!query)
+                                            {
+                                                throw new ArgumentNullException(nameof(query), "The location argument is required.");
+                                            }
+
+                                            var filePathStr = filePath.GetString() ?? string.Empty;
+                                            
+
+                                            content1.Add(new
+                                            {
+                                                type = "tool_use",
+                                                id = pair.id,
+                                                name = pair.name,
+                                                input = new { filePath = Path.Combine(_skillLoaderService.SkillsDirectory, filePathStr) }
+                                            });
+                                            toolsmessages.Add(new
+                                            {
+                                                role = "assistant",
+                                                content = content1
+
+
+                                            });
+
+                                            toolResult = await ReadFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePathStr));
                                             break;
                                         }
                                     case nameof(JinaAiSearch):
@@ -2295,141 +2407,7 @@ namespace ChatBot.Web.Services
             }
         }
 
-        // 添加辅助方法：执行函数调用
-        private async Task<string> ExecuteFunctionCall(GeminiToolCall funcCall)
-        {
-            string toolResult = string.Empty;
-
-            // 将 args 转换为 JsonElement 以便访问属性
-            JsonElement argsJson;
-
-            // 如果 args 已经是 JsonElement
-            if (funcCall.args is JsonElement element)
-            {
-                argsJson = element;
-            }
-            // 如果 args 是字符串,需要解析它
-            else if (funcCall.args is string argsStr)
-            {
-                using var doc = JsonDocument.Parse(argsStr);
-                argsJson = doc.RootElement.Clone();
-            }
-            // 如果是其他类型,尝试序列化再解析
-            else
-            {
-                var argsStr1 = JsonSerializer.Serialize(funcCall.args);
-                using var doc = JsonDocument.Parse(argsStr1);
-                argsJson = doc.RootElement.Clone();
-            }
-
-            switch (funcCall.name)
-            {
-                case nameof(GetCurrentDataTime):
-                    toolResult = await GetCurrentDataTime();
-                    break;
-
-                case nameof(JinaAiSearch):
-                    if (argsJson.TryGetProperty("query", out var queryValue))
-                    {
-                        string query = queryValue.GetString() ?? throw new ArgumentNullException(nameof(queryValue), "Query cannot be null.");
-                        toolResult = await JinaAiSearch(query);
-                    }
-                    break;
-
-                case nameof(SearchTrainTicket):
-                    if (argsJson.TryGetProperty("startingplace", out var startValue) &&
-                        argsJson.TryGetProperty("arrivalplace", out var arrivalValue) &&
-                        argsJson.TryGetProperty("date", out var dateValue))
-                    {
-                        toolResult = await SearchTrainTicket(
-                            startValue.GetString(),
-                            arrivalValue.GetString(),
-                            dateValue.GetString()
-                        );
-                    }
-                    break;
-                case nameof(RunPythonFile):
-                    if (argsJson.TryGetProperty("filePath", out var filePathValue) &&
-                        argsJson.TryGetProperty("arguments", out var argumentsValue))
-                    {
-                        toolResult = await RunPythonFile(
-                            Path.Combine(  _skillLoaderService.SkillsDirectory  ,  filePathValue.GetString()),
-                            argumentsValue.GetString()
-                        );
-                    }
-                    break;
-                case nameof(GetWeather):
-                    if (argsJson.TryGetProperty("city", out var cityValue))
-                    {
-                        string city = cityValue.GetString() ?? throw new ArgumentNullException(nameof(cityValue), "City cannot be null.");
-                        toolResult = await GetWeather(city);
-                    }
-                    break;
-
-                //case nameof(SearchCtripHotel):
-                //    {
-                //        argsJson.TryGetProperty("city", out var city);
-                //        argsJson.TryGetProperty("checkInDate", out var checkInDate);
-                //        argsJson.TryGetProperty("checkOutDate", out var checkOutDate);
-                //        argsJson.TryGetProperty("keyword", out var keyword);
-                //        toolResult = await SearchCtripHotel(
-                //            city.GetString() ?? "",
-                //            checkInDate.GetString() ?? "",
-                //            checkOutDate.GetString() ?? "",
-                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
-                //    }
-                //    break;
-
-                //case nameof(SearchCtripFlight):
-                //    {
-                //        argsJson.TryGetProperty("departure", out var departure);
-                //        argsJson.TryGetProperty("arrival", out var arrival);
-                //        argsJson.TryGetProperty("date", out var date);
-                //        argsJson.TryGetProperty("isRoundTrip", out var isRoundTrip);
-                //        toolResult = await SearchCtripFlight(
-                //            departure.GetString() ?? "",
-                //            arrival.GetString() ?? "",
-                //            date.GetString() ?? "",
-                //            isRoundTrip.ValueKind == JsonValueKind.True);
-                //    }
-                //    break;
-
-                //case nameof(SearchCtripAttraction):
-                //    {
-                //        argsJson.TryGetProperty("city", out var city);
-                //        argsJson.TryGetProperty("keyword", out var keyword);
-                //        toolResult = await SearchCtripAttraction(
-                //            city.GetString() ?? "",
-                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
-                //    }
-                //    break;
-
-                //case nameof(SearchCtripTour):
-                //    {
-                //        argsJson.TryGetProperty("destination", out var destination);
-                //        argsJson.TryGetProperty("keyword", out var keyword);
-                //        toolResult = await SearchCtripTour(
-                //            destination.GetString() ?? "",
-                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
-                //    }
-                //    break;
-
-                default:
-                    // 尝试调用 MCP 工具
-                    if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(funcCall.name))
-                    {
-                        var argsStr = argsJson.ValueKind == JsonValueKind.Undefined ? "{}" : argsJson.GetRawText();
-                        toolResult = await _mcpClientManager.CallToolAsync(funcCall.name, argsStr);
-                    }
-                    else
-                    {
-                        toolResult = "未知工具调用";
-                    }
-                    break;
-            }
-
-            return toolResult;
-        }
+        
 
         /// <summary>
         /// 使用 Dify API 生成消息内容，支持流式输出
@@ -2951,6 +2929,28 @@ namespace ChatBot.Web.Services
                    },
                    required = new[] { "filePath", "arguments" }
                });
+
+            tools.Add(
+               new
+               {
+                   type = "function",
+
+                   name = nameof(ReadFile),
+                   description = "读取指定文件的内容并返回",
+                   parameters = new
+                   {
+                       type = "object",
+                       properties = new
+                       {
+                           filePath = new
+                           {
+                               type = "string",
+                               description = "文件路径"
+                           }
+                       }
+                   },
+                   required = new[] { "filePath" }
+               });
                               
             //// 携程酒店搜索
             //tools.Add(
@@ -3170,6 +3170,30 @@ namespace ChatBot.Web.Services
                            }
                        },
                        required = new[] { "filePath", "arguments" }
+                   }
+               });
+
+            tools.Add(
+               new
+               {
+                   type = "function",
+                   function = new
+                   {
+                       name = nameof(ReadFile),
+                       description = "读取指定文件的内容并返回",
+                       parameters = new
+                       {
+                           type = "object",
+                           properties = new
+                           {
+                               filePath = new
+                               {
+                                   type = "string",
+                                   description = "文件路径"
+                               }
+                           }
+                       },
+                       required = new[] { "filePath" }
                    }
                });
 
@@ -3493,6 +3517,26 @@ namespace ChatBot.Web.Services
                    },
                    required = new[] { "filePath", "arguments" }
                });
+
+            tools.Add(
+               new
+               {
+                   name = nameof(ReadFile),
+                   description = "读取指定文件的内容并返回",
+                   input_schema = new
+                   {
+                       type = "object",
+                       properties = new
+                       {
+                           filePath = new
+                           {
+                               type = "string",
+                               description = "文件路径"
+                           }
+                       },
+                       required = new[] { "filePath" }
+                   }
+               });
             //// 携程酒店搜索
             //tools.Add(
             //    new
@@ -3785,6 +3829,21 @@ namespace ChatBot.Web.Services
                         arguments = new { type = "string", description = "传递给Python文件的参数" }
                     },
                     required = new[] { "filePath", "arguments" } // <-- 正确：放在 parameters 内部
+                }
+            });
+
+            tools.Add(new
+            {
+                name = nameof(ReadFile),
+                description = "读取指定文件的内容并返回",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        filePath = new { type = "string", description = "文件路径" }
+                    },
+                    required = new[] { "filePath" }
                 }
             });
             //// 携程酒店搜索
@@ -4124,6 +4183,16 @@ namespace ChatBot.Web.Services
 
                         return await RunPythonFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString()), arguments.GetString());
                     }
+
+                case nameof(ReadFile):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        if (!argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePathElement))
+                        {
+                            throw new ArgumentNullException("filePath", "The filePath argument is required.");
+                        }
+                        return await ReadFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePathElement.GetString() ?? throw new ArgumentNullException("filePath")));
+                    }
                 case nameof(GetWeather):
                     {
                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
@@ -4191,6 +4260,152 @@ namespace ChatBot.Web.Services
                     return "未知工具调用";
             }
         }
+
+        // 添加辅助方法：执行函数调用
+        private async Task<string> ExecuteFunctionCall(GeminiToolCall funcCall)
+        {
+            string toolResult = string.Empty;
+
+            // 将 args 转换为 JsonElement 以便访问属性
+            JsonElement argsJson;
+
+            // 如果 args 已经是 JsonElement
+            if (funcCall.args is JsonElement element)
+            {
+                argsJson = element;
+            }
+            // 如果 args 是字符串,需要解析它
+            else if (funcCall.args is string argsStr)
+            {
+                using var doc = JsonDocument.Parse(argsStr);
+                argsJson = doc.RootElement.Clone();
+            }
+            // 如果是其他类型,尝试序列化再解析
+            else
+            {
+                var argsStr1 = JsonSerializer.Serialize(funcCall.args);
+                using var doc = JsonDocument.Parse(argsStr1);
+                argsJson = doc.RootElement.Clone();
+            }
+
+            switch (funcCall.name)
+            {
+                case nameof(GetCurrentDataTime):
+                    toolResult = await GetCurrentDataTime();
+                    break;
+
+                case nameof(JinaAiSearch):
+                    if (argsJson.TryGetProperty("query", out var queryValue))
+                    {
+                        string query = queryValue.GetString() ?? throw new ArgumentNullException(nameof(queryValue), "Query cannot be null.");
+                        toolResult = await JinaAiSearch(query);
+                    }
+                    break;
+
+                case nameof(SearchTrainTicket):
+                    if (argsJson.TryGetProperty("startingplace", out var startValue) &&
+                        argsJson.TryGetProperty("arrivalplace", out var arrivalValue) &&
+                        argsJson.TryGetProperty("date", out var dateValue))
+                    {
+                        toolResult = await SearchTrainTicket(
+                            startValue.GetString(),
+                            arrivalValue.GetString(),
+                            dateValue.GetString()
+                        );
+                    }
+                    break;
+                case nameof(RunPythonFile):
+                    if (argsJson.TryGetProperty("filePath", out var filePathValue) &&
+                        argsJson.TryGetProperty("arguments", out var argumentsValue))
+                    {
+                        toolResult = await RunPythonFile(
+                            Path.Combine(_skillLoaderService.SkillsDirectory, filePathValue.GetString()),
+                            argumentsValue.GetString()
+                        );
+                    }
+                    break;
+                case nameof(GetWeather):
+                    if (argsJson.TryGetProperty("city", out var cityValue))
+                    {
+                        string city = cityValue.GetString() ?? throw new ArgumentNullException(nameof(cityValue), "City cannot be null.");
+                        toolResult = await GetWeather(city);
+                    }
+                    break;
+                case nameof(ReadFile):
+
+                    if (argsJson.TryGetProperty("filePath", out var filePathValue1))
+                    {
+                        string filePath = filePathValue1.GetString() ?? throw new ArgumentNullException(nameof(filePathValue1), "File path cannot be null.");
+                        toolResult = await ReadFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath));
+                    }
+
+                    break;
+
+                //case nameof(SearchCtripHotel):
+                //    {
+                //        argsJson.TryGetProperty("city", out var city);
+                //        argsJson.TryGetProperty("checkInDate", out var checkInDate);
+                //        argsJson.TryGetProperty("checkOutDate", out var checkOutDate);
+                //        argsJson.TryGetProperty("keyword", out var keyword);
+                //        toolResult = await SearchCtripHotel(
+                //            city.GetString() ?? "",
+                //            checkInDate.GetString() ?? "",
+                //            checkOutDate.GetString() ?? "",
+                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                //    }
+                //    break;
+
+                //case nameof(SearchCtripFlight):
+                //    {
+                //        argsJson.TryGetProperty("departure", out var departure);
+                //        argsJson.TryGetProperty("arrival", out var arrival);
+                //        argsJson.TryGetProperty("date", out var date);
+                //        argsJson.TryGetProperty("isRoundTrip", out var isRoundTrip);
+                //        toolResult = await SearchCtripFlight(
+                //            departure.GetString() ?? "",
+                //            arrival.GetString() ?? "",
+                //            date.GetString() ?? "",
+                //            isRoundTrip.ValueKind == JsonValueKind.True);
+                //    }
+                //    break;
+
+                //case nameof(SearchCtripAttraction):
+                //    {
+                //        argsJson.TryGetProperty("city", out var city);
+                //        argsJson.TryGetProperty("keyword", out var keyword);
+                //        toolResult = await SearchCtripAttraction(
+                //            city.GetString() ?? "",
+                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                //    }
+                //    break;
+
+                //case nameof(SearchCtripTour):
+                //    {
+                //        argsJson.TryGetProperty("destination", out var destination);
+                //        argsJson.TryGetProperty("keyword", out var keyword);
+                //        toolResult = await SearchCtripTour(
+                //            destination.GetString() ?? "",
+                //            keyword.ValueKind != JsonValueKind.Undefined ? keyword.GetString() : null);
+                //    }
+                //    break;
+
+                default:
+                    // 尝试调用 MCP 工具
+                    if (_mcpClientManager.IsEnabled && _mcpClientManager.IsMcpTool(funcCall.name))
+                    {
+                        var argsStr = argsJson.ValueKind == JsonValueKind.Undefined ? "{}" : argsJson.GetRawText();
+                        toolResult = await _mcpClientManager.CallToolAsync(funcCall.name, argsStr);
+                    }
+                    else
+                    {
+                        toolResult = "未知工具调用";
+                    }
+                    break;
+            }
+
+            return toolResult;
+        }
+
         /// <summary>
         /// 根据配置返回 OpenAI Responses API 的 reasoning 配置
         /// OpenAI API 使用 effort 来控制推理强度: "low", "medium", "high"
@@ -4618,6 +4833,24 @@ namespace ChatBot.Web.Services
                 return $"执行脚本时发生异常: {ex.Message}";
             }
         }
+
+        private async Task<string> ReadFile(string filePath)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(filePath))
+                {
+                    return $"读取失败: 找不到文件 '{filePath}'。";
+                }
+                var content = await System.IO.File.ReadAllTextAsync(filePath, Encoding.UTF8);
+                return content;
+            }
+            catch (Exception ex)
+            {
+                return $"读取文件 '{filePath}' 时发生异常: {ex.Message}";
+            }
+        }
+
         private async Task<string> JinaAiSearch(string query)
         {
             var result = await _jinaSearch.Search(query);
