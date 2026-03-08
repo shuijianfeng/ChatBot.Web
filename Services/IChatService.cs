@@ -3516,8 +3516,10 @@ namespace ChatBot.Web.Services
                                description = "传递给Python文件的参数"
                            }
                        }
-                   },
-                   required = new[] { "filePath", "arguments" }
+                       ,
+                       required = new[] { "filePath", "arguments" }
+                   }
+                   
                });
 
             tools.Add(
