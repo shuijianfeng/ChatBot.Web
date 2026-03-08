@@ -98,6 +98,31 @@ body {
     min-height: 0;
 }
 
+/* 下拉菜单无边框样式 (模型选择和技能选择) */
+#global-model-selector,
+.skill-dropdown {
+    border: 1px solid transparent !important;
+    /* Helps with Chrome layout stability */
+    outline: none !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+#global-model-selector:focus,
+.skill-dropdown:focus {
+    border: 1px solid transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+#global-model-selector:hover,
+.skill-dropdown:hover {
+    background-color: rgba(0, 0, 0, 0.05) !important;
+    border-radius: 6px;
+}
+
 /* 消息基础样式 */
 .message {
     display: flex;
@@ -637,6 +662,19 @@ body {
 
 .markdown-body pre::-webkit-scrollbar-track {
     background-color: transparent;
+}
+
+/* 下拉菜单无边框样式深色模式适配 (模型选择和技能选择) */
+[data-theme="dark"] #global-model-selector,
+[data-theme="dark"] .skill-dropdown {
+    border: none !important;
+    background-color: transparent !important;
+    color: var(--color-fg-default);
+}
+
+[data-theme="dark"] #global-model-selector:hover,
+[data-theme="dark"] .skill-dropdown:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 .markdown-body a {

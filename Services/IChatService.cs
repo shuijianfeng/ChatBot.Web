@@ -351,9 +351,9 @@ namespace ChatBot.Web.Services
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
 
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            string? line;
+            while ((line = await reader.ReadLineAsync(cancellationToken)) != null && !cancellationToken.IsCancellationRequested)
             {
-                var line = await reader.ReadLineAsync(cancellationToken);
                 if (string.IsNullOrEmpty(line)) continue;
                 if (line.StartsWith("data:"))
                 {
@@ -432,9 +432,9 @@ namespace ChatBot.Web.Services
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var reader = new StreamReader(stream);
 
-            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            string? line;
+            while ((line = await reader.ReadLineAsync(cancellationToken)) != null && !cancellationToken.IsCancellationRequested)
             {
-                var line = await reader.ReadLineAsync(cancellationToken);
                 if (string.IsNullOrEmpty(line)) continue;
                 if (modelconfg.Stream)
                 {
@@ -479,8 +479,8 @@ namespace ChatBot.Web.Services
             ChatModelConfig modelconfg,
             ChatRequest request,
             [EnumeratorCancellation] CancellationToken cancellationToken,
-            HttpClient inputclient = null,
-            List<object> toolsmessages = null)
+            HttpClient? inputclient = null,
+            List<object>? toolsmessages = null)
         {
             // 验证API配置
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
@@ -550,12 +550,13 @@ namespace ChatBot.Web.Services
                 List<object> reasoning_items = new();        // 推理项列表 (用于关联 function_call)
                 var contentBuilder = new StringBuilder();    // 内容构建器
 
-                while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+                while (!cancellationToken.IsCancellationRequested)
                 {
                     if (modelconfg.Stream)
                     {
                         // 流式模式：处理SSE事件
                         var line = await reader.ReadLineAsync(cancellationToken);
+                        if (line == null) break; // 流结束
                         if (string.IsNullOrEmpty(line)) continue;
 
                         // 处理SSE格式 "data: {...}"
@@ -860,7 +861,7 @@ namespace ChatBot.Web.Services
                                                                     toolResult = "错误：缺少 date 参数";
                                                                     break;
                                                                 }
-                                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                                                toolResult = await SearchTrainTicket(startingplace.GetString() ?? string.Empty, arrivalplace.GetString() ?? string.Empty, date.GetString() ?? string.Empty);
                                                             }
                                                             break;
                                                         }
@@ -983,7 +984,7 @@ namespace ChatBot.Web.Services
                                                     toolResult = "错误：缺少 date 参数";
                                                     break;
                                                 }
-                                                toolResult = await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                                                toolResult = await SearchTrainTicket(startingplace.GetString() ?? string.Empty, arrivalplace.GetString() ?? string.Empty, date.GetString() ?? string.Empty);
                                             }
                                             break;
                                         }
@@ -1125,7 +1126,7 @@ namespace ChatBot.Web.Services
             }
         }
 
-        public async IAsyncEnumerable<string> ClaudeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
+        public async IAsyncEnumerable<string> ClaudeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null)
         {
             // 验证配置
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
@@ -1193,9 +1194,10 @@ namespace ChatBot.Web.Services
                 string textsignature = string.Empty;
                 bool beging = false;
                 bool end = false;
-                while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+                while (!cancellationToken.IsCancellationRequested)
                 {
                     var line = await reader.ReadLineAsync(cancellationToken);
+                    if (line == null) break; // 流结束
                     if (string.IsNullOrEmpty(line)) continue;
                     if (modelconfg.Stream)
                     {
@@ -1338,7 +1340,7 @@ namespace ChatBot.Web.Services
                                                     }
                                                 case nameof(JinaAiSearch):
                                                     {
-                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
+                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json ?? "{}");
                                                         bool query = argumentsJson.RootElement.TryGetProperty("query", out JsonElement outquery);
                                                         //JsonSerializer.Deserialize(argumentsJson;
 
@@ -1371,7 +1373,7 @@ namespace ChatBot.Web.Services
                                                     }
                                                 case nameof(SearchTrainTicket):
                                                     {
-                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
+                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json ?? "{}");
                                                         bool query = argumentsJson.RootElement.TryGetProperty("startingplace", out JsonElement startingplace);
 
                                                         query = argumentsJson.RootElement.TryGetProperty("arrivalplace", out JsonElement arrivalplace);
@@ -1401,7 +1403,7 @@ namespace ChatBot.Web.Services
                                                     }
                                                 case nameof(RunPythonFile):
                                                     {
-                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
+                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json ?? "{}");
                                                         bool query = argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
 
                                                         query = argumentsJson.RootElement.TryGetProperty("arguments", out JsonElement arguments);
@@ -1432,7 +1434,7 @@ namespace ChatBot.Web.Services
 
                                                 case nameof(ReadFile):
                                                     {
-                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
+                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json ?? "{}");
                                                         bool query = argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
 
 
@@ -1462,7 +1464,7 @@ namespace ChatBot.Web.Services
 
                                                 case nameof(GetWeather):
                                                     {
-                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json);
+                                                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.partial_json ?? "{}");
                                                         bool query = argumentsJson.RootElement.TryGetProperty("city", out JsonElement outquery);
 
 
@@ -1896,7 +1898,7 @@ namespace ChatBot.Web.Services
             }
         }
         //Gemini
-        public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
+        public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null)
         {
            
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
@@ -2166,7 +2168,7 @@ namespace ChatBot.Web.Services
         }
 
         //Gemini
-        public async IAsyncEnumerable<string> GeminiFileSearchAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
+        public async IAsyncEnumerable<string> GeminiFileSearchAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null)
         {
             // 验证配置AQ.Ab8RN6LQoXO75Ty1A9x4EEogc0XS97bVZPZwz-ytddNBxMvvrg
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
@@ -2559,7 +2561,7 @@ namespace ChatBot.Web.Services
 
         }
 
-        public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient inputclient = null, List<object> toolsmessages = null)
+        public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null)
         {
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
@@ -4173,7 +4175,7 @@ namespace ChatBot.Web.Services
                         {
                             throw new ArgumentNullException("date", "The date argument is required.");
                         }
-                        return await SearchTrainTicket(startingplace.GetString(), arrivalplace.GetString(), date.GetString());
+                        return await SearchTrainTicket(startingplace.GetString() ?? string.Empty, arrivalplace.GetString() ?? string.Empty, date.GetString() ?? string.Empty);
                     }
                 case nameof(RunPythonFile):
                     {
@@ -4181,7 +4183,7 @@ namespace ChatBot.Web.Services
                         argumentsJson.RootElement.TryGetProperty("filePath", out JsonElement filePath);
                         argumentsJson.RootElement.TryGetProperty("arguments", out JsonElement arguments);
 
-                        return await RunPythonFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString()), arguments.GetString());
+                        return await RunPythonFile(Path.Combine(_skillLoaderService.SkillsDirectory, filePath.GetString() ?? string.Empty), arguments.GetString() ?? string.Empty);
                     }
 
                 case nameof(ReadFile):
@@ -4308,9 +4310,9 @@ namespace ChatBot.Web.Services
                         argsJson.TryGetProperty("date", out var dateValue))
                     {
                         toolResult = await SearchTrainTicket(
-                            startValue.GetString(),
-                            arrivalValue.GetString(),
-                            dateValue.GetString()
+                            startValue.GetString() ?? string.Empty,
+                            arrivalValue.GetString() ?? string.Empty,
+                            dateValue.GetString() ?? string.Empty
                         );
                     }
                     break;
@@ -4319,8 +4321,8 @@ namespace ChatBot.Web.Services
                         argsJson.TryGetProperty("arguments", out var argumentsValue))
                     {
                         toolResult = await RunPythonFile(
-                            Path.Combine(_skillLoaderService.SkillsDirectory, filePathValue.GetString()),
-                            argumentsValue.GetString()
+                            Path.Combine(_skillLoaderService.SkillsDirectory, filePathValue.GetString() ?? string.Empty),
+                            argumentsValue.GetString() ?? string.Empty
                         );
                     }
                     break;
