@@ -440,6 +440,7 @@ namespace ChatBot.Models
 
             public string role { get; set; } = string.Empty;
             public Content[] content { get; set; }
+            public SummaryItem[] summary { get; set; }
 
 
         }
@@ -450,6 +451,12 @@ namespace ChatBot.Models
             public string text { get; set; } = string.Empty;
 
 
+        }
+
+        public class SummaryItem
+        {
+            public string type { get; set; } = string.Empty;
+            public string text { get; set; } = string.Empty;
         }
 
         public class usage

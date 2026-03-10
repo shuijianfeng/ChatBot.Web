@@ -6,6 +6,8 @@ class ChatUI {
         this.session_id = '';
         this.messageBuffer = '';
         this.controller = null; // 用于中断请求的 AbortController
+        this.currentReader = null;
+        this.stopRequested = false;
         this.networkButton = document.getElementById('network-search-button');
         this.networkIcon = document.getElementById('network-icon');
         this.isNetworkEnabled = false; // 默认启用联网搜索
@@ -482,21 +484,34 @@ class ChatUI {
     }
 
 
-    stopGeneration() {
-        if (this.controller) {
-            try {
+    async stopGeneration() {
+        const controller = this.controller;
+        const reader = this.currentReader;
 
-                this.controller.abort();
-            } catch (error) {
-                console.error('停止生成时发生错误:', error);
-            } finally {
-                this.controller = null;
-                this.toggleStopButton(false);
-                // 清理流式传输状态，防止轮询继续
-                this.isStreaming = false;
-                this.currentStreamId = null;
-                this.setLoadingState(false);
+        if (!controller && !reader) {
+            return;
+        }
+
+        this.stopRequested = true;
+
+        try {
+            if (reader) {
+                this.currentReader = null;
+                await reader.cancel();
+            } else if (controller) {
+                controller.abort();
             }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('停止生成时发生错误:', error);
+            }
+        } finally {
+            this.controller = null;
+            this.toggleStopButton(false);
+            // 清理流式传输状态，防止轮询继续
+            this.isStreaming = false;
+            this.currentStreamId = null;
+            this.setLoadingState(false);
         }
     }
 
@@ -2436,11 +2451,13 @@ class ChatUI {
     async sendMessage() {
         this.toggleStopButton(true); // 显示停止按钮
         this.controller = new AbortController();
+        const signal = this.controller.signal;
         const message = this.messageInput.value.trim();
         const imageUrls = this.uploadedImageUrls.slice(); // 复制数组
 
         if (!message && imageUrls.length == 0 || this.isProcessing) return;
 
+        this.stopRequested = false;
         this.setLoadingState(true);
         this.appendMessage('user', message);
         this.sessionDirty = true; // 标记会话有变更
@@ -2473,7 +2490,7 @@ class ChatUI {
                     EnableSearch: this.isNetworkEnabled,
                     skill: this.selectedSkill
                 }),
-                signal: this.controller.signal
+                signal: signal
 
             });
 
@@ -2482,6 +2499,7 @@ class ChatUI {
             }
 
             const reader = response.body.getReader();
+            this.currentReader = reader;
             const decoder = new TextDecoder();
             let buffer = '';
 
@@ -2532,6 +2550,11 @@ class ChatUI {
                         }
                     }
                 }
+
+                if (this.stopRequested && !this.needsResume) {
+                    console.log('用户取消');
+                    streamCompleted = true;
+                }
             }
             catch (error) {
                 if (error.name === 'AbortError') {
@@ -2549,7 +2572,19 @@ class ChatUI {
                     throw error;
                 }
             } finally {
-                reader.cancel();
+                try {
+                    if (this.currentReader === reader && !signal.aborted) {
+                        await reader.cancel();
+                    }
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        console.error('关闭响应流失败:', error);
+                    }
+                } finally {
+                    if (this.currentReader === reader) {
+                        this.currentReader = null;
+                    }
+                }
             }
         } catch (error) {
             console.error('错误:', error);
@@ -2626,6 +2661,7 @@ class ChatUI {
                     });
                 }
                 this.currentMessageElement = null;
+                this.stopRequested = false;
                 this.currentStreamId = null; // 只有正常完成才清除 streamId
                 this.toggleStopButton(false);
                 this.controller = null;
@@ -2635,6 +2671,7 @@ class ChatUI {
                 this.saveCurrentSession();
             } else {
                 // 连接中断，保留 isStreaming 和 currentStreamId，等待页面恢复后重连
+                this.stopRequested = false;
                 this.toggleStopButton(false);
                 this.controller = null;
             }
@@ -3191,7 +3228,19 @@ class ChatUI {
                 if (isMobile && this.isStreaming && this.controller && this.savedStreamId) {
                     // savedStreamId 已在接收时持续更新，这里只需标记和中止
                     this.needsResume = true;
-                    this.controller.abort();
+                    if (this.currentReader) {
+                        const reader = this.currentReader;
+                        this.currentReader = null;
+                        try {
+                            await reader.cancel();
+                        } catch (error) {
+                            if (error.name !== 'AbortError') {
+                                console.error('锁屏中止流式传输失败:', error);
+                            }
+                        }
+                    } else {
+                        this.controller.abort();
+                    }
                 }
             } else if (document.visibilityState === 'visible') {
                 // 页面重新可见，检查是否需要恢复流式传输

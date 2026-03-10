@@ -622,6 +622,7 @@ namespace ChatBot.Web.Services
                 List<tool_callnew> tool_calls = new();      // 工具调用列表
                 List<object> reasoning_items = new();        // 推理项列表 (用于关联 function_call)
                 var contentBuilder = new StringBuilder();    // 内容构建器
+                var reasoningTextBuilder = new StringBuilder();
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
@@ -683,20 +684,35 @@ namespace ChatBot.Web.Services
                                     break;
 
                                 case "response.reasoning_summary_text.delta":
+                                case "response.reasoning_text.delta":
+                                case "response.reasoning.delta":
                                     // 推理摘要文本增量
                                     if (!string.IsNullOrEmpty(chunk.delta))
                                     {
+                                        reasoningTextBuilder.Append(NormalizeResponsesOutputText(chunk.delta));
                                         if (!isReasoningStarted)
                                         {
                                             yield return "<think>\n\n~~~Thoughts\n\n";
                                             isReasoningStarted = true;
                                         }
-                                        yield return chunk.delta;
+                                        yield return NormalizeResponsesOutputText(chunk.delta);
                                     }
                                     break;
 
                                 case "response.reasoning_summary_text.done":
+                                case "response.reasoning_text.done":
+                                case "response.reasoning.done":
                                     // 推理摘要文本完成
+                                    if (reasoningTextBuilder.Length == 0 && !string.IsNullOrEmpty(chunk.text))
+                                    {
+                                        AppendResponsesText(reasoningTextBuilder, chunk.text);
+                                        if (!isReasoningStarted)
+                                        {
+                                            yield return FormatResponsesReasoningBlock(reasoningTextBuilder.ToString());
+                                            isReasoningStarted = true;
+                                            isReasoningEnded = true;
+                                        }
+                                    }
                                     break;
 
                                 case "response.reasoning_summary_part.done":
@@ -732,6 +748,15 @@ namespace ChatBot.Web.Services
                                                 // OpenAI 推理模型 (o1/o3等) 要求 function_call 必须包含其关联的 reasoning 项
                                                 // 需要使用 Clone() 因为原始 JsonElement 是 stream 的一部分，可能会被释放
                                                 reasoning_items.Add(JsonSerializer.Deserialize<object>(itemElement.GetRawText(), _jsonOptions)!);
+
+                                                if (reasoningTextBuilder.Length == 0)
+                                                {
+                                                    var reasoningText = ExtractResponsesReasoningText(itemElement);
+                                                    if (!string.IsNullOrWhiteSpace(reasoningText))
+                                                    {
+                                                        AppendResponsesText(reasoningTextBuilder, reasoningText);
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -753,7 +778,7 @@ namespace ChatBot.Web.Services
                                         if (!string.IsNullOrEmpty(content))
                                         {
                                             // 处理连续引用标记，添加空格分隔
-                                            content = Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                                            content = NormalizeResponsesOutputText(content);
                                             contentBuilder.Append(content);
                                         }
 
@@ -848,9 +873,30 @@ namespace ChatBot.Web.Services
                                 // ========== 输出项完成事件 ==========
                                 case "response.output_item.done":
                                     {
+                                        if (reasoningTextBuilder.Length == 0 && chunk?.item?.ValueKind == JsonValueKind.Object)
+                                        {
+                                            var reasoningText = ExtractResponsesReasoningText(chunk.item.Value);
+                                            if (!string.IsNullOrWhiteSpace(reasoningText))
+                                            {
+                                                AppendResponsesText(reasoningTextBuilder, reasoningText);
+                                                if (!isReasoningStarted)
+                                                {
+                                                    yield return FormatResponsesReasoningBlock(reasoningText);
+                                                    isReasoningStarted = true;
+                                                    isReasoningEnded = true;
+                                                }
+                                            }
+                                        }
+
                                         // 处理函数调用完成
                                         if (tool_calls.Count > 0)
                                         {
+                                            if (isReasoningStarted && !isReasoningEnded)
+                                            {
+                                                yield return "\n\n~~~\n\n</think>\n\n";
+                                                isReasoningEnded = true;
+                                            }
+
                                             // 先添加 reasoning 项到消息列表
                                             // OpenAI 推理模型 (o1/o3等) 要求 function_call 必须包含其关联的 reasoning 项
                                             foreach (var reasoningItem in reasoning_items)
@@ -903,15 +949,28 @@ namespace ChatBot.Web.Services
                         var output = chunk?.output;
                         if (output == null || output.Length == 0) continue;
 
+                        bool hasFunctionCall = false;
+
                         foreach (var item in output)
                         {
-                            if (item.type == "function_call")
+                            if (item.type == "reasoning")
                             {
+                                var reasoningText = ExtractResponsesReasoningText(item);
+                                if (!string.IsNullOrWhiteSpace(reasoningText))
+                                {
+                                    AppendResponsesText(reasoningTextBuilder, reasoningText);
+                                }
+
+                                toolsmessages.Add(CreateResponsesReasoningMessage(item));
+                            }
+                            else if (item.type == "function_call")
+                            {
+                                hasFunctionCall = true;
                                 // 处理函数调用类型
                                 var content1 = item?.content?.FirstOrDefault()?.text;
                                 if (!string.IsNullOrEmpty(content1))
                                 {
-                                    content1 = Regex.Replace(content1, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                                    content1 = NormalizeResponsesOutputText(content1);
                                     contentBuilder.Append(content1);
                                 }
 
@@ -937,7 +996,7 @@ namespace ChatBot.Web.Services
                                 var content1 = item?.content?.FirstOrDefault()?.text;
                                 if (!string.IsNullOrEmpty(content1))
                                 {
-                                    content1 = Regex.Replace(content1, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+                                    content1 = NormalizeResponsesOutputText(content1);
                                     contentBuilder.Append(content1);
                                 }
                             }
@@ -945,7 +1004,11 @@ namespace ChatBot.Web.Services
 
                         // 输出内容
                         var content = contentBuilder.ToString();
-                        if (!string.IsNullOrEmpty(content))
+                        if (reasoningTextBuilder.Length > 0)
+                        {
+                            yield return FormatResponsesReasoningBlock(reasoningTextBuilder.ToString()) + content;
+                        }
+                        else if (!string.IsNullOrEmpty(content))
                         {
                             // 处理 <think> 标签
                             content = content.Replace("<think>", "<think>\n\n~~~Thoughts\n\n");
@@ -954,7 +1017,7 @@ namespace ChatBot.Web.Services
                         }
 
                         // 如果有工具调用，递归处理
-                        if (toolsmessages.Count > 0)
+                        if (hasFunctionCall)
                         {
                             await foreach (var item in OpenAIResponsesAsync(modelconfg, request, cancellationToken, client, toolsmessages))
                             {
@@ -4447,6 +4510,128 @@ namespace ChatBot.Web.Services
                     }
             }
             return toolResult;
+        }
+
+        private static string NormalizeResponsesOutputText(string? content)
+        {
+            return string.IsNullOrEmpty(content)
+                ? string.Empty
+                : Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+        }
+
+        private static void AppendResponsesText(StringBuilder builder, string? text)
+        {
+            var normalizedText = NormalizeResponsesOutputText(text);
+            if (string.IsNullOrWhiteSpace(normalizedText))
+            {
+                return;
+            }
+
+            if (builder.Length > 0)
+            {
+                builder.AppendLine();
+            }
+
+            builder.Append(normalizedText);
+        }
+
+        private static string FormatResponsesReasoningBlock(string reasoningText)
+        {
+            return string.IsNullOrWhiteSpace(reasoningText)
+                ? string.Empty
+                : $"<think>\n\n~~~Thoughts\n\n{reasoningText}\n\n~~~\n\n</think>\n\n";
+        }
+
+        private static string ExtractResponsesReasoningText(JsonElement itemElement)
+        {
+            if (itemElement.ValueKind != JsonValueKind.Object)
+            {
+                return string.Empty;
+            }
+
+            if (!itemElement.TryGetProperty("type", out var typeProperty) || typeProperty.GetString() != "reasoning")
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+
+            if (itemElement.TryGetProperty("summary", out var summaryElement) && summaryElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var summaryItem in summaryElement.EnumerateArray())
+                {
+                    if (summaryItem.ValueKind == JsonValueKind.Object && summaryItem.TryGetProperty("text", out var textProperty))
+                    {
+                        AppendResponsesText(builder, textProperty.GetString());
+                    }
+                }
+            }
+
+            if (builder.Length == 0 && itemElement.TryGetProperty("content", out var contentElement) && contentElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var contentItem in contentElement.EnumerateArray())
+                {
+                    if (contentItem.ValueKind == JsonValueKind.Object && contentItem.TryGetProperty("text", out var textProperty))
+                    {
+                        AppendResponsesText(builder, textProperty.GetString());
+                    }
+                }
+            }
+
+            if (builder.Length == 0 && itemElement.TryGetProperty("text", out var directText))
+            {
+                AppendResponsesText(builder, directText.GetString());
+            }
+
+            return builder.ToString();
+        }
+
+        private static string ExtractResponsesReasoningText(OpenAIResponsenew.OpenAioutput item)
+        {
+            if (item == null || item.type != "reasoning")
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+
+            if (item.summary?.Length > 0)
+            {
+                foreach (var summaryItem in item.summary)
+                {
+                    AppendResponsesText(builder, summaryItem?.text);
+                }
+            }
+
+            if (builder.Length == 0 && item.content?.Length > 0)
+            {
+                foreach (var contentItem in item.content)
+                {
+                    AppendResponsesText(builder, contentItem?.text);
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private static object CreateResponsesReasoningMessage(OpenAIResponsenew.OpenAioutput item)
+        {
+            return new
+            {
+                type = item.type,
+                id = item.id,
+                status = item.status,
+                summary = item.summary?.Select(summaryItem => new
+                {
+                    type = string.IsNullOrWhiteSpace(summaryItem.type) ? "summary_text" : summaryItem.type,
+                    text = summaryItem.text
+                }).ToArray(),
+                content = item.content?.Select(contentItem => new
+                {
+                    type = contentItem.type,
+                    text = contentItem.text
+                }).ToArray()
+            };
         }
 
         /// <summary>
