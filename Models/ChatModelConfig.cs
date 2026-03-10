@@ -167,6 +167,11 @@ namespace ChatBot.Models
         public string FolderName { get; set; } = string.Empty;
 
         /// <summary>
+        /// 技能文件夹全路径（绝对路径，方便后续读取 SKILL.md 和相关资源）
+        /// </summary>
+        public string FullPath { get; set; } = string.Empty;
+        
+        /// <summary>
         /// 技能图标（Emoji）
         /// </summary>
         public string Icon { get; set; } = string.Empty;

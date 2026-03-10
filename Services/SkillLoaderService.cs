@@ -116,6 +116,7 @@ public class SkillLoaderService
         {
             Name = name,
             FolderName = folderName,
+            FullPath = Path.Combine(_skillsDirectory, folderName),
             Description = description,
             Icon = icon,
             SystemPrompt = body
@@ -184,7 +185,7 @@ public class SkillLoaderService
             s.Name.Equals(skillName, StringComparison.OrdinalIgnoreCase) ||
             s.FolderName.Equals(skillName, StringComparison.OrdinalIgnoreCase));
 
-        return skill?.SystemPrompt ?? string.Empty;
+        return "\n\n" + "SkillFullPath:" + skill?.FullPath ?? string.Empty+"(推理或输出中不显示)"+"\n\n"+skill?.SystemPrompt ?? string.Empty;
     }
 
     /// <summary>
