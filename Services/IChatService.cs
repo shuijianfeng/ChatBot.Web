@@ -113,7 +113,13 @@ namespace ChatBot.Web.Services
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _configuration;
         private readonly ILogger<ChatService> _logger;
-        private readonly JsonSerializerOptions _jsonOptions;
+        private static readonly JsonSerializerOptions _jsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
         private readonly ChatModelSettings _modelSettings;
         private readonly SkillLoaderService _skillLoaderService;
         private readonly JinaSearch _jinaSearch;
@@ -138,14 +144,6 @@ namespace ChatBot.Web.Services
             _logger = logger;
             _modelSettings = modelOptions.Value;
             _skillLoaderService = skillLoaderService;
-            // 配置JSON序列化选项
-            _jsonOptions = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            };
 
             _jinaSearch = new JinaSearch(_httpClientFactory);
             _openWeather = new OpenWeather(_httpClientFactory);
@@ -430,7 +428,7 @@ namespace ChatBot.Web.Services
                 if (string.IsNullOrEmpty(line)) continue;
                 if (line.StartsWith("data:"))
                 {
-                    line = line.Substring(5);
+                    line = line[5..];
                     if (line == "[DONE]") break;
 
                     var chunk = JsonSerializer.Deserialize<DashScopeChunkResponse>(line);
@@ -519,7 +517,7 @@ namespace ChatBot.Web.Services
                 {
                     if (line.StartsWith("data: "))
                     {
-                        line = line.Substring(6);
+                        line = line[6..];
                         if (line == "[DONE]") break;
 
                         var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
@@ -709,7 +707,7 @@ namespace ChatBot.Web.Services
                         // 处理SSE格式 "data: {...}"
                         if (line.StartsWith("data: "))
                         {
-                            line = line.Substring(6);
+                            line = line[6..];
 
                             string? rawEventType = null;
                             string? rawResponseId = null;
@@ -7362,7 +7360,7 @@ namespace ChatBot.Web.Services
                     var commaIndex = base64Data.IndexOf(',');
                     if (commaIndex > 0)
                     {
-                        var base64 = base64Data.Substring(commaIndex + 1);
+                        var base64 = base64Data[(commaIndex + 1)..];
                         return Convert.FromBase64String(base64);
                     }
                 }

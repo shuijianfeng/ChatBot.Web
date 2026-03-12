@@ -50,17 +50,17 @@ namespace ChatBot.Web.Services
     }
 
     /// <summary>
-    /// 会话数据访问层，负责与 PostgreSQL 数据库交互
+    /// 会话数据访问层，负责与 PostgreSQL 数据库交互。
+    /// 使用 NpgsqlDataSource 进行连接池化管理，避免每次手动创建连接。
     /// </summary>
     public class ChatSessionRepository
     {
-        private readonly string _connectionString;
+        private readonly NpgsqlDataSource _dataSource;
         private readonly ILogger<ChatSessionRepository> _logger;
 
-        public ChatSessionRepository(IConfiguration configuration, ILogger<ChatSessionRepository> logger)
+        public ChatSessionRepository(NpgsqlDataSource dataSource, ILogger<ChatSessionRepository> logger)
         {
-            _connectionString = configuration.GetConnectionString("PostgreSQL")
-                ?? "Host=localhost;Database=cloudserver;Username=postgres;Password=1234;Port=5432";
+            _dataSource = dataSource;
             _logger = logger;
 
             // 确保表存在
@@ -74,8 +74,7 @@ namespace ChatBot.Web.Services
         {
             try
             {
-                await using var connection = new NpgsqlConnection(_connectionString);
-                await connection.OpenAsync();
+                await using var connection = await _dataSource.OpenConnectionAsync();
 
                 var createTablesSql = @"
                     -- 会话表
@@ -125,8 +124,7 @@ namespace ChatBot.Web.Services
 
             try
             {
-                await using var connection = new NpgsqlConnection(_connectionString);
-                await connection.OpenAsync();
+                await using var connection = await _dataSource.OpenConnectionAsync();
 
                 var sql = @"
                     SELECT id, uid, title, model_name, created_at, updated_at 
@@ -166,8 +164,7 @@ namespace ChatBot.Web.Services
         {
             try
             {
-                await using var connection = new NpgsqlConnection(_connectionString);
-                await connection.OpenAsync();
+                await using var connection = await _dataSource.OpenConnectionAsync();
 
                 // 获取会话基本信息
                 var sessionSql = @"
@@ -245,8 +242,7 @@ namespace ChatBot.Web.Services
         {
             try
             {
-                await using var connection = new NpgsqlConnection(_connectionString);
-                await connection.OpenAsync();
+                await using var connection = await _dataSource.OpenConnectionAsync();
 
                 await using var transaction = await connection.BeginTransactionAsync();
 
@@ -338,8 +334,7 @@ namespace ChatBot.Web.Services
         {
             try
             {
-                await using var connection = new NpgsqlConnection(_connectionString);
-                await connection.OpenAsync();
+                await using var connection = await _dataSource.OpenConnectionAsync();
 
                 // 由于设置了级联删除，删除会话会自动删除关联的消息
                 var sql = "DELETE FROM chat_sessions WHERE id = @sessionId";
@@ -370,8 +365,7 @@ namespace ChatBot.Web.Services
         {
             try
             {
-                await using var connection = new NpgsqlConnection(_connectionString);
-                await connection.OpenAsync();
+                await using var connection = await _dataSource.OpenConnectionAsync();
 
                 var sql = "UPDATE chat_sessions SET title = @title, updated_at = NOW() WHERE id = @sessionId";
                 await using var command = new NpgsqlCommand(sql, connection);

@@ -1,4 +1,5 @@
 using ChatBot.Models;
+using System.Collections.Frozen;
 using System.Text.RegularExpressions;
 
 namespace ChatBot.Web.Services;
@@ -126,40 +127,39 @@ public class SkillLoaderService
     /// <summary>
     /// 从 Skill 名称生成简单的图标文本
     /// </summary>
+    private static readonly FrozenDictionary<string, string> EmojiMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["translate"] = "🌐",
+        ["code"] = "💻",
+        ["review"] = "🔍",
+        ["writing"] = "✍️",
+        ["design"] = "🎨",
+        ["test"] = "🧪",
+        ["debug"] = "🐛",
+        ["doc"] = "📄",
+        ["search"] = "🔎",
+        ["data"] = "📊",
+        ["math"] = "🔢",
+        ["chat"] = "💬",
+        ["music"] = "🎵",
+        ["image"] = "🖼️",
+        ["video"] = "🎬",
+        ["pdf"] = "📑",
+        ["excel"] = "📊",
+        ["ppt"] = "📽️",
+        ["frontend"] = "🎨",
+        ["backend"] = "⚙️",
+        ["api"] = "🔌",
+        ["sql"] = "🗃️",
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
     private static string GenerateIcon(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
             return "🔧";
 
-        // 常用 Skill 类型的 Emoji 映射
-        var emojiMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["translate"] = "🌐",
-            ["code"] = "💻",
-            ["review"] = "🔍",
-            ["writing"] = "✍️",
-            ["design"] = "🎨",
-            ["test"] = "🧪",
-            ["debug"] = "🐛",
-            ["doc"] = "📄",
-            ["search"] = "🔎",
-            ["data"] = "📊",
-            ["math"] = "🔢",
-            ["chat"] = "💬",
-            ["music"] = "🎵",
-            ["image"] = "🖼️",
-            ["video"] = "🎬",
-            ["pdf"] = "📑",
-            ["excel"] = "📊",
-            ["ppt"] = "📽️",
-            ["frontend"] = "🎨",
-            ["backend"] = "⚙️",
-            ["api"] = "🔌",
-            ["sql"] = "🗃️",
-        };
-
         // 优先匹配包含关键词的名称
-        foreach (var pair in emojiMap)
+        foreach (var pair in EmojiMap)
         {
             if (name.Contains(pair.Key, StringComparison.OrdinalIgnoreCase))
                 return pair.Value;

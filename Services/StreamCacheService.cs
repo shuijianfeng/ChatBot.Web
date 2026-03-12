@@ -39,7 +39,7 @@ namespace ChatBot.Web.Services
         {
             if (_cache.TryGetValue(streamId, out var item))
             {
-                lock (item.Content)
+                lock (item.SyncLock)
                 {
                     item.Content.Append(content);
                     item.LastUpdatedAt = DateTime.UtcNow;
@@ -68,7 +68,7 @@ namespace ChatBot.Web.Services
                 return null;
             }
 
-            lock (item.Content)
+            lock (item.SyncLock)
             {
                 var fullContent = item.Content.ToString();
                 if (offset >= fullContent.Length)
@@ -83,7 +83,7 @@ namespace ChatBot.Web.Services
 
                 return new StreamResumeResult
                 {
-                    Content = fullContent.Substring(offset),
+                    Content = fullContent[offset..],
                     TotalLength = fullContent.Length,
                     IsCompleted = item.IsCompleted
                 };
@@ -130,6 +130,7 @@ namespace ChatBot.Web.Services
     public class StreamCacheItem
     {
         public System.Text.StringBuilder Content { get; set; } = new();
+        public Lock SyncLock { get; } = new();
         public DateTime CreatedAt { get; set; }
         public DateTime LastUpdatedAt { get; set; }
         public bool IsCompleted { get; set; }
