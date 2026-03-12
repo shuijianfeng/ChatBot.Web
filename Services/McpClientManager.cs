@@ -59,7 +59,7 @@ namespace ChatBot.Web.Services
         private readonly ConcurrentDictionary<string, McpClient> _clients = new();
         private readonly ConcurrentDictionary<string, McpToolInfo> _toolsCache = new();
         private bool _initialized;
-        private readonly object _initLock = new();
+        private readonly Lock _initLock = new();
 
         public bool IsEnabled => _settings.Enabled;
 
@@ -141,7 +141,7 @@ namespace ChatBot.Web.Services
                 {
                     Name = serverConfig.Name,
                     Command = serverConfig.Command,
-                    Arguments = serverConfig.Arguments.ToList(),
+                    Arguments = [..serverConfig.Arguments],
                 };
 
                 // 设置工作目录

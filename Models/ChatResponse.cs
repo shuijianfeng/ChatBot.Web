@@ -162,7 +162,7 @@ namespace ChatBot.Models
         /// 图片链接
         /// </summary>
         [JsonPropertyName("image")]
-        public string[] Image { get; set; } = Array.Empty<string>();
+        public string[] Image { get; set; } = [];
 
         /// <summary>
         /// 是否启用流式输出
@@ -197,7 +197,7 @@ namespace ChatBot.Models
         /// 图片链接
         /// </summary>
         [JsonPropertyName("images")]
-        public string[] Images { get; set; } = Array.Empty<string>();
+        public string[] Images { get; set; } = [];
     }
 
     /// <summary>
@@ -247,8 +247,8 @@ namespace ChatBot.Models
     // 响应类型
     public class OpenAIChunkResponse
     {
-        public choice[] choices { get; set; } = Array.Empty<choice>();
-        public string[] citations { get; set; } = Array.Empty<string>();
+        public choice[] choices { get; set; } = [];
+        public string[] citations { get; set; } = [];
         public class choice
         {
             public delta delta { get; set; } = new delta();
@@ -262,8 +262,8 @@ namespace ChatBot.Models
             public string reasoning_content { get; set; } = string.Empty;
             public string reasoning { get; set; } = string.Empty;
             public string role { get; set; } = string.Empty;
-            public tool_call[] function_call { get; set; } = Array.Empty<tool_call>();
-            public tool_call[] tool_calls { get; set; } = Array.Empty<tool_call>();
+            public tool_call[] function_call { get; set; } = [];
+            public tool_call[] tool_calls { get; set; } = [];
 
 
         }
@@ -396,8 +396,8 @@ namespace ChatBot.Models
     // 响应类型
     public class OpenAIResponse
     {
-        public choice[] choices { get; set; }
-        public string[] citations { get; set; }
+        public choice[] choices { get; set; } = [];
+        public string[] citations { get; set; } = [];
         public class choice
         {
             public message message { get; set; }

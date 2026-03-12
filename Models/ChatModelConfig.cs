@@ -1,5 +1,4 @@
 // Models/ChatModelConfig.cs
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace ChatBot.Models
@@ -7,7 +6,7 @@ namespace ChatBot.Models
     public class SearchTermsResponse
     {
         [JsonPropertyName("search_terms")]
-        public List<string> SearchTerms { get; set; }
+        public List<string> SearchTerms { get; set; } = [];
     }
     public enum ChatModelType
     {
@@ -61,9 +60,9 @@ namespace ChatBot.Models
 
     public class ErrorViewModel
     {
-        public string ErrorCode { get; set; }
-        public string Message { get; set; }
-        public string RequestId { get; set; }
+        public string ErrorCode { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string RequestId { get; set; } = string.Empty;
         public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
     }
 
@@ -112,7 +111,7 @@ namespace ChatBot.Models
         /// <summary>
         /// [Stdio] 命令参数
         /// </summary>
-        public string[] Arguments { get; set; } = Array.Empty<string>();
+        public string[] Arguments { get; set; } = [];
 
         /// <summary>
         /// [Stdio] 工作目录（可选）
@@ -148,7 +147,7 @@ namespace ChatBot.Models
         /// <summary>
         /// MCP 服务器列表
         /// </summary>
-        public List<McpServerConfig> Servers { get; set; } = new List<McpServerConfig>();
+        public List<McpServerConfig> Servers { get; set; } = [];
     }
 
     /// <summary>

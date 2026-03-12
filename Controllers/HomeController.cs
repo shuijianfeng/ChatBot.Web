@@ -6,8 +6,8 @@ using ChatBot.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Web;
 
-using Microsoft.Extensions.Configuration;
 using AngleSharp;
+using Microsoft.Extensions.Configuration;
 
 namespace ChatBot.Controllers
 {
@@ -318,7 +318,7 @@ namespace ChatBot.Controllers
                 // 截断过长的描述
                 if (!string.IsNullOrEmpty(description) && description.Length > 200)
                 {
-                    description = description.Substring(0, 197) + "...";
+                    description = description[..197] + "...";
                 }
 
                 // 返回结果
@@ -425,16 +425,16 @@ namespace ChatBot.Controllers
                 // 移除www前缀
                 if (hostname.StartsWith("www."))
                 {
-                    hostname = hostname.Substring(4);
+                hostname = hostname[4..];
                 }
 
                 // 只保留域名的主要部分
                 var domainParts = hostname.Split('.');
                 if (domainParts.Length >= 2)
                 {
-                    string mainPart = domainParts[domainParts.Length - 2];
+                    string mainPart = domainParts[^2];
                     // 首字母大写以提升可读性
-                    return char.ToUpper(mainPart[0]) + mainPart.Substring(1);
+                    return char.ToUpper(mainPart[0]) + mainPart[1..];
                 }
                 return hostname;
             }
@@ -701,7 +701,6 @@ namespace ChatBot.Controllers
         }
 
 
-        [HttpPost]
         [HttpPost]
         [Route("/api/chat/stream")]
         public async Task StreamChat([FromBody] ChatRequest request)
