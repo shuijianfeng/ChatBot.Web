@@ -402,6 +402,7 @@ namespace ChatBot.Models
         {
             public message message { get; set; }
             public int choices { get; set; }
+            public string finish_reason { get; set; } = string.Empty;
 
         }
 
@@ -422,9 +423,15 @@ namespace ChatBot.Models
         public string openaiobject { get; set; } = string.Empty;
 
         public string status { get; set; } = string.Empty;
+        public IncompleteDetails? incomplete_details { get; set; }
 
         public string model { get; set; } = string.Empty;
         public OpenAioutput[] output { get; set; }
+
+        public class IncompleteDetails
+        {
+            public string reason { get; set; } = string.Empty;
+        }
 
         public class OpenAioutput
         {
@@ -469,7 +476,7 @@ namespace ChatBot.Models
 
     // OpenAI Responses API 流式响应类型 (支持完整事件类型)
     // 事件类型包括:
-    // - response.created, response.in_progress, response.completed, response.failed
+    // - response.created, response.in_progress, response.completed, response.incomplete, response.failed
     // - response.output_item.added, response.output_item.done
     // - response.content_part.added, response.content_part.done
     // - response.output_text.delta, response.output_text.done

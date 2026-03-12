@@ -14,6 +14,7 @@ using OpenAI.Chat;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
+using System.Collections.Concurrent;
 using System.Data;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -108,6 +109,7 @@ namespace ChatBot.Web.Services
         private const int maxSearchCount = 5;
         private const int SearchCount = 10;
         static string SessionId = string.Empty;
+        private static readonly ConcurrentDictionary<string, byte> _responsesUnsupportedPreviousResponseIdEndpoints = new(StringComparer.OrdinalIgnoreCase);
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IConfiguration _configuration;
         private readonly ILogger<ChatService> _logger;
@@ -278,6 +280,7 @@ namespace ChatBot.Web.Services
                     yield return item;
                 }
             }
+
             else
             {
 
@@ -553,7 +556,9 @@ namespace ChatBot.Web.Services
             ChatRequest request,
             [EnumeratorCancellation] CancellationToken cancellationToken,
             HttpClient? inputclient = null,
-            List<object>? toolsmessages = null)
+            List<object>? toolsmessages = null,
+            string? previousResponseId = null,
+            int continuationDepth = 0)
         {
             // 验证API配置
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
@@ -573,9 +578,18 @@ namespace ChatBot.Web.Services
             }
 
             // 准备消息列表
-            var messages = ToMessagesResponsesOpenAi(request, modelconfg);
             toolsmessages ??= new List<object>();
-            messages.AddRange(toolsmessages);
+            var usePreviousResponseId = !string.IsNullOrWhiteSpace(previousResponseId)
+                && !_responsesUnsupportedPreviousResponseIdEndpoints.ContainsKey(apiEndpoint);
+
+            var messages = usePreviousResponseId
+                ? CreateResponsesContinuationMessages()
+                : ToMessagesResponsesOpenAi(request, modelconfg);
+
+            if (!usePreviousResponseId)
+            {
+                messages.AddRange(toolsmessages);
+            }
 
             // 准备工具列表 (如果启用搜索)
             List<object>? tools = await PrepareOpenAiResponsesToolsAsync(request.EnableSearch, cancellationToken);
@@ -585,13 +599,24 @@ namespace ChatBot.Web.Services
             {
                 model = modelconfg.Model,
                 input = messages,
+                previous_response_id = usePreviousResponseId ? previousResponseId : null,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 reasoning = OpenAiThinkingLevel(modelconfg),
                 tools = tools,
+                max_output_tokens = modelconfg.MaxTokens > 0 ? (int?)modelconfg.MaxTokens : null,
             };
 
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+
+            if (usePreviousResponseId)
+            {
+                _logger.LogWarning("OpenAI Responses 发起 previous_response_id 续写请求。PreviousResponseId: {PreviousResponseId}, ContinuationDepth: {ContinuationDepth}", previousResponseId, continuationDepth);
+            }
+            else if (!string.IsNullOrWhiteSpace(previousResponseId))
+            {
+                _logger.LogWarning("OpenAI Responses 检测到当前上游不支持 previous_response_id，直接改用普通上下文续写。PreviousResponseId: {PreviousResponseId}, ContinuationDepth: {ContinuationDepth}", previousResponseId, continuationDepth);
+            }
 
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
             {
@@ -603,6 +628,32 @@ namespace ChatBot.Web.Services
                 {
                     // 尝试读取错误详情
                     var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                    if (response.StatusCode == System.Net.HttpStatusCode.BadRequest
+                        && !string.IsNullOrWhiteSpace(previousResponseId)
+                        && continuationDepth < 3)
+                    {
+                        _responsesUnsupportedPreviousResponseIdEndpoints.TryAdd(apiEndpoint, 0);
+                        var fallbackMessages = new List<object>(toolsmessages);
+                        _logger.LogWarning("OpenAI Responses previous_response_id 续写收到 400，回退为普通上下文续写。PreviousResponseId: {PreviousResponseId}, ContinuationDepth: {ContinuationDepth}, Error: {Error}", previousResponseId, continuationDepth, errorContent);
+
+                        await foreach (var item in OpenAIResponsesAsync(
+                            modelconfg,
+                            request,
+                            cancellationToken,
+                            client,
+                            fallbackMessages,
+                            null,
+                            continuationDepth + 1))
+                        {
+                            yield return item;
+                        }
+                        yield break;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(previousResponseId))
+                    {
+                        _logger.LogWarning("OpenAI Responses previous_response_id 续写失败。PreviousResponseId: {PreviousResponseId}, StatusCode: {StatusCode}, Error: {Error}", previousResponseId, response.StatusCode, errorContent);
+                    }
                     yield return $"失败: StatusCode {response.StatusCode}\n{errorContent}";
                     yield break;
                 }
@@ -618,18 +669,40 @@ namespace ChatBot.Web.Services
                 bool isThinkTagEnded = false;         // </think>标签是否已结束
                 bool isWebSearching = false;          // 是否正在执行Web搜索
                 bool isFileSearching = false;         // 是否正在执行文件搜索
+                bool sawTerminalResponseEvent = false;
+                bool shouldAttemptContinuationAfterStreamInterruption = false;
 
                 List<tool_callnew> tool_calls = new();      // 工具调用列表
                 List<object> reasoning_items = new();        // 推理项列表 (用于关联 function_call)
                 var contentBuilder = new StringBuilder();    // 内容构建器
                 var reasoningTextBuilder = new StringBuilder();
+                string? currentResponseId = previousResponseId;
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     if (modelconfg.Stream)
                     {
                         // 流式模式：处理SSE事件
-                        var line = await reader.ReadLineAsync(cancellationToken);
+                        string? line;
+                        try
+                        {
+                            line = await reader.ReadLineAsync(cancellationToken);
+                        }
+                        catch (TaskCanceledException ex)
+                        {
+                            if (string.IsNullOrWhiteSpace(currentResponseId)
+                                || (contentBuilder.Length == 0 && reasoningTextBuilder.Length == 0)
+                                || continuationDepth >= 3)
+                            {
+                                _logger.LogWarning(ex, "OpenAI Responses 流读取被中断，无法执行兜底续写。ResponseId: {ResponseId}", currentResponseId);
+                                throw;
+                            }
+
+                            shouldAttemptContinuationAfterStreamInterruption = true;
+                            _logger.LogWarning(ex, "OpenAI Responses 流读取被中断，尝试按 ResponseId 兜底续写。ResponseId: {ResponseId}", currentResponseId);
+                            break;
+                        }
+
                         if (line == null) break; // 流结束
                         if (string.IsNullOrEmpty(line)) continue;
 
@@ -637,6 +710,45 @@ namespace ChatBot.Web.Services
                         if (line.StartsWith("data: "))
                         {
                             line = line.Substring(6);
+
+                            string? rawEventType = null;
+                            string? rawResponseId = null;
+                            string? rawIncompleteReason = null;
+
+                            try
+                            {
+                                using var rawJson = JsonDocument.Parse(line);
+                                var root = rawJson.RootElement;
+
+                                if (root.TryGetProperty("type", out var rawTypeElement))
+                                {
+                                    rawEventType = rawTypeElement.GetString();
+                                }
+
+                                if (root.TryGetProperty("response_id", out var rawResponseIdElement))
+                                {
+                                    rawResponseId = rawResponseIdElement.GetString();
+                                }
+
+                                if (root.TryGetProperty("response", out var rawResponseElement) && rawResponseElement.ValueKind == JsonValueKind.Object)
+                                {
+                                    if (string.IsNullOrWhiteSpace(rawResponseId)
+                                        && rawResponseElement.TryGetProperty("id", out var rawNestedResponseIdElement))
+                                    {
+                                        rawResponseId = rawNestedResponseIdElement.GetString();
+                                    }
+
+                                    if (rawResponseElement.TryGetProperty("incomplete_details", out var rawIncompleteDetailsElement)
+                                        && rawIncompleteDetailsElement.ValueKind == JsonValueKind.Object
+                                        && rawIncompleteDetailsElement.TryGetProperty("reason", out var rawReasonElement))
+                                    {
+                                        rawIncompleteReason = rawReasonElement.GetString();
+                                    }
+                                }
+                            }
+                            catch (JsonException)
+                            {
+                            }
 
                             // 尝试解析JSON
                             OpenAIChunkResponsenew chunk;
@@ -652,24 +764,79 @@ namespace ChatBot.Web.Services
 
                             if (chunk == null) continue;
 
+                            var eventType = rawEventType ?? chunk.type;
+                            _logger.LogInformation("OpenAI Responses SSE event. EventType: {EventType}, RawEventType: {RawEventType}, ChunkType: {ChunkType}, ResponseId: {ResponseId}, Reason: {Reason}, Line: {Line}",
+                                eventType,
+                                rawEventType,
+                                chunk.type,
+                                rawResponseId ?? currentResponseId,
+                                rawIncompleteReason ?? chunk.response?.incomplete_details?.reason,
+                                line);
+
+                            if (string.IsNullOrWhiteSpace(eventType))
+                            {
+                                continue;
+                            }
+
                             // 根据事件类型分发处理
-                            switch (chunk.type)
+                            switch (eventType)
                             {
                                 // ========== 响应生命周期事件 ==========
                                 case "response.created":
                                     // 响应创建，可用于初始化
+                                    currentResponseId = ResolveResponsesResponseId(chunk, currentResponseId);
                                     break;
 
                                 case "response.in_progress":
                                     // 响应进行中
                                     break;
 
+                                case "response.incomplete":
                                 case "response.completed":
-                                    // 响应完成
+                                    // 响应完成或因长度中断
+                                    sawTerminalResponseEvent = true;
+                                    currentResponseId = ResolveResponsesResponseId(chunk, currentResponseId);
+                                    currentResponseId = ResolveResponsesResponseId(rawResponseId, currentResponseId);
+                                    var shouldContinueResponses = IsResponsesMaxOutputTokenIncomplete(chunk.response)
+                                        || (string.Equals(rawEventType ?? chunk.type, "response.incomplete", StringComparison.OrdinalIgnoreCase)
+                                            && (string.IsNullOrWhiteSpace(rawIncompleteReason)
+                                                || string.Equals(rawIncompleteReason, "max_output_tokens", StringComparison.OrdinalIgnoreCase)
+                                                || string.Equals(chunk.response?.incomplete_details?.reason, "max_output_tokens", StringComparison.OrdinalIgnoreCase)));
+
+                                    if (shouldContinueResponses)
+                                    {
+                                        if (isReasoningStarted && !isReasoningEnded)
+                                        {
+                                            yield return "\n\n~~~\n\n</think>\n\n";
+                                            isReasoningEnded = true;
+                                        }
+
+                                        _logger.LogInformation("OpenAI Responses 触发自动续写。EventType: {EventType}, ResponseId: {ResponseId}, Reason: {Reason}",
+                                            eventType,
+                                            currentResponseId,
+                                            rawIncompleteReason ?? chunk.response?.incomplete_details?.reason);
+
+                                        response.Content.Dispose();
+                                        await foreach (var item in ContinueOpenAIResponsesAsync(
+                                            modelconfg,
+                                            request,
+                                            cancellationToken,
+                                            client,
+                                            toolsmessages,
+                                            contentBuilder.ToString(),
+                                            reasoningTextBuilder.ToString(),
+                                            currentResponseId,
+                                            continuationDepth))
+                                        {
+                                            yield return item;
+                                        }
+                                        yield break;
+                                    }
                                     break;
 
                                 case "response.failed":
                                     // 响应失败
+                                    sawTerminalResponseEvent = true;
                                     yield return "\n\n⚠️ **响应失败**";
                                     yield break;
 
@@ -932,8 +1099,7 @@ namespace ChatBot.Web.Services
 
                                 // ========== 其他事件 ==========
                                 default:
-                                    // 未知事件类型，记录日志（可选）
-                                    // _logger.LogDebug("Unknown event type: {EventType}", chunk.type);
+                                    _logger.LogDebug("Unknown OpenAI Responses event type: {EventType}", eventType);
                                     break;
                             }
                         }
@@ -945,6 +1111,7 @@ namespace ChatBot.Web.Services
                         if (string.IsNullOrEmpty(line)) continue;
 
                         var chunk = JsonSerializer.Deserialize<OpenAIResponsenew>(line);
+                        currentResponseId = ResolveResponsesResponseId(chunk?.id, currentResponseId);
 
                         var output = chunk?.output;
                         if (output == null || output.Length == 0) continue;
@@ -1000,6 +1167,7 @@ namespace ChatBot.Web.Services
                                     contentBuilder.Append(content1);
                                 }
                             }
+
                         }
 
                         // 输出内容
@@ -1025,8 +1193,122 @@ namespace ChatBot.Web.Services
                             }
                             break;
                         }
+
+                        if (IsResponsesMaxOutputTokenIncomplete(chunk))
+                        {
+                            response.Content.Dispose();
+                            await foreach (var item in ContinueOpenAIResponsesAsync(
+                                modelconfg,
+                                request,
+                                cancellationToken,
+                                client,
+                                toolsmessages,
+                                contentBuilder.ToString(),
+                                reasoningTextBuilder.ToString(),
+                                currentResponseId,
+                                continuationDepth))
+                            {
+                                yield return item;
+                            }
+                            yield break;
+                        }
                     }
                 }
+
+                _logger.LogWarning(
+                    "OpenAI Responses 流退出。Stream={Stream}, CancellationRequested={CancellationRequested}, SawTerminalResponseEvent={SawTerminalResponseEvent}, ResponseId={ResponseId}, ContentLength={ContentLength}, ReasoningLength={ReasoningLength}, ContinuationDepth={ContinuationDepth}, ShouldAttemptContinuationAfterStreamInterruption={ShouldAttemptContinuationAfterStreamInterruption}",
+                    modelconfg.Stream,
+                    cancellationToken.IsCancellationRequested,
+                    sawTerminalResponseEvent,
+                    currentResponseId,
+                    contentBuilder.Length,
+                    reasoningTextBuilder.Length,
+                    continuationDepth,
+                    shouldAttemptContinuationAfterStreamInterruption);
+
+                if (modelconfg.Stream
+                    && !sawTerminalResponseEvent
+                    && !string.IsNullOrWhiteSpace(currentResponseId)
+                    && (contentBuilder.Length > 0 || reasoningTextBuilder.Length > 0)
+                    && continuationDepth < 3)
+                {
+                    var continuationCancellationToken = cancellationToken.IsCancellationRequested
+                        ? CancellationToken.None
+                        : cancellationToken;
+
+                    if (isReasoningStarted && !isReasoningEnded)
+                    {
+                        yield return "\n\n~~~\n\n</think>\n\n";
+                        isReasoningEnded = true;
+                    }
+
+                    _logger.LogWarning("OpenAI Responses 流已结束或中断且未收到终止事件，按 ResponseId 兜底续写。ResponseId: {ResponseId}", currentResponseId);
+
+                    response.Content.Dispose();
+                    await foreach (var item in ContinueOpenAIResponsesAsync(
+                        modelconfg,
+                        request,
+                        continuationCancellationToken,
+                        client,
+                        toolsmessages,
+                        contentBuilder.ToString(),
+                        reasoningTextBuilder.ToString(),
+                        currentResponseId,
+                        continuationDepth))
+                    {
+                        yield return item;
+                    }
+                    yield break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 使用 previous_response_id 从上次截断位置继续生成回复。
+        /// </summary>
+        private async IAsyncEnumerable<string> ContinueOpenAIResponsesAsync(
+            ChatModelConfig modelconfg,
+            ChatRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            HttpClient client,
+            List<object> toolsmessages,
+            string content,
+            string reasoningContent,
+            string? previousResponseId,
+            int continuationDepth)
+        {
+            const int maxContinuationDepth = 3;
+
+            if (string.IsNullOrWhiteSpace(previousResponseId))
+            {
+                yield break;
+            }
+
+            if (continuationDepth >= maxContinuationDepth)
+            {
+                _logger.LogWarning("OpenAI Responses 因输出长度被截断，但已达到最大续写次数限制。ResponseId: {ResponseId}", previousResponseId);
+                yield break;
+            }
+
+            _logger.LogWarning(
+                "OpenAI Responses 准备发起续写请求。PreviousResponseId: {PreviousResponseId}, NextContinuationDepth: {NextContinuationDepth}, CancellationRequested: {CancellationRequested}",
+                previousResponseId,
+                continuationDepth + 1,
+                cancellationToken.IsCancellationRequested);
+
+            var continuationMessages = new List<object>(toolsmessages);
+            continuationMessages.AddRange(CreateResponsesFallbackContinuationMessages(content, reasoningContent));
+
+            await foreach (var item in OpenAIResponsesAsync(
+                modelconfg,
+                request,
+                cancellationToken,
+                client,
+                continuationMessages,
+                previousResponseId,
+                continuationDepth + 1))
+            {
+                yield return item;
             }
         }
 
@@ -1039,7 +1321,7 @@ namespace ChatBot.Web.Services
         /// <param name="inputclient">可选的复用 HTTP 客户端。</param>
         /// <param name="toolsmessages">上一轮工具调用产生的附加消息。</param>
         /// <returns>按顺序返回的回复文本片段。</returns>
-        public async IAsyncEnumerable<string> ClaudeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null)
+        public async IAsyncEnumerable<string> ClaudeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null, int continuationDepth = 0)
         {
             // 验证配置
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
@@ -1107,9 +1389,30 @@ namespace ChatBot.Web.Services
                 string textsignature = string.Empty;
                 bool beging = false;
                 bool end = false;
+                bool sawTerminalClaudeEvent = false;
+                bool shouldAttemptClaudeContinuationAfterStreamInterruption = false;
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var line = await reader.ReadLineAsync(cancellationToken);
+                    string? line;
+                    try
+                    {
+                        line = await reader.ReadLineAsync(cancellationToken);
+                    }
+                    catch (TaskCanceledException ex)
+                    {
+                        if (string.IsNullOrWhiteSpace(text)
+                            && string.IsNullOrWhiteSpace(textthinking)
+                            && continuationDepth >= 3)
+                        {
+                            _logger.LogWarning(ex, "Claude 流读取被中断，无法执行兜底续写。Model: {Model}", modelconfg.Model);
+                            throw;
+                        }
+
+                        shouldAttemptClaudeContinuationAfterStreamInterruption = true;
+                        _logger.LogWarning(ex, "Claude 流读取被中断，尝试自动续写。Model: {Model}", modelconfg.Model);
+                        break;
+                    }
+
                     if (line == null) break; // 流结束
                     if (string.IsNullOrEmpty(line)) continue;
                     if (modelconfg.Stream)
@@ -1197,6 +1500,7 @@ namespace ChatBot.Web.Services
                                 {
                                     if (chunk.delta.stop_reason == "tool_use")
                                     {
+                                        sawTerminalClaudeEvent = true;
 
 
                                         //text = string.Empty;
@@ -1262,12 +1566,40 @@ namespace ChatBot.Web.Services
                                         {
                                             yield return item;
                                         }
+                                        yield break;
+                                    }
+
+                                    if (chunk.delta.stop_reason == "max_tokens")
+                                    {
+                                        sawTerminalClaudeEvent = true;
+                                        if (beging && !end)
+                                        {
+                                            yield return "\n\n~~~\n\n</think>\n\n";
+                                            end = true;
+                                        }
+
+                                        response.Content.Dispose();
+                                        await foreach (var item in ContinueClaudeAsync(
+                                            modelconfg,
+                                            request,
+                                            cancellationToken,
+                                            client,
+                                            toolsmessages,
+                                            text,
+                                            textthinking,
+                                            textsignature,
+                                            continuationDepth))
+                                        {
+                                            yield return item;
+                                        }
+                                        yield break;
                                     }
 
                                     break;
                                 }
                             case "message_stop":
                                 {
+                                    sawTerminalClaudeEvent = true;
 
                                     break;
                                 }
@@ -1380,6 +1712,7 @@ namespace ChatBot.Web.Services
                             }
                             if (tool_calls1.Count > 0)
                             {
+                                sawTerminalClaudeEvent = true;
 
 
                                 tool_calls1.Clear();
@@ -1389,11 +1722,67 @@ namespace ChatBot.Web.Services
 
                                     yield return item;
                                 }
+                                yield break;
+                            }
+
+                            if (chunk.stop_reason == "max_tokens")
+                            {
+                                sawTerminalClaudeEvent = true;
+                                response.Content.Dispose();
+                                await foreach (var item in ContinueClaudeAsync(
+                                    modelconfg,
+                                    request,
+                                    cancellationToken,
+                                    client,
+                                    toolsmessages,
+                                    text,
+                                    textthinking,
+                                    textsignature,
+                                    continuationDepth))
+                                {
+                                    yield return item;
+                                }
+                                yield break;
                             }
 
                         }
 
                     }
+                }
+
+                if (modelconfg.Stream
+                    && !sawTerminalClaudeEvent
+                    && continuationDepth < 3
+                    && (!string.IsNullOrWhiteSpace(text) || !string.IsNullOrWhiteSpace(textthinking))
+                    && (!cancellationToken.IsCancellationRequested || shouldAttemptClaudeContinuationAfterStreamInterruption))
+                {
+                    var continuationCancellationToken = cancellationToken.IsCancellationRequested
+                        ? CancellationToken.None
+                        : cancellationToken;
+
+                    if (beging && !end)
+                    {
+                        yield return "\n\n~~~\n\n</think>\n\n";
+                        end = true;
+                    }
+
+                    _logger.LogWarning("Claude 流已结束或中断但未收到终止事件，尝试自动续写。Model: {Model}, ContinuationDepth: {ContinuationDepth}", modelconfg.Model, continuationDepth);
+
+                    response.Content.Dispose();
+                    await foreach (var item in ContinueClaudeAsync(
+                        modelconfg,
+                        request,
+                        continuationCancellationToken,
+                        client,
+                        toolsmessages,
+                        text,
+                        textthinking,
+                        textsignature,
+                        continuationDepth))
+                    {
+                        yield return item;
+                    }
+                    yield break;
                 }
             }
         }
@@ -1409,7 +1798,7 @@ namespace ChatBot.Web.Services
         /// <param name="inputclient">可选的复用 HTTP 客户端。</param>
         /// <param name="toolsmessages">上一轮工具调用产生的附加消息。</param>
         /// <returns>按顺序返回的回复文本片段。</returns>
-        public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null)
+        public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null, int continuationDepth = 0)
         {
            
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
@@ -1498,11 +1887,30 @@ namespace ChatBot.Web.Services
             List<GeminiToolCall> tool_calls = new();
             bool isThinkingStarted = false;  // 思考内容是否已开始
             bool isThinkingEnded = false;    // 思考内容是否已结束
+            bool sawTerminalGeminiEvent = false;
+            bool shouldAttemptGeminiContinuationAfterStreamInterruption = false;
             while (!cancellationToken.IsCancellationRequested)
             {
                 if (modelconfg.Stream)
                 {
-                    var line = await reader.ReadLineAsync(cancellationToken);
+                    string? line;
+                    try
+                    {
+                        line = await reader.ReadLineAsync(cancellationToken);
+                    }
+                    catch (TaskCanceledException ex)
+                    {
+                        if (string.IsNullOrWhiteSpace(contentBuilder.ToString()) || continuationDepth >= 3)
+                        {
+                            _logger.LogWarning(ex, "Gemini 流读取被中断，无法执行兜底续写。Model: {Model}", modelconfg.Model);
+                            throw;
+                        }
+
+                        shouldAttemptGeminiContinuationAfterStreamInterruption = true;
+                        _logger.LogWarning(ex, "Gemini 流读取被中断，尝试自动续写。Model: {Model}", modelconfg.Model);
+                        break;
+                    }
+
                     if (line == null) break; // 流结束
                     if (string.IsNullOrEmpty(line)) continue;
                     if (line.StartsWith("data: "))
@@ -1567,6 +1975,7 @@ namespace ChatBot.Web.Services
                         // 检查是否完成且有函数调用
                         if (candidate?.finishReason == "STOP" && tool_calls.Count > 0)
                         {
+                            sawTerminalGeminiEvent = true;
                             // 执行函数调用
                             var functionResults = new List<object>();
 
@@ -1602,6 +2011,35 @@ namespace ChatBot.Web.Services
                                 yield return item;
                             }
                             break;
+                        }
+
+                        if (candidate?.finishReason == "STOP" && tool_calls.Count == 0)
+                        {
+                            sawTerminalGeminiEvent = true;
+                        }
+
+                        if (candidate?.finishReason == "MAX_TOKENS")
+                        {
+                            sawTerminalGeminiEvent = true;
+                            if (isThinkingStarted && !isThinkingEnded)
+                            {
+                                yield return "\n\n~~~\n\n</think>\n\n";
+                                isThinkingEnded = true;
+                            }
+
+                            response.Content.Dispose();
+                            await foreach (var item in ContinueGeminiAsync(
+                                modelconfg,
+                                request,
+                                cancellationToken,
+                                client,
+                                toolsmessages,
+                                contentBuilder,
+                                continuationDepth))
+                            {
+                                yield return item;
+                            }
+                            yield break;
                         }
                     }
                 }
@@ -1639,6 +2077,7 @@ namespace ChatBot.Web.Services
                     // 检查是否完成且有函数调用
                     if (candidate?.finishReason == "STOP" && tool_calls.Count > 0)
                     {
+                        sawTerminalGeminiEvent = true;
                         // 执行函数调用
                         var functionResults = new List<object>();
 
@@ -1673,8 +2112,65 @@ namespace ChatBot.Web.Services
                         {
                             yield return item;
                         }
+                        yield break;
+                    }
+
+                    if (candidate?.finishReason == "STOP" && tool_calls.Count == 0)
+                    {
+                        sawTerminalGeminiEvent = true;
+                    }
+
+                    if (candidate?.finishReason == "MAX_TOKENS")
+                    {
+                        sawTerminalGeminiEvent = true;
+                        response.Content.Dispose();
+                        await foreach (var item in ContinueGeminiAsync(
+                            modelconfg,
+                            request,
+                            cancellationToken,
+                            client,
+                            toolsmessages,
+                            contentBuilder,
+                            continuationDepth))
+                        {
+                            yield return item;
+                        }
+                        yield break;
                     }
                 }
+            }
+
+            if (modelconfg.Stream
+                && !sawTerminalGeminiEvent
+                && continuationDepth < 3
+                && contentBuilder.Length > 0
+                && (!cancellationToken.IsCancellationRequested || shouldAttemptGeminiContinuationAfterStreamInterruption))
+            {
+                var continuationCancellationToken = cancellationToken.IsCancellationRequested
+                    ? CancellationToken.None
+                    : cancellationToken;
+
+                if (isThinkingStarted && !isThinkingEnded)
+                {
+                    yield return "\n\n~~~\n\n</think>\n\n";
+                    isThinkingEnded = true;
+                }
+
+                _logger.LogWarning("Gemini 流已结束或中断但未收到终止事件，尝试自动续写。Model: {Model}, ContinuationDepth: {ContinuationDepth}", modelconfg.Model, continuationDepth);
+
+                response.Content.Dispose();
+                await foreach (var item in ContinueGeminiAsync(
+                    modelconfg,
+                    request,
+                    continuationCancellationToken,
+                    client,
+                    toolsmessages,
+                    contentBuilder,
+                    continuationDepth))
+                {
+                    yield return item;
+                }
+                yield break;
             }
         }
 
@@ -1687,7 +2183,7 @@ namespace ChatBot.Web.Services
         /// <param name="inputclient">可选的复用 HTTP 客户端。</param>
         /// <param name="toolsmessages">上一轮工具调用产生的附加消息。</param>
         /// <returns>按顺序返回的回复文本片段。</returns>
-        public async IAsyncEnumerable<string> GeminiFileSearchAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null)
+        public async IAsyncEnumerable<string> GeminiFileSearchAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null, int continuationDepth = 0)
         {
             // 验证配置AQ.Ab8RN6LQoXO75Ty1A9x4EEogc0XS97bVZPZwz-ytddNBxMvvrg
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
@@ -1775,11 +2271,30 @@ namespace ChatBot.Web.Services
             var contentBuilder = new StringBuilder();
             //List<GeminiFunctionCall> functionCalls = new();
             List<GeminiToolCall> tool_calls = new();
+            bool sawTerminalGeminiFileSearchEvent = false;
+            bool shouldAttemptGeminiFileSearchContinuationAfterStreamInterruption = false;
             while (!cancellationToken.IsCancellationRequested)
             {
                 if (modelconfg.Stream)
                 {
-                    var line = await reader.ReadLineAsync(cancellationToken);
+                    string? line;
+                    try
+                    {
+                        line = await reader.ReadLineAsync(cancellationToken);
+                    }
+                    catch (TaskCanceledException ex)
+                    {
+                        if (string.IsNullOrWhiteSpace(contentBuilder.ToString()) || continuationDepth >= 3)
+                        {
+                            _logger.LogWarning(ex, "Gemini 文件检索流读取被中断，无法执行兜底续写。Model: {Model}", modelconfg.Model);
+                            throw;
+                        }
+
+                        shouldAttemptGeminiFileSearchContinuationAfterStreamInterruption = true;
+                        _logger.LogWarning(ex, "Gemini 文件检索流读取被中断，尝试自动续写。Model: {Model}", modelconfg.Model);
+                        break;
+                    }
+
                     if (line == null) break; // 流结束
                     if (string.IsNullOrEmpty(line)) continue;
                     if (line.StartsWith("data: "))
@@ -1817,6 +2332,7 @@ namespace ChatBot.Web.Services
                         // 检查是否完成且有函数调用
                         if (candidate?.finishReason == "STOP" && tool_calls.Count > 0)
                         {
+                            sawTerminalGeminiFileSearchEvent = true;
                             // 执行函数调用
                             var functionResults = new List<object>();
 
@@ -1852,6 +2368,29 @@ namespace ChatBot.Web.Services
                                 yield return item;
                             }
                             break;
+                        }
+
+                        if (candidate?.finishReason == "STOP" && tool_calls.Count == 0)
+                        {
+                            sawTerminalGeminiFileSearchEvent = true;
+                        }
+
+                        if (candidate?.finishReason == "MAX_TOKENS")
+                        {
+                            sawTerminalGeminiFileSearchEvent = true;
+                            response.Content.Dispose();
+                            await foreach (var item in ContinueGeminiFileSearchAsync(
+                                modelconfg,
+                                request,
+                                cancellationToken,
+                                client,
+                                toolsmessages,
+                                contentBuilder,
+                                continuationDepth))
+                            {
+                                yield return item;
+                            }
+                            yield break;
                         }
                     }
                 }
@@ -1889,6 +2428,7 @@ namespace ChatBot.Web.Services
                     // 检查是否完成且有函数调用
                     if (candidate?.finishReason == "STOP" && tool_calls.Count > 0)
                     {
+                        sawTerminalGeminiFileSearchEvent = true;
                         // 执行函数调用
                         var functionResults = new List<object>();
 
@@ -1923,8 +2463,59 @@ namespace ChatBot.Web.Services
                         {
                             yield return item;
                         }
+                        yield break;
+                    }
+
+                    if (candidate?.finishReason == "STOP" && tool_calls.Count == 0)
+                    {
+                        sawTerminalGeminiFileSearchEvent = true;
+                    }
+
+                    if (candidate?.finishReason == "MAX_TOKENS")
+                    {
+                        sawTerminalGeminiFileSearchEvent = true;
+                        response.Content.Dispose();
+                        await foreach (var item in ContinueGeminiFileSearchAsync(
+                            modelconfg,
+                            request,
+                            cancellationToken,
+                            client,
+                            toolsmessages,
+                            contentBuilder,
+                            continuationDepth))
+                        {
+                            yield return item;
+                        }
+                        yield break;
                     }
                 }
+            }
+
+            if (modelconfg.Stream
+                && !sawTerminalGeminiFileSearchEvent
+                && continuationDepth < 3
+                && contentBuilder.Length > 0
+                && (!cancellationToken.IsCancellationRequested || shouldAttemptGeminiFileSearchContinuationAfterStreamInterruption))
+            {
+                var continuationCancellationToken = cancellationToken.IsCancellationRequested
+                    ? CancellationToken.None
+                    : cancellationToken;
+
+                _logger.LogWarning("Gemini 文件检索流已结束或中断但未收到终止事件，尝试自动续写。Model: {Model}, ContinuationDepth: {ContinuationDepth}", modelconfg.Model, continuationDepth);
+
+                response.Content.Dispose();
+                await foreach (var item in ContinueGeminiFileSearchAsync(
+                    modelconfg,
+                    request,
+                    continuationCancellationToken,
+                    client,
+                    toolsmessages,
+                    contentBuilder,
+                    continuationDepth))
+                {
+                    yield return item;
+                }
+                yield break;
             }
         }
 
@@ -2089,7 +2680,7 @@ namespace ChatBot.Web.Services
         /// <param name="inputclient">可选的复用 HTTP 客户端。</param>
         /// <param name="toolsmessages">上一轮工具调用产生的附加消息。</param>
         /// <returns>按顺序返回的回复文本片段。</returns>
-        public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null)
+        public async IAsyncEnumerable<string> OpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null, int continuationDepth = 0)
         {
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
@@ -2150,18 +2741,42 @@ namespace ChatBot.Web.Services
                 var reasoningContentBuilder = new StringBuilder();
                 bool hasCitations = false;
                 string citationsString = string.Empty;
+                bool sawTerminalOpenAiEvent = false;
+                bool shouldAttemptOpenAiContinuationAfterStreamInterruption = false;
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     if (modelconfg.Stream)
                     {
-                        var line = await reader.ReadLineAsync(cancellationToken);
+                        string? line;
+                        try
+                        {
+                            line = await reader.ReadLineAsync(cancellationToken);
+                        }
+                        catch (TaskCanceledException ex)
+                        {
+                            if ((contentBuilder.Length == 0 && reasoningContentBuilder.Length == 0)
+                                || continuationDepth >= 3)
+                            {
+                                _logger.LogWarning(ex, "OpenAI 兼容接口流读取被中断，无法执行兜底续写。Model: {Model}", modelconfg.Model);
+                                throw;
+                            }
+
+                            shouldAttemptOpenAiContinuationAfterStreamInterruption = true;
+                            _logger.LogWarning(ex, "OpenAI 兼容接口流读取被中断，尝试自动续写。Model: {Model}", modelconfg.Model);
+                            break;
+                        }
+
                         if (line == null) break; // 流结束
                         if (string.IsNullOrEmpty(line)) continue;
                         if (line.StartsWith("data: "))
                         {
                             line = line.Substring(6);
-                            if (line == "[DONE]") break;
+                            if (line == "[DONE]")
+                            {
+                                sawTerminalOpenAiEvent = true;
+                                break;
+                            }
 
                             var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
                             var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
@@ -2244,6 +2859,7 @@ namespace ChatBot.Web.Services
                             var finishReason = chunk?.choices?.FirstOrDefault()?.finish_reason;
                             if (tool_calls.Count > 0 && (finishReason == "tool_calls" || finishReason == "stop"))
                             {
+                                sawTerminalOpenAiEvent = true;
                                 // 如果有未闭合的思考块，先闭合它
                                 if (thinkingStarted && !thinkingEnded)
                                 {
@@ -2259,6 +2875,36 @@ namespace ChatBot.Web.Services
                                 }
                                 yield break;
                             }
+
+                            if (string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase))
+                            {
+                                sawTerminalOpenAiEvent = true;
+                                if (thinkingStarted && !thinkingEnded)
+                                {
+                                    yield return "\n\n~~~\n\n</think>\n\n";
+                                    thinkingEnded = true;
+                                }
+
+                                response.Content.Dispose();
+                                await foreach (var item in ContinueOpenAIAsync(
+                                    modelconfg,
+                                    request,
+                                    cancellationToken,
+                                    client,
+                                    toolsmessages,
+                                    contentBuilder,
+                                    reasoningContentBuilder,
+                                    continuationDepth))
+                                {
+                                    yield return item;
+                                }
+                                yield break;
+                            }
+
+                            if (string.Equals(finishReason, "stop", StringComparison.OrdinalIgnoreCase))
+                            {
+                                sawTerminalOpenAiEvent = true;
+                            }
                         }
                     }
                     else
@@ -2270,8 +2916,10 @@ namespace ChatBot.Web.Services
 
 
 
-                        var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                        var reasoning_content = chunk?.choices?.FirstOrDefault()?.message?.reasoning_content;
+                        var choice = chunk?.choices?.FirstOrDefault();
+                        var content = choice?.message?.content;
+                        var reasoning_content = choice?.message?.reasoning_content;
+                        var finishReason = choice?.finish_reason;
 
                         if (!string.IsNullOrEmpty(content))
                         {
@@ -2286,6 +2934,7 @@ namespace ChatBot.Web.Services
                         var toolCalls = chunk?.choices?.FirstOrDefault()?.message?.tool_calls;
                         if (toolCalls != null && toolCalls.Length > 0)
                         {
+                            sawTerminalOpenAiEvent = true;
                             tool_calls.AddRange(toolCalls.Cast<tool_call>());
 
                             // 如果有推理内容，先输出它（带闭合标签）
@@ -2320,13 +2969,183 @@ namespace ChatBot.Web.Services
                             content = content.Replace("</think>", "\n\n~~~\n\n</think>\n\n");
                             yield return content;
                         }
+
+                        if (string.Equals(finishReason, "stop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            sawTerminalOpenAiEvent = true;
+                        }
                     }
+                }
+
+                if (modelconfg.Stream
+                    && !sawTerminalOpenAiEvent
+                    && continuationDepth < 3
+                    && (contentBuilder.Length > 0 || reasoningContentBuilder.Length > 0)
+                    && (!cancellationToken.IsCancellationRequested || shouldAttemptOpenAiContinuationAfterStreamInterruption))
+                {
+                    var continuationCancellationToken = cancellationToken.IsCancellationRequested
+                        ? CancellationToken.None
+                        : cancellationToken;
+
+                    if (thinkingStarted && !thinkingEnded)
+                    {
+                        yield return "\n\n~~~\n\n</think>\n\n";
+                        thinkingEnded = true;
+                    }
+
+                    _logger.LogWarning("OpenAI 兼容接口流已结束或中断但未收到终止事件，尝试自动续写。Model: {Model}, ContinuationDepth: {ContinuationDepth}", modelconfg.Model, continuationDepth);
+
+                    response.Content.Dispose();
+                    await foreach (var item in ContinueOpenAIAsync(
+                        modelconfg,
+                        request,
+                        continuationCancellationToken,
+                        client,
+                        toolsmessages,
+                        contentBuilder,
+                        reasoningContentBuilder,
+                        continuationDepth))
+                    {
+                        yield return item;
+                    }
+                    yield break;
                 }
 
                 if (!string.IsNullOrEmpty(citationsString))
                 {
                     yield return "\n\n" + citationsString;
                 }
+            }
+        }
+
+        private async IAsyncEnumerable<string> ContinueOpenAIAsync(
+            ChatModelConfig modelconfg,
+            ChatRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            HttpClient client,
+            List<object> toolsmessages,
+            StringBuilder contentBuilder,
+            StringBuilder reasoningContentBuilder,
+            int continuationDepth)
+        {
+            const int maxContinuationDepth = 3;
+
+            if (continuationDepth >= maxContinuationDepth)
+            {
+                _logger.LogWarning("OpenAI 兼容接口因输出长度被截断，但已达到最大续写次数限制。Model: {Model}", modelconfg.Model);
+                yield break;
+            }
+
+            toolsmessages.AddRange(CreateOpenAiContinuationMessages(contentBuilder.ToString(), reasoningContentBuilder.ToString()));
+            contentBuilder.Clear();
+            reasoningContentBuilder.Clear();
+
+            await foreach (var item in OpenAIAsync(
+                modelconfg,
+                request,
+                cancellationToken,
+                client,
+                toolsmessages,
+                continuationDepth + 1))
+            {
+                yield return item;
+            }
+        }
+
+        private async IAsyncEnumerable<string> ContinueClaudeAsync(
+            ChatModelConfig modelconfg,
+            ChatRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            HttpClient client,
+            List<object> toolsmessages,
+            string text,
+            string thinking,
+            string signature,
+            int continuationDepth)
+        {
+            const int maxContinuationDepth = 3;
+
+            if (continuationDepth >= maxContinuationDepth)
+            {
+                _logger.LogWarning("Claude 接口因输出长度被截断，但已达到最大续写次数限制。Model: {Model}", modelconfg.Model);
+                yield break;
+            }
+
+            toolsmessages.AddRange(CreateClaudeContinuationMessages(text, thinking, signature));
+
+            await foreach (var item in ClaudeAsync(
+                modelconfg,
+                request,
+                cancellationToken,
+                client,
+                toolsmessages,
+                continuationDepth + 1))
+            {
+                yield return item;
+            }
+        }
+
+        private async IAsyncEnumerable<string> ContinueGeminiAsync(
+            ChatModelConfig modelconfg,
+            ChatRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            HttpClient client,
+            List<object> toolsmessages,
+            StringBuilder contentBuilder,
+            int continuationDepth)
+        {
+            const int maxContinuationDepth = 3;
+
+            if (continuationDepth >= maxContinuationDepth)
+            {
+                _logger.LogWarning("Gemini 接口因输出长度被截断，但已达到最大续写次数限制。Model: {Model}", modelconfg.Model);
+                yield break;
+            }
+
+            toolsmessages.AddRange(CreateGeminiContinuationMessages(contentBuilder.ToString()));
+            contentBuilder.Clear();
+
+            await foreach (var item in GeminiAsync(
+                modelconfg,
+                request,
+                cancellationToken,
+                client,
+                toolsmessages,
+                continuationDepth + 1))
+            {
+                yield return item;
+            }
+        }
+
+        private async IAsyncEnumerable<string> ContinueGeminiFileSearchAsync(
+            ChatModelConfig modelconfg,
+            ChatRequest request,
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            HttpClient client,
+            List<object> toolsmessages,
+            StringBuilder contentBuilder,
+            int continuationDepth)
+        {
+            const int maxContinuationDepth = 3;
+
+            if (continuationDepth >= maxContinuationDepth)
+            {
+                _logger.LogWarning("Gemini 文件检索接口因输出长度被截断，但已达到最大续写次数限制。Model: {Model}", modelconfg.Model);
+                yield break;
+            }
+
+            toolsmessages.AddRange(CreateGeminiContinuationMessages(contentBuilder.ToString()));
+            contentBuilder.Clear();
+
+            await foreach (var item in GeminiFileSearchAsync(
+                modelconfg,
+                request,
+                cancellationToken,
+                client,
+                toolsmessages,
+                continuationDepth + 1))
+            {
+                yield return item;
             }
         }
 
@@ -4517,6 +5336,182 @@ namespace ChatBot.Web.Services
             return string.IsNullOrEmpty(content)
                 ? string.Empty
                 : Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
+        }
+
+        private static List<object> CreateResponsesContinuationMessages()
+        {
+            return new List<object>
+            {
+                new
+                {
+                    role = "user",
+                    content = "Continue exactly where you stopped. Do not repeat any text already produced."
+                }
+            };
+        }
+
+        private static List<object> CreateResponsesFallbackContinuationMessages(string content, string reasoningContent)
+        {
+            var messages = new List<object>();
+            var assistantContentBuilder = new StringBuilder();
+
+            if (!string.IsNullOrWhiteSpace(reasoningContent))
+            {
+                assistantContentBuilder.Append(reasoningContent.Trim());
+            }
+
+            if (!string.IsNullOrWhiteSpace(content))
+            {
+                if (assistantContentBuilder.Length > 0)
+                {
+                    assistantContentBuilder.AppendLine();
+                    assistantContentBuilder.AppendLine();
+                }
+
+                assistantContentBuilder.Append(content);
+            }
+
+            if (assistantContentBuilder.Length > 0)
+            {
+                messages.Add(new
+                {
+                    role = "assistant",
+                    content = assistantContentBuilder.ToString()
+                });
+            }
+
+            messages.Add(new
+            {
+                role = "user",
+                content = "Continue exactly where you stopped. Do not repeat any text already produced."
+            });
+
+            return messages;
+        }
+
+        private static List<object> CreateOpenAiContinuationMessages(string content, string reasoningContent)
+        {
+            var messages = new List<object>();
+
+            if (!string.IsNullOrWhiteSpace(content) || !string.IsNullOrWhiteSpace(reasoningContent))
+            {
+                messages.Add(string.IsNullOrWhiteSpace(reasoningContent)
+                    ? new
+                    {
+                        role = "assistant",
+                        content
+                    }
+                    : new
+                    {
+                        role = "assistant",
+                        content,
+                        reasoning_content = reasoningContent
+                    });
+            }
+
+            messages.Add(new
+            {
+                role = "user",
+                content = "Continue exactly where you stopped. Do not repeat any text already produced."
+            });
+
+            return messages;
+        }
+
+        private static List<object> CreateClaudeContinuationMessages(string text, string thinking, string signature)
+        {
+            var messages = new List<object>();
+            var content = new List<object>();
+
+            if (!string.IsNullOrWhiteSpace(thinking))
+            {
+                content.Add(new
+                {
+                    type = "thinking",
+                    signature,
+                    thinking
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                content.Add(new
+                {
+                    type = "text",
+                    text
+                });
+            }
+
+            if (content.Count > 0)
+            {
+                messages.Add(new
+                {
+                    role = "assistant",
+                    content
+                });
+            }
+
+            messages.Add(new
+            {
+                role = "user",
+                content = "Continue exactly where you stopped. Do not repeat any text already produced."
+            });
+
+            return messages;
+        }
+
+        private static List<object> CreateGeminiContinuationMessages(string content)
+        {
+            var messages = new List<object>();
+
+            if (!string.IsNullOrWhiteSpace(content))
+            {
+                messages.Add(new
+                {
+                    role = "model",
+                    parts = new[]
+                    {
+                        new { text = content }
+                    }
+                });
+            }
+
+            messages.Add(new
+            {
+                role = "user",
+                parts = new[]
+                {
+                    new { text = "Continue exactly where you stopped. Do not repeat any text already produced." }
+                }
+            });
+
+            return messages;
+        }
+
+        private static bool IsResponsesMaxOutputTokenIncomplete(OpenAIResponsenew? response)
+        {
+            return response != null
+                && string.Equals(response.status, "incomplete", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(response.incomplete_details?.reason, "max_output_tokens", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string? ResolveResponsesResponseId(OpenAIChunkResponsenew? chunk, string? currentResponseId)
+        {
+            if (chunk == null)
+            {
+                return currentResponseId;
+            }
+
+            return ResolveResponsesResponseId(
+                !string.IsNullOrWhiteSpace(chunk.response?.id) ? chunk.response.id : chunk.response_id,
+                currentResponseId);
+        }
+
+        private static string? ResolveResponsesResponseId(string? responseId, string? currentResponseId)
+        {
+            return !string.IsNullOrWhiteSpace(responseId)
+                ? responseId
+                : currentResponseId;
         }
 
         private static void AppendResponsesText(StringBuilder builder, string? text)
