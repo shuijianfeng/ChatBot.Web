@@ -62,9 +62,20 @@
     @* 防止深色模式闪烁：在页面渲染前同步应用主题 *@
     <script>
         (function() {
+            @if (ViewBag.DefaultTheme != null)
+            {
+                <text>
+                // 优先使用服务器端传入的主题（如URL参数）
+                var serverTheme = '@ViewBag.DefaultTheme';
+                document.documentElement.setAttribute('data-theme', serverTheme);
+                return;
+                </text>
+            }
+
+            // 否则使用localStorage中保存的主题
             var savedTheme = localStorage.getItem('theme');
-            if (savedTheme === 'dark') {
-                document.documentElement.setAttribute('data-theme', 'dark');
+            if (savedTheme) {
+                document.documentElement.setAttribute('data-theme', savedTheme);
             }
         })();
     </script>

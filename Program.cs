@@ -54,6 +54,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseResponseCompression();
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.MapStaticAssets();
 app.UseRouting();
 app.MapControllers();
