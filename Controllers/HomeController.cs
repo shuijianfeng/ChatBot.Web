@@ -638,6 +638,48 @@ namespace ChatBot.Controllers
             }
         }
 
+        /// <summary>
+        /// 获取分享的音频文件。
+        /// </summary>
+        [HttpGet]
+        [Route("/share/media/{fileName}")]
+        public IActionResult GetSharedMedia(string fileName)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(fileName))
+                {
+                    return BadRequest("无效的文件名");
+                }
+
+                fileName = Path.GetFileName(fileName);
+                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Sharedmedia", fileName);
+
+                if (!System.IO.File.Exists(filePath))
+                {
+                    return NotFound("音频不存在或已过期");
+                }
+
+                var contentType = Path.GetExtension(fileName).ToLowerInvariant() switch
+                {
+                    ".mp3" => "audio/mpeg",
+                    ".wav" => "audio/wav",
+                    ".ogg" => "audio/ogg",
+                    ".opus" => "audio/opus",
+                    ".flac" => "audio/flac",
+                    ".aac" => "audio/aac",
+                    ".m4a" => "audio/mp4",
+                    _ => "application/octet-stream"
+                };
+
+                return PhysicalFile(filePath, contentType, enableRangeProcessing: true);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"获取音频失败: {ex.Message}");
+            }
+        }
+
 
         public class SaveHtmlRequest
         {

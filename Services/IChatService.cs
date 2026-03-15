@@ -1,5 +1,6 @@
 using ChatBot.Models;
 using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.EMMA;
 using DocumentFormat.OpenXml.Office2013.Excel;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -284,22 +285,7 @@ namespace ChatBot.Web.Services
 
                 switch (config.ChatModelType)
                 {
-                    //case ChatModelType.DeepSeek:
-                    //    {
-                    //        await foreach (var item in DeepseekOpenAIAsync(config, request, cancellationToken))
-                    //        {
-                    //            yield return item;
-                    //        }
-                    //        break;
-                    //    }
-                    case ChatModelType.Deepbricks:
-                        {
-                            await foreach (var item in DeepbricksOpenAIAsync(config, request, cancellationToken))
-                            {
-                                yield return item;
-                            }
-                            break;
-                        }
+                   
                     case ChatModelType.Claude:
                         {
                             await foreach (var item in ClaudeAsync(config, request, cancellationToken))
@@ -440,105 +426,7 @@ namespace ChatBot.Web.Services
                 }
             }
         }
-        /// <summary>
-        /// 使用 OpenAI 兼容协议调用 Deepbricks 并返回回复流。
-        /// </summary>
-        /// <param name="modelconfg">模型配置。</param>
-        /// <param name="request">聊天请求。</param>
-        /// <param name="cancellationToken">取消令牌。</param>
-        /// <returns>模型生成的文本片段。</returns>
-        public async IAsyncEnumerable<string> DeepbricksOpenAIAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            var apiEndpoint = modelconfg.ApiEndpoint;
-
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("API配置缺失");
-            }
-
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(30);
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-            HttpResponseMessage response = null;
-            if (modelconfg.Temperature >= 0)
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg),
-                    stream = modelconfg.Stream,
-
-                    temperature = modelconfg.Temperature,
-
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            else
-            {
-                var requestContent = new
-                {
-
-                    model = modelconfg.Model,
-                    messages = ToMessagesOpenAi(request, modelconfg),
-                    stream = modelconfg.Stream,
-
-
-                };
-
-                response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-                {
-                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-                }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            }
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                yield return "失败: StatusCode " + response.StatusCode.ToString();
-                yield break;
-            }
-            response.EnsureSuccessStatusCode();
-
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            string? line;
-            while ((line = await reader.ReadLineAsync(cancellationToken)) != null && !cancellationToken.IsCancellationRequested)
-            {
-                if (string.IsNullOrEmpty(line)) continue;
-                if (modelconfg.Stream)
-                {
-                    if (line.StartsWith("data: "))
-                    {
-                        line = line[6..];
-                        if (line == "[DONE]") break;
-
-                        var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-                        var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
-                        if (!string.IsNullOrEmpty(content))
-                        {
-                            yield return content;
-                        }
-                    }
-                }
-                else
-                {
-                    var chunk = JsonSerializer.Deserialize<OpenAIResponse>(line);
-                    var content = chunk?.choices?.FirstOrDefault()?.message?.content;
-                    if (!string.IsNullOrEmpty(content))
-                    {
-                        yield return content;
-                    }
-                }
-            }
-        }
+       
 
         /// <summary>
         /// 调用 OpenAI Responses API，并统一处理文本、推理、搜索状态和工具调用事件。
@@ -3216,6 +3104,31 @@ namespace ChatBot.Web.Services
                     }
                 });
             tools.Add(
+                new
+                {
+                    type = "function",
+                    name = nameof(TextToSpeech),
+                    description = "将文本转换为语音音频文件，返回可访问的音频链接和播放器 HTML。",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            text = new
+                            {
+                                type = "string",
+                                description = "要转换为语音的文本内容，最大长度为1600个字符"
+                            },
+                            voice = new
+                            {
+                                type = "string",
+                                description = "可选语音音色名称，不传则使用默认音色"
+                            }
+                        },
+                        required = new[] { "text" }
+                    }
+                });
+            tools.Add(
                new
                {
                    type = "function",
@@ -3629,6 +3542,34 @@ namespace ChatBot.Web.Services
                     }
                 });
             tools.Add(
+                new
+                {
+                    type = "function",
+                    function = new
+                    {
+                        name = nameof(TextToSpeech),
+                        description = "将文本转换为语音音频文件，返回可访问的音频链接和播放器 HTML。",
+                        parameters = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                text = new
+                                {
+                                    type = "string",
+                                    description = "要转换为语音的文本内容，最大长度为1600个字符"
+                                },
+                                voice = new
+                                {
+                                    type = "string",
+                                    description = "可选语音音色名称，不传则使用默认音色"
+                                }
+                            },
+                            required = new[] { "text" }
+                        }
+                    }
+                });
+            tools.Add(
                new
                {
                    type = "function",
@@ -3856,6 +3797,31 @@ namespace ChatBot.Web.Services
                         type = "object",
                         properties = new { },
                         required = Array.Empty<string>()
+                    }
+                });
+            tools.Add
+                (
+                new
+                {
+                    name = nameof(TextToSpeech),
+                    description = "将文本转换为语音音频文件，返回可访问的音频链接和播放器 HTML。",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            text = new
+                            {
+                                type = "string",
+                                description = "要转换为语音的文本内容，最大长度为1600个字符"
+                            },
+                            voice = new
+                            {
+                                type = "string",
+                                description = "可选语音音色名称，不传则使用默认音色"
+                            }
+                        },
+                        required = new[] { "text" }
                     }
                 });
 
@@ -4216,6 +4182,22 @@ namespace ChatBot.Web.Services
 
             tools.Add(new
             {
+                name = nameof(TextToSpeech),
+                description = "将文本转换为语音音频文件，返回可访问的音频链接和播放器 HTML。",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        text = new { type = "string", description = "要转换为语音的文本内容，最大长度为1600个字符" },
+                        voice = new { type = "string", description = "可选语音音色名称，不传则使用默认音色" }
+                    },
+                    required = new[] { "text" }
+                }
+            });
+
+            tools.Add(new
+            {
                 name = nameof(SearchTrainTicket),
                 description = "获取指定日期的火车票、火车车次",
                 parameters = new
@@ -4413,6 +4395,22 @@ namespace ChatBot.Web.Services
         {
 
             var tools = new List<object>();
+
+            //tools.Add(new
+            //{
+            //    name = nameof(TextToSpeech),
+            //    description = "将文本转换为语音音频文件，返回可访问的音频链接和播放器 HTML。",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            text = new { type = "string", description = "要转换为语音的文本内容" },
+            //            voice = new { type = "string", description = "可选语音音色名称，不传则使用默认音色" }
+            //        },
+            //        required = new[] { "text" }
+            //    }
+            //});
 
             //if (search)
             //{
@@ -4628,6 +4626,22 @@ namespace ChatBot.Web.Services
                         return await JinaAiSearch(outquery.GetString() ?? throw new ArgumentNullException("query", "Query cannot be null."));
                     }
 
+                case nameof(TextToSpeech):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        if (!argumentsJson.RootElement.TryGetProperty("text", out JsonElement textElement))
+                        {
+                            throw new ArgumentNullException("text", "The text argument is required.");
+                        }
+
+                        string text = textElement.GetString() ?? throw new ArgumentNullException("text", "Text cannot be null.");
+                        string? voice = argumentsJson.RootElement.TryGetProperty("voice", out JsonElement voiceElement)
+                            ? voiceElement.GetString()
+                            : null;
+
+                        return await TextToSpeech(text, voice);
+                    }
+
                 case nameof(SearchTrainTicket):
                     {
                         using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
@@ -4776,6 +4790,21 @@ namespace ChatBot.Web.Services
                     {
                         string query = queryValue.GetString() ?? throw new ArgumentNullException(nameof(queryValue), "Query cannot be null.");
                         toolResult = await JinaAiSearch(query);
+                    }
+                    break;
+
+                case nameof(TextToSpeech):
+                    if (argsJson.TryGetProperty("text", out var textValue))
+                    {
+                        string text = textValue.GetString() ?? throw new ArgumentNullException(nameof(textValue), "Text cannot be null.");
+                        string? voice = argsJson.TryGetProperty("voice", out var voiceValue)
+                            ? voiceValue.GetString()
+                            : null;
+                        toolResult = await TextToSpeech(text, voice);
+                    }
+                    else
+                    {
+                        toolResult = "错误：缺少 text 参数";
                     }
                     break;
 
@@ -4968,6 +4997,37 @@ namespace ChatBot.Web.Services
                         }
                         break;
                     }
+                case nameof(TextToSpeech):
+                    {
+                        if (string.IsNullOrWhiteSpace(arguments) || arguments == "{}")
+                        {
+                            toolResult = "错误：文本转语音参数不能为空";
+                            break;
+                        }
+
+                        using (JsonDocument argumentsJson = JsonDocument.Parse(arguments))
+                        {
+                            if (!argumentsJson.RootElement.TryGetProperty("text", out JsonElement textElement))
+                            {
+                                toolResult = "错误：缺少 text 参数";
+                                break;
+                            }
+
+                            var text = textElement.GetString();
+                            if (string.IsNullOrWhiteSpace(text))
+                            {
+                                toolResult = "错误：text 参数不能为空";
+                                break;
+                            }
+
+                            string? voice = argumentsJson.RootElement.TryGetProperty("voice", out JsonElement voiceElement)
+                                ? voiceElement.GetString()
+                                : null;
+
+                            toolResult = await TextToSpeech(text, voice, cancellationToken);
+                        }
+                        break;
+                    }
                 case nameof(ReadFile):
                     {
                         if (string.IsNullOrWhiteSpace(arguments) || arguments == "{}")
@@ -5149,6 +5209,42 @@ namespace ChatBot.Web.Services
                         });
 
                         toolResult = await JinaAiSearch(queryStr);
+                        break;
+                    }
+                case nameof(TextToSpeech):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(argumentsJsonStr);
+                        bool hasText = argumentsJson.RootElement.TryGetProperty("text", out JsonElement textElement);
+
+                        if (!hasText)
+                        {
+                            throw new ArgumentNullException("text", "The text argument is required.");
+                        }
+
+                        var text = textElement.GetString();
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            throw new ArgumentNullException(nameof(textElement), "Text cannot be null or empty.");
+                        }
+
+                        var voice = argumentsJson.RootElement.TryGetProperty("voice", out JsonElement voiceElement)
+                            ? voiceElement.GetString()
+                            : null;
+
+                        content.Add(new
+                        {
+                            type = "tool_use",
+                            id = id,
+                            name = name,
+                            input = new { text, voice }
+                        });
+                        toolsmessages.Add(new
+                        {
+                            role = "assistant",
+                            content = content
+                        });
+
+                        toolResult = await TextToSpeech(text, voice, cancellationToken);
                         break;
                     }
                 case nameof(SearchTrainTicket):
@@ -6245,6 +6341,572 @@ namespace ChatBot.Web.Services
             var result = DateTime.Now.ToString(" 日期: yyyy年M月dd日 dddd 时间：HH:mm:ss ");
 
             return await Task.FromResult(result);
+        }
+
+        /// <summary>
+        /// 调用 OpenAI 兼容的 Qwen TTS 接口生成语音文件，并返回可直接展示的播放器片段。
+        /// </summary>
+        /// <param name="text">要转换的文本。</param>
+        /// <param name="voice">可选音色。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>包含音频链接与播放器 HTML 的文本。</returns>
+        private async Task<string> TextToSpeech(string inputtext, string? voice = null, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(inputtext))
+            {
+                return "生成失败：文本内容不能为空。";
+            }
+
+            var provider = _configuration["TextToSpeech:Provider"] ?? "QwenTTS";
+            
+            switch (provider)
+            {
+                case "QwenTTS":
+                    return await TextToSpeechViaQwenTts(inputtext, voice, cancellationToken);
+                case "ChatTTS":
+                    return await TextToSpeechViaChatTts(inputtext, voice, cancellationToken);
+                case "ElevenLabs":
+                    return await TextToSpeechViaElevenLabs(inputtext, voice, cancellationToken);
+                default:
+                    return $"生成失败：不支持的文本转语音提供商 '{provider}'。";
+            }
+        }
+
+        private async Task<string> TextToSpeechViaQwenTts(string inputtext, string? voice = null, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(inputtext))
+            {
+                return "生成失败：文本内容不能为空。";
+            }
+
+            
+
+            try
+            {
+                var apiEndpoint = _configuration["TextToSpeech:QwenTTS:ApiEndpoint"]
+                    ?? "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+
+                var apiKey = ResolveQwenTtsApiKey();
+                if (string.IsNullOrWhiteSpace(apiKey))
+                {
+                    return "生成失败：未配置文本转语音 API Key。请配置 TextToSpeech:ApiKey 或 TextToSpeech:ApiKeyEnvironmentName。";
+                }
+
+                var model = _configuration["TextToSpeech:QwenTTS:Model"]
+                    ?? "qwen3-tts-flash";
+
+                var responseFormat = (_configuration["TextToSpeech:QwenTTS:ResponseFormat"]
+                    ?? "mp3").ToLowerInvariant();
+
+                var resolvedVoice = string.IsNullOrWhiteSpace(voice)
+                    ? (_configuration["TextToSpeech:QwenTTS:Voice"]
+                        ?? "Cherry")
+                    : voice;
+
+                using var client = _httpClientFactory.CreateClient();
+                client.Timeout = TimeSpan.FromMinutes(5);
+                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+                var requestContent = new
+                {
+                    model,
+                    input = new
+                    {
+                        text = inputtext,
+                        voice = resolvedVoice,
+
+                    }
+                };
+
+                using var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                    return $"生成失败: StatusCode {response.StatusCode}\n{errorContent}";
+                }
+
+                byte[]? audioBytes = null;
+                string? audioUrl = null;
+                string? audioContentType = response.Content.Headers.ContentType?.MediaType;
+
+                if (audioContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                    using var jsonDocument = JsonDocument.Parse(jsonContent);
+                    (audioBytes, audioUrl, audioContentType) = await ResolveAudioFromJsonAsync(client, jsonDocument.RootElement, audioContentType, cancellationToken);
+
+                    if (audioBytes == null)
+                    {
+                        return $"生成失败：TTS 接口未返回可用音频。\n{jsonContent}";
+                    }
+                }
+                else
+                {
+                    audioBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                }
+
+                if (audioBytes == null || audioBytes.Length == 0)
+                {
+                    return "生成失败：TTS 接口返回了空音频。";
+                }
+
+                return await SaveGeneratedSpeechAsync(audioBytes, resolvedVoice, responseFormat, audioContentType, audioUrl, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "文本转语音失败");
+                return $"生成语音时发生异常: {ex.Message}";
+            }
+        }
+
+        private async Task<string> TextToSpeechViaChatTts(string inputtext, string? voice = null, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var apiEndpoint = _configuration["TextToSpeech:ChatTTS:ApiEndpoint"]
+                    ?? "https://cdsjf.xyz/openai/v1/audio/speech";
+
+                if (string.IsNullOrWhiteSpace(apiEndpoint))
+                {
+                    return "生成失败：未配置 ChatTTS 接口地址。";
+                }
+                var model = _configuration["TextToSpeech:ChatTTS:Model"]
+                    ?? "gpt-4o-mini-tts";
+                var responseFormat = (_configuration["TextToSpeech:ChatTTS:ResponseFormat"]
+                    ?? "mp3").ToLowerInvariant();
+
+                var resolvedVoice = string.IsNullOrWhiteSpace(voice)
+                    ? (_configuration["TextToSpeech:ChatTTS:Voice"]
+                        
+                        ?? "alloy")
+                    : voice;
+
+                using var client = _httpClientFactory.CreateClient();
+                client.Timeout = TimeSpan.FromMinutes(5);
+
+                var apiKey = ResolveChatTtsApiKey();
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+                }
+                var requestContent = new
+                {
+                    model,
+                    
+                    input = inputtext,
+                    voice = resolvedVoice
+
+                    
+                };
+               
+
+                using var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                    return $"生成失败: StatusCode {response.StatusCode}\n{errorContent}";
+                }
+
+                byte[]? audioBytes = null;
+                string? audioUrl = null;
+                string? audioContentType = response.Content.Headers.ContentType?.MediaType;
+
+                if (audioContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                    using var jsonDocument = JsonDocument.Parse(jsonContent);
+
+                    (audioBytes, audioUrl, audioContentType) = await ResolveAudioFromJsonAsync(client, jsonDocument.RootElement, audioContentType, cancellationToken);
+
+                    if (audioBytes == null)
+                    {
+                        return $"生成失败：ChatTTS 接口未返回可用音频。\n{jsonContent}";
+                    }
+                }
+                else
+                {
+                    audioBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                }
+
+                if (audioBytes == null || audioBytes.Length == 0)
+                {
+                    return "生成失败：ChatTTS 接口返回了空音频。";
+                }
+
+                return await SaveGeneratedSpeechAsync(audioBytes, resolvedVoice, responseFormat, audioContentType, audioUrl, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ChatTTS 文本转语音失败");
+                return $"ChatTTS 生成语音时发生异常: {ex.Message}";
+            }
+        }
+
+        private async Task<string> TextToSpeechViaElevenLabs(string inputtext, string? voice = null, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var baseEndpoint = _configuration["TextToSpeech:ElevenLabs:ApiEndpoint"]
+                    ?? "https://api.elevenlabs.io/v1/text-to-speech";
+
+                var apiKey = ResolveElevenLabsApiKey();
+                if (string.IsNullOrWhiteSpace(apiKey))
+                {
+                    return "生成失败：未配置 ElevenLabs API Key。";
+                }
+
+                var voiceId = string.IsNullOrWhiteSpace(voice)
+                    ? (_configuration["TextToSpeech:ElevenLabs:Voice"] ?? "JBFqnCBsd6RMkjVDRZzb")
+                    : voice;
+
+                var modelId = _configuration["TextToSpeech:ElevenLabs:Model"] ?? "eleven_multilingual_v2";
+                var responseFormat = (_configuration["TextToSpeech:ElevenLabs:ResponseFormat"] ?? "mp3_44100_128").ToLowerInvariant();
+                var similarityBoost = GetConfiguredDouble("TextToSpeech:ElevenLabs:VoiceSettings:SimilarityBoost");
+                var stability = GetConfiguredDouble("TextToSpeech:ElevenLabs:VoiceSettings:Stability");
+                var style = GetConfiguredDouble("TextToSpeech:ElevenLabs:VoiceSettings:Style");
+                var useSpeakerBoost = GetConfiguredBool("TextToSpeech:ElevenLabs:VoiceSettings:UseSpeakerBoost");
+
+                var apiEndpoint = baseEndpoint.TrimEnd('/') + "/" + Uri.EscapeDataString(voiceId);
+
+                using var client = _httpClientFactory.CreateClient();
+                client.Timeout = TimeSpan.FromMinutes(5);
+                client.DefaultRequestHeaders.Add("xi-api-key", apiKey);
+                client.DefaultRequestHeaders.Add("Accept", "audio/mpeg");
+
+                var voiceSettings = new Dictionary<string, object?>();
+                if (stability.HasValue)
+                {
+                    voiceSettings["stability"] = stability.Value;
+                }
+                if (similarityBoost.HasValue)
+                {
+                    voiceSettings["similarity_boost"] = similarityBoost.Value;
+                }
+                if (style.HasValue)
+                {
+                    voiceSettings["style"] = style.Value;
+                }
+                if (useSpeakerBoost.HasValue)
+                {
+                    voiceSettings["use_speaker_boost"] = useSpeakerBoost.Value;
+                }
+
+                var requestContent = new Dictionary<string, object?>
+                {
+                    ["text"] = inputtext,
+                    ["model_id"] = modelId,
+                    ["output_format"] = responseFormat
+                };
+
+                if (voiceSettings.Count > 0)
+                {
+                    requestContent["voice_settings"] = voiceSettings;
+                }
+
+                using var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+                }, cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                    return $"生成失败: StatusCode {response.StatusCode}\n{errorContent}";
+                }
+
+                byte[]? audioBytes = null;
+                string? audioUrl = null;
+                string? audioContentType = response.Content.Headers.ContentType?.MediaType;
+
+                if (audioContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    var jsonContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                    using var jsonDocument = JsonDocument.Parse(jsonContent);
+
+                    (audioBytes, audioUrl, audioContentType) = await ResolveAudioFromJsonAsync(client, jsonDocument.RootElement, audioContentType, cancellationToken);
+
+                    if (audioBytes == null)
+                    {
+                        return $"生成失败：ElevenLabs 接口未返回可用音频。\n{jsonContent}";
+                    }
+                }
+                else
+                {
+                    audioBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                }
+
+                if (audioBytes == null || audioBytes.Length == 0)
+                {
+                    return "生成失败：ElevenLabs 接口返回了空音频。";
+                }
+
+                var normalizedResponseFormat = NormalizeElevenLabsResponseFormat(responseFormat);
+                return await SaveGeneratedSpeechAsync(audioBytes, voiceId, normalizedResponseFormat, audioContentType, audioUrl, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ElevenLabs 文本转语音失败");
+                return $"ElevenLabs 生成语音时发生异常: {ex.Message}";
+            }
+        }
+
+        private string? ResolveQwenTtsApiKey()
+        {
+            var apiKeyEnvironmentName = _configuration["TextToSpeech:QwenTTS:ApiKeyEnvironmentName"];
+            if (!string.IsNullOrWhiteSpace(apiKeyEnvironmentName))
+            {
+                var apiKeyFromNamedEnvironment = Environment.GetEnvironmentVariable(apiKeyEnvironmentName);
+                if (!string.IsNullOrWhiteSpace(apiKeyFromNamedEnvironment))
+                {
+                    return apiKeyFromNamedEnvironment;
+                }
+            }
+
+            return Environment.GetEnvironmentVariable("AiApiKey")
+                ?? string.Empty;
+                
+        }
+
+        private string? ResolveChatTtsApiKey()
+        {
+            var apiKeyEnvironmentName = _configuration["TextToSpeech:ChatTTS:ApiKeyEnvironmentName"];
+            if (!string.IsNullOrWhiteSpace(apiKeyEnvironmentName))
+            {
+                var apiKeyFromNamedEnvironment = Environment.GetEnvironmentVariable(apiKeyEnvironmentName);
+                if (!string.IsNullOrWhiteSpace(apiKeyFromNamedEnvironment))
+                {
+                    return apiKeyFromNamedEnvironment;
+                }
+            }
+            return Environment.GetEnvironmentVariable("OpenAiKey")
+                            ?? string.Empty;
+        }
+
+        private string? ResolveElevenLabsApiKey()
+        {
+            var apiKeyEnvironmentName = _configuration["TextToSpeech:ElevenLabs:ApiKeyEnvironmentName"];
+            if (!string.IsNullOrWhiteSpace(apiKeyEnvironmentName))
+            {
+                var apiKeyFromNamedEnvironment = Environment.GetEnvironmentVariable(apiKeyEnvironmentName);
+                if (!string.IsNullOrWhiteSpace(apiKeyFromNamedEnvironment))
+                {
+                    return apiKeyFromNamedEnvironment;
+                }
+            }
+
+            return Environment.GetEnvironmentVariable("ElevenLabsKey")
+                
+                ?? string.Empty;
+        }
+
+        private double? GetConfiguredDouble(string key)
+        {
+            return double.TryParse(_configuration[key], out var value) ? value : null;
+        }
+
+        private bool? GetConfiguredBool(string key)
+        {
+            return bool.TryParse(_configuration[key], out var value) ? value : null;
+        }
+
+        private static string NormalizeElevenLabsResponseFormat(string responseFormat)
+        {
+            if (string.IsNullOrWhiteSpace(responseFormat))
+            {
+                return "mp3";
+            }
+
+            if (responseFormat.StartsWith("mp3", StringComparison.OrdinalIgnoreCase))
+            {
+                return "mp3";
+            }
+            if (responseFormat.StartsWith("pcm", StringComparison.OrdinalIgnoreCase))
+            {
+                return "wav";
+            }
+            if (responseFormat.StartsWith("ulaw", StringComparison.OrdinalIgnoreCase))
+            {
+                return "wav";
+            }
+
+            return responseFormat;
+        }
+
+        private async Task<string> SaveGeneratedSpeechAsync(byte[] audioBytes, string voice, string responseFormat, string? audioContentType, string? audioUrl, CancellationToken cancellationToken)
+        {
+            var mediaDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Sharedmedia");
+            Directory.CreateDirectory(mediaDirectory);
+
+            var extension = ResolveTextToSpeechExtension(responseFormat, audioContentType, audioUrl);
+            var fileName = $"tts-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid():N}.{extension}";
+            var filePath = Path.Combine(mediaDirectory, fileName);
+
+            await System.IO.File.WriteAllBytesAsync(filePath, audioBytes, cancellationToken);
+
+            var relativeUrl = $"/share/media/{fileName}";
+            var safeLabel = System.Net.WebUtility.HtmlEncode($"语音播报 - {voice}");
+            return $"已生成语音文件。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+            //return $"已生成语音文件。\n\n音频链接：{relativeUrl}\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+        }
+
+        private async Task<(byte[]? AudioBytes, string? AudioUrl, string? AudioContentType)> ResolveAudioFromJsonAsync(HttpClient client, JsonElement rootElement, string? fallbackContentType, CancellationToken cancellationToken)
+        {
+            byte[]? audioBytes = null;
+            string? audioUrl = null;
+            string? audioContentType = fallbackContentType;
+
+            var audioBase64 = TryGetStringByPath(rootElement, "output", "audio", "data")
+                ?? TryGetStringByPath(rootElement, "audio", "data")
+                ?? TryGetStringByPath(rootElement, "data", "audio", "data")
+                ?? FindFirstStringValue(rootElement, "audio_base64", "audioBase64", "base64");
+
+            if (!string.IsNullOrWhiteSpace(audioBase64))
+            {
+                try
+                {
+                    audioBytes = Convert.FromBase64String(audioBase64);
+                }
+                catch (FormatException)
+                {
+                    audioBytes = null;
+                }
+            }
+
+            audioUrl ??= TryGetStringByPath(rootElement, "output", "audio", "url")
+                ?? TryGetStringByPath(rootElement, "audio", "url")
+                ?? TryGetStringByPath(rootElement, "data", "audio", "url")
+                ?? FindFirstStringValue(rootElement, "audio_url", "audioUrl", "download_url", "downloadUrl", "url");
+
+            if (audioBytes == null)
+            {
+                var localFilePath = TryGetStringByPath(rootElement, "output", "audio", "path")
+                    ?? TryGetStringByPath(rootElement, "audio", "path")
+                    ?? FindFirstStringValue(rootElement, "audio_path", "audioPath", "file", "audio_file", "audioFile", "path");
+
+                if (!string.IsNullOrWhiteSpace(localFilePath))
+                {
+                    var resolvedPath = Path.IsPathRooted(localFilePath)
+                        ? localFilePath
+                        : Path.Combine(Directory.GetCurrentDirectory(), localFilePath);
+
+                    if (System.IO.File.Exists(resolvedPath))
+                    {
+                        audioBytes = await System.IO.File.ReadAllBytesAsync(resolvedPath, cancellationToken);
+                    }
+                }
+            }
+
+            if (audioBytes == null && !string.IsNullOrWhiteSpace(audioUrl))
+            {
+                using var audioResponse = await client.GetAsync(audioUrl, cancellationToken);
+                if (audioResponse.IsSuccessStatusCode)
+                {
+                    audioContentType = audioResponse.Content.Headers.ContentType?.MediaType ?? audioContentType;
+                    audioBytes = await audioResponse.Content.ReadAsByteArrayAsync(cancellationToken);
+                }
+            }
+
+            return (audioBytes, audioUrl, audioContentType);
+        }
+
+        private static string? TryGetStringByPath(JsonElement element, params string[] path)
+        {
+            var current = element;
+            foreach (var segment in path)
+            {
+                if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out current))
+                {
+                    return null;
+                }
+            }
+
+            return current.ValueKind == JsonValueKind.String ? current.GetString() : null;
+        }
+
+        private static string? FindFirstStringValue(JsonElement element, params string[] propertyNames)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var propertyName in propertyNames)
+                {
+                    if (element.TryGetProperty(propertyName, out var propertyValue) && propertyValue.ValueKind == JsonValueKind.String)
+                    {
+                        var value = propertyValue.GetString();
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            return value;
+                        }
+                    }
+                }
+
+                foreach (var property in element.EnumerateObject())
+                {
+                    var nestedValue = FindFirstStringValue(property.Value, propertyNames);
+                    if (!string.IsNullOrWhiteSpace(nestedValue))
+                    {
+                        return nestedValue;
+                    }
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in element.EnumerateArray())
+                {
+                    var nestedValue = FindFirstStringValue(item, propertyNames);
+                    if (!string.IsNullOrWhiteSpace(nestedValue))
+                    {
+                        return nestedValue;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static string ResolveTextToSpeechExtension(string responseFormat, string? contentType, string? audioUrl = null)
+        {
+            if (!string.IsNullOrWhiteSpace(audioUrl)
+                && Uri.TryCreate(audioUrl, UriKind.Absolute, out var uri))
+            {
+                var urlExtension = Path.GetExtension(uri.AbsolutePath).Trim('.');
+                if (!string.IsNullOrWhiteSpace(urlExtension))
+                {
+                    return urlExtension.ToLowerInvariant();
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(responseFormat))
+            {
+                return responseFormat switch
+                {
+                    "mp3" => "mp3",
+                    "wav" => "wav",
+                    "ogg" => "ogg",
+                    "opus" => "opus",
+                    "flac" => "flac",
+                    "aac" => "aac",
+                    _ => responseFormat.Trim('.').ToLowerInvariant()
+                };
+            }
+
+            return contentType?.ToLowerInvariant() switch
+            {
+                "audio/wav" or "audio/x-wav" => "wav",
+                "audio/ogg" => "ogg",
+                "audio/opus" => "opus",
+                "audio/flac" => "flac",
+                "audio/aac" => "aac",
+                _ => "mp3"
+            };
         }
 
         /// <summary>
