@@ -22,6 +22,19 @@ namespace ChatBot.Controllers
         private readonly ChatSessionRepository _sessionRepository;
         private readonly StreamCacheService _streamCache;
 
+        /// <summary>
+        /// 缓存已消费的 TTS 流式音频数据，防止 waveform-player 被流式渲染重建时重复 fetch 返回 404。
+        /// key: streamId, value: (audioBytes, contentType)
+        /// </summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (byte[] AudioBytes, string ContentType)>
+            _consumedTtsStreams = new();
+
+        /// <summary>
+        /// 防止同一 streamId 的并发请求重复调用上游 TTS 工厂（避免 429 限流）。
+        /// </summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim>
+            _streamLocks = new();
+
         public HomeController(
             ILogger<HomeController> logger,
             IChatService chatService,
@@ -678,6 +691,188 @@ namespace ChatBot.Controllers
             {
                 return StatusCode(500, $"获取音频失败: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 代理输出文本转语音的流式音频响应。
+        /// 首次请求时从上游 TTS 逐块转发音频数据到客户端（边收边播），同时缓存完整数据。
+        /// 后续请求直接返回缓存数据。音频同时持久化到磁盘，应用重启后仍可访问。
+        /// 使用 SemaphoreSlim 防止并发请求重复调用上游 TTS（避免 429 限流）。
+        /// </summary>
+        [HttpGet]
+        [Route("/share/media/stream/{streamId}")]
+        public async Task<IActionResult> GetSharedMediaStream(string streamId, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(streamId))
+            {
+                return BadRequest("无效的流标识");
+            }
+
+            // 1. 如果已缓存（之前已消费过），直接返回缓存的音频数据
+            if (_consumedTtsStreams.TryGetValue(streamId, out var cached))
+            {
+                return File(cached.AudioBytes, cached.ContentType);
+            }
+
+            // 2. 检查磁盘上是否已持久化（应用重启后内存缓存丢失，但文件仍在）
+            var persistedFile = FindPersistedStreamFile(streamId);
+            if (persistedFile != null)
+            {
+                return PhysicalFile(persistedFile.Value.FilePath, persistedFile.Value.ContentType, enableRangeProcessing: true);
+            }
+
+            // 3. 尝试获取流工厂（TryGetValue，不移除）
+            if (!_chatService.TryTakeTextToSpeechStream(streamId, out var streamFactory) || streamFactory == null)
+            {
+                return NotFound("音频流不存在或已过期");
+            }
+
+            // 4. 使用 SemaphoreSlim 确保同一 streamId 只有一个请求调用上游 TTS
+            var streamLock = _streamLocks.GetOrAdd(streamId, _ => new SemaphoreSlim(1, 1));
+            await streamLock.WaitAsync(CancellationToken.None);
+            try
+            {
+                // 4a. 双重检查：等待期间可能其他请求已完成缓存
+                if (_consumedTtsStreams.TryGetValue(streamId, out cached))
+                {
+                    return File(cached.AudioBytes, cached.ContentType);
+                }
+
+                var persistedFile2 = FindPersistedStreamFile(streamId);
+                if (persistedFile2 != null)
+                {
+                    return PhysicalFile(persistedFile2.Value.FilePath, persistedFile2.Value.ContentType, enableRangeProcessing: true);
+                }
+
+                // 5. 使用独立超时令牌发起上游 TTS 请求
+                using var upstreamCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+                HttpResponseMessage upstreamResponse;
+                try
+                {
+                    upstreamResponse = await streamFactory(upstreamCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return StatusCode(503, "TTS 服务请求超时");
+                }
+                catch (Exception ex)
+                {
+                    return StatusCode(502, $"TTS 上游请求失败: {ex.Message}");
+                }
+
+                using (upstreamResponse)
+                {
+                    if (!upstreamResponse.IsSuccessStatusCode)
+                    {
+                        var errorContent = await upstreamResponse.Content.ReadAsStringAsync(CancellationToken.None);
+                        return StatusCode((int)upstreamResponse.StatusCode, errorContent);
+                    }
+
+                    var contentType = upstreamResponse.Content.Headers.ContentType?.ToString() ?? "audio/mpeg";
+
+                    // 6. 逐块转发上游音频数据到客户端，实现边收边播；同时缓存完整数据供后续请求复用
+                    Response.StatusCode = 200;
+                    Response.ContentType = contentType;
+                    Response.Headers.CacheControl = "no-cache";
+
+                    // 禁用输出缓冲，确保每个分块立即发送到客户端
+                    var bodyFeature = HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>();
+                    bodyFeature?.DisableBuffering();
+
+                    await using var upstreamStream = await upstreamResponse.Content.ReadAsStreamAsync(CancellationToken.None);
+                    using var buffer = new MemoryStream();
+                    var chunk = new byte[64 * 1024]; // 64KB 分块
+                    int bytesRead;
+                    while ((bytesRead = await upstreamStream.ReadAsync(chunk.AsMemory(0, chunk.Length), CancellationToken.None)) > 0)
+                    {
+                        await Response.Body.WriteAsync(chunk.AsMemory(0, bytesRead), CancellationToken.None);
+                        await Response.Body.FlushAsync(CancellationToken.None);
+                        buffer.Write(chunk, 0, bytesRead);
+                    }
+
+                    var audioBytes = buffer.ToArray();
+
+                    // 7. 缓存完整音频数据，供后续重复请求使用
+                    _consumedTtsStreams.TryAdd(streamId, (audioBytes, contentType));
+
+                    // 8. 5 分钟后自动清理内存缓存和锁，防止内存泄漏（磁盘文件保留）
+                    _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(__ =>
+                    {
+                        _consumedTtsStreams.TryRemove(streamId, out _);
+                        _streamLocks.TryRemove(streamId, out _);
+                    });
+
+                    // 9. 持久化到磁盘，应用重启后仍可通过 streamId 访问
+                    _ = PersistStreamAudioToDiskAsync(streamId, audioBytes, contentType);
+
+                    // 响应体已逐块写入完毕，返回空结果
+                    return new EmptyResult();
+                }
+            }
+            finally
+            {
+                streamLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// 将流式音频持久化到 Sharedmedia 目录，文件名包含 streamId 以便重启后检索。
+        /// </summary>
+        private static async Task PersistStreamAudioToDiskAsync(string streamId, byte[] audioBytes, string contentType)
+        {
+            try
+            {
+                var mediaDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Sharedmedia");
+                Directory.CreateDirectory(mediaDirectory);
+
+                var extension = contentType?.ToLowerInvariant() switch
+                {
+                    "audio/wav" or "audio/x-wav" => "wav",
+                    "audio/ogg" => "ogg",
+                    "audio/opus" => "opus",
+                    "audio/flac" => "flac",
+                    "audio/aac" => "aac",
+                    "audio/mp4" => "m4a",
+                    _ => "mp3"
+                };
+
+                var fileName = $"tts-stream-{streamId}.{extension}";
+                var filePath = Path.Combine(mediaDirectory, fileName);
+
+                await System.IO.File.WriteAllBytesAsync(filePath, audioBytes);
+            }
+            catch
+            {
+                // 持久化失败不影响当前请求
+            }
+        }
+
+        /// <summary>
+        /// 在 Sharedmedia 目录中查找已持久化的流式音频文件。
+        /// </summary>
+        private static (string FilePath, string ContentType)? FindPersistedStreamFile(string streamId)
+        {
+            var mediaDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Sharedmedia");
+            if (!Directory.Exists(mediaDirectory)) return null;
+
+            var pattern = $"tts-stream-{streamId}.*";
+            var files = Directory.GetFiles(mediaDirectory, pattern);
+            if (files.Length == 0) return null;
+
+            var filePath = files[0];
+            var ct = Path.GetExtension(filePath).ToLowerInvariant() switch
+            {
+                ".mp3" => "audio/mpeg",
+                ".wav" => "audio/wav",
+                ".ogg" => "audio/ogg",
+                ".opus" => "audio/opus",
+                ".flac" => "audio/flac",
+                ".aac" => "audio/aac",
+                ".m4a" => "audio/mp4",
+                _ => "application/octet-stream"
+            };
+
+            return (filePath, ct);
         }
 
 

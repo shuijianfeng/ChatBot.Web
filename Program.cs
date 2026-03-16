@@ -6,6 +6,21 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 1. 定义 CORS 策略名
+var myAllowSpecificOrigins = "_myAllowSpecificOrigins";
+
+// 2. 添加 CORS 服务
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(name: myAllowSpecificOrigins,
+                      policy =>
+                      {
+                          policy.WithOrigins("*") // 允许的域名
+                                .AllowAnyHeader()
+                                .AllowAnyMethod();
+                      });
+});
+
 
 // 绑定 ChatModels 配置
 builder.Services.Configure<ChatModelSettings>(builder.Configuration.GetSection("ChatModels"));
@@ -45,6 +60,12 @@ builder.Services.AddResponseCompression(options =>
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var sessionRepository = scope.ServiceProvider.GetRequiredService<ChatSessionRepository>();
+    await sessionRepository.EnsureTablesExistAsync();
+}
+
 
 if (!app.Environment.IsDevelopment())
 {
@@ -57,6 +78,8 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.MapStaticAssets();
 app.UseRouting();
+app.UseCors(myAllowSpecificOrigins);
 app.MapControllers();
 app.MapDefaultControllerRoute();
+
 app.Run();

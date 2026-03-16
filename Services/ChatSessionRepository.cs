@@ -62,9 +62,6 @@ namespace ChatBot.Web.Services
         {
             _dataSource = dataSource;
             _logger = logger;
-
-            // 确保表存在
-            EnsureTablesExistAsync().GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -200,7 +197,7 @@ namespace ChatBot.Web.Services
                     SELECT id, session_id, role, content, image_urls, created_at 
                     FROM chat_messages 
                     WHERE session_id = @sessionId 
-                    ORDER BY created_at ASC";
+                    ORDER BY id ASC";
 
                 await using var messagesCommand = new NpgsqlCommand(messagesSql, connection);
                 messagesCommand.Parameters.AddWithValue("sessionId", sessionId);

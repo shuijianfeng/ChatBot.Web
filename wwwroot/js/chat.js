@@ -2329,6 +2329,15 @@ class ChatUI {
                     // 预处理内容（移除 think 标签，转换 ~~~ 为 ```）
                     const processedContent = this.preprocessMarkdown(this.messageBuffer);
 
+                    // 流式阶段暂不挂载 waveform-player，避免组件在多次重渲染时反复中止流请求。
+                    if (processedContent.includes('<waveform-player')) {
+                        const placeholderContent = processedContent.replace(/<waveform-player[\s\S]*/i, '\n\n音频播放器加载中...');
+                        contentDiv.innerHTML = marked.parse(placeholderContent);
+                        contentDiv.dataset.rawContent = this.messageBuffer;
+                        this.scrollToBottom();
+                        return;
+                    }
+
                     // 渲染 markdown 内容
                     contentDiv.innerHTML = marked.parse(processedContent);
 

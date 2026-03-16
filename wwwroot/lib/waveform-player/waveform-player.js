@@ -478,6 +478,13 @@
         if (!response.body) throw new Error('ReadableStream not supported');
 
         var contentType = response.headers.get('content-type') || '';
+
+        /* ★ SSE: 如果响应是 text/event-stream，解析事件提取音频 */
+        if (contentType.indexOf('text/event-stream') >= 0) {
+          await this._streamFromSSE(response.body.getReader());
+          return;
+        }
+
         var mimeForMS   = this._detectMSEMime(url, contentType);
 
         /* ★ STREAM: 尝试 MediaSource 边收边播 */
@@ -504,6 +511,14 @@
       /* 优先根据 Content-Type */
       var ct = (contentType || '').toLowerCase().split(';')[0].trim();
       var candidates = [];
+
+      /* WAV 不受 MSE 支持，直接降级 */
+      if (ct === 'audio/wav' || ct === 'audio/x-wav' || ct === 'audio/wave')
+        return null;
+
+      /* 非音频类型不尝试 MSE */
+      if (ct && ct.indexOf('audio/') !== 0)
+        return null;
 
       if (ct === 'audio/mpeg' || ct === 'audio/mp3')
         candidates.push('audio/mpeg');
@@ -562,9 +577,6 @@
             return;
           }
 
-          /* 开启实时波形 */
-          self._setupStreamAnalyser();
-
           var queue    = [];
           var appending = false;
           var done     = false;
@@ -589,12 +601,6 @@
               try { ms.endOfStream(); } catch (_) {}
               self._onStreamFinished();
               resolve();
-            }
-            /* 自动播放：收到第一批数据就开始播 */
-            if (!self._streamAutoPlay && self.$audio.paused && self._streamTotalBytes > 0) {
-              self._streamAutoPlay = true;
-              self.$mask.classList.add('hidden');
-              self.$audio.play().catch(function () {});
             }
           });
 
@@ -660,6 +666,84 @@
     }
 
     /* ──────────────────────────────────────────────────
+       ★ SSE: 从 text/event-stream 响应中提取 base64 音频并播放
+       支持 DashScope 等 TTS 服务返回的 SSE 格式：
+       data:{"output":{"audio":{"data":"<base64>"}}}
+       支持增量分块（多个事件各含一段音频）和单次完整返回两种模式。
+    ────────────────────────────────────────────────── */
+    async _streamFromSSE(reader) {
+      this.$mask.innerHTML = '<div class="spin"></div> 正在接收语音数据…';
+
+      var decoder = new TextDecoder();
+      var sseText = '';
+      while (true) {
+        var result = await reader.read();
+        if (result.done) break;
+        sseText += decoder.decode(result.value, { stream: true });
+        this._streamTotalBytes += result.value.byteLength;
+        this._updateStreamProgress();
+      }
+      sseText += decoder.decode();
+
+      /* 解析 SSE data: 行，收集所有 base64 音频分块 */
+      var audioChunks = [];
+      var lines = sseText.split('\n');
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line.indexOf('data:') !== 0) continue;
+        var jsonStr = line.substring(5).trim();
+        if (!jsonStr || jsonStr === '[DONE]') continue;
+        try {
+          var obj = JSON.parse(jsonStr);
+          var b64 = obj && obj.output && obj.output.audio && obj.output.audio.data;
+          if (b64) {
+            try {
+              var binStr = atob(b64);
+              var chunk = new Uint8Array(binStr.length);
+              for (var j = 0; j < binStr.length; j++) chunk[j] = binStr.charCodeAt(j);
+              if (chunk.length > 0) audioChunks.push(chunk);
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+
+      if (audioChunks.length === 0) throw new Error('SSE 响应中未找到音频数据');
+
+      /* 合并所有分块 */
+      var totalLen = 0;
+      for (var i = 0; i < audioChunks.length; i++) totalLen += audioChunks[i].length;
+      var bytes = new Uint8Array(totalLen);
+      var offset = 0;
+      for (var i = 0; i < audioChunks.length; i++) {
+        bytes.set(audioChunks[i], offset);
+        offset += audioChunks[i].length;
+      }
+
+      /* 检测 MIME */
+      var mime = 'audio/mpeg';
+      if (bytes.length >= 4) {
+        if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) mime = 'audio/wav';
+          else if (bytes[0] === 0x4F && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) mime = 'audio/ogg';
+          else if (bytes[0] === 0x66 && bytes[1] === 0x4C && bytes[2] === 0x61 && bytes[3] === 0x43) mime = 'audio/flac';
+        }
+
+        this._fixWavHeader(bytes);
+
+        this._streamBlob = new Blob([bytes], { type: mime });
+      if (this._objectUrl) URL.revokeObjectURL(this._objectUrl);
+      this._objectUrl = URL.createObjectURL(this._streamBlob);
+
+      this.$audio.removeAttribute('crossOrigin');
+      this.$audio.src = this._objectUrl;
+      this.$audio.load();
+
+      this._streamChunks = [bytes];
+      this._streamTotalBytes = bytes.byteLength;
+
+      this._onStreamFinished();
+    }
+
+    /* ──────────────────────────────────────────────────
        ★ STREAM: 进度显示
     ────────────────────────────────────────────────── */
     _updateStreamProgress() {
@@ -684,6 +768,22 @@
       if (!this._streamBlob) {
         this._streamBlob = new Blob(this._streamChunks);
       }
+
+      /* 修正 WAV 头部 */
+      try {
+        var headerBuf = await this._streamBlob.slice(0, 12).arrayBuffer();
+        var hdr = new Uint8Array(headerBuf);
+        if (hdr[0] === 0x52 && hdr[1] === 0x49 && hdr[2] === 0x46 && hdr[3] === 0x46) {
+          this.$audio.pause();
+          var fullBuf = new Uint8Array(await this._streamBlob.arrayBuffer());
+          this._fixWavHeader(fullBuf);
+          this._streamBlob = new Blob([fullBuf], { type: 'audio/wav' });
+          if (this._objectUrl) URL.revokeObjectURL(this._objectUrl);
+          this._objectUrl = URL.createObjectURL(this._streamBlob);
+          this.$audio.src = this._objectUrl;
+          this.$audio.load();
+        }
+      } catch (_) {}
 
       /* 解码精确波形 */
       try {
@@ -722,6 +822,33 @@
         bubbles: true,
         detail: { duration: this._getDisplayDuration() }
       }));
+    }
+
+    /* ──────────────────────────────────────────────────
+       修正 WAV 文件头中的 RIFF/data 块大小字段。
+       流式 WAV（如 DashScope TTS）使用占位值 0x7FFFFFBF，
+       浏览器 audio 元素无法播放此类文件。
+    ────────────────────────────────────────────────── */
+    _fixWavHeader(bytes) {
+      if (!bytes || bytes.length < 44) return;
+      if (bytes[0] !== 0x52 || bytes[1] !== 0x49 || bytes[2] !== 0x46 || bytes[3] !== 0x46) return;
+      if (bytes[8] !== 0x57 || bytes[9] !== 0x41 || bytes[10] !== 0x56 || bytes[11] !== 0x45) return;
+
+      var dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      dv.setUint32(4, bytes.length - 8, true);
+
+      var pos = 12;
+      while (pos + 8 <= bytes.length) {
+        var id = String.fromCharCode(bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]);
+        if (id === 'data') {
+          dv.setUint32(pos + 4, bytes.length - pos - 8, true);
+          break;
+        }
+        var size = dv.getUint32(pos + 4, true);
+        if (size > bytes.length) break;
+        pos += 8 + size;
+        if (size & 1) pos++;
+      }
     }
 
     /* ──────────────────────────────────────────────────
@@ -1131,6 +1258,11 @@
 
     /* ★ STREAM: 重置状态 — 包含流相关清理 */
     _resetState() {
+      /* 停止当前播放，防止切换音源时出现多重声音 */
+      if (this.$audio) {
+        this.$audio.pause();
+      }
+
       this._liveMode      = false;
       this._liveCollected = false;
       this._livePeaks     = [];
@@ -1167,7 +1299,7 @@
     }
 
     _togglePlay() {
-      if (!this.$audio.src) return;
+      if (!this.$audio.src || this.$audio.error) return;
       if (this._liveCtx && this._liveCtx.state === 'suspended') {
         this._liveCtx.resume();
       }
