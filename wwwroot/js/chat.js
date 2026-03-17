@@ -546,6 +546,98 @@ class ChatUI {
         });
     }
 
+    initWaveSurferPlayers(container) {
+        if (typeof WaveSurfer === 'undefined') return;
+        const players = (container || document).querySelectorAll('.wavesurfer-player:not([data-ws-init])');
+        players.forEach(el => {
+            el.setAttribute('data-ws-init', 'true');
+            const src = el.dataset.src;
+            const label = el.dataset.label || '';
+            if (!src) return;
+
+            // Build player UI
+            el.style.cssText = 'border:1px solid var(--bs-border-color, #dee2e6);border-radius:8px;padding:10px;margin:8px 0;background:var(--bs-body-bg, #fff);';
+            if (label) {
+                const labelEl = document.createElement('div');
+                labelEl.textContent = label;
+                labelEl.style.cssText = 'font-size:0.85em;color:var(--bs-secondary-color, #6c757d);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                el.appendChild(labelEl);
+            }
+            const waveDiv = document.createElement('div');
+            el.appendChild(waveDiv);
+
+            const controls = document.createElement('div');
+            controls.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:6px;';
+
+            const playBtn = document.createElement('button');
+            playBtn.textContent = '▶';
+            playBtn.title = '播放/暂停';
+            playBtn.style.cssText = 'border:none;background:none;font-size:1.2em;cursor:pointer;padding:2px 6px;';
+            controls.appendChild(playBtn);
+
+            const timeEl = document.createElement('span');
+            timeEl.textContent = '0:00 / 0:00';
+            timeEl.style.cssText = 'font-size:0.8em;color:var(--bs-secondary-color, #6c757d);font-variant-numeric:tabular-nums;';
+            controls.appendChild(timeEl);
+
+            const spacer = document.createElement('span');
+            spacer.style.flex = '1';
+            controls.appendChild(spacer);
+
+            const downloadBtn = document.createElement('a');
+            downloadBtn.href = src;
+            downloadBtn.download = '';
+            downloadBtn.textContent = '⬇';
+            downloadBtn.title = '下载';
+            downloadBtn.style.cssText = 'text-decoration:none;font-size:1.1em;padding:2px 6px;';
+            controls.appendChild(downloadBtn);
+
+            el.appendChild(controls);
+
+            const formatTime = (s) => {
+                if (!s || !isFinite(s)) return '0:00';
+                const m = Math.floor(s / 60);
+                const sec = Math.floor(s % 60);
+                return m + ':' + (sec < 10 ? '0' : '') + sec;
+            };
+
+            try {
+                const ws = WaveSurfer.create({
+                    container: waveDiv,
+                    height: 48,
+                    waveColor: '#b0b8c4',
+                    progressColor: '#4a90d9',
+                    cursorColor: '#4a90d9',
+                    cursorWidth: 2,
+                    barWidth: 2,
+                    barGap: 1,
+                    barRadius: 2,
+                    url: src,
+                    interact: true,
+                    dragToSeek: true,
+                });
+
+                ws.on('ready', () => {
+                    timeEl.textContent = formatTime(0) + ' / ' + formatTime(ws.getDuration());
+                });
+                ws.on('audioprocess', (t) => {
+                    timeEl.textContent = formatTime(t) + ' / ' + formatTime(ws.getDuration());
+                });
+                ws.on('seeking', (t) => {
+                    timeEl.textContent = formatTime(t) + ' / ' + formatTime(ws.getDuration());
+                });
+                ws.on('play', () => { playBtn.textContent = '⏸'; });
+                ws.on('pause', () => { playBtn.textContent = '▶'; });
+                ws.on('finish', () => { playBtn.textContent = '▶'; });
+
+                playBtn.addEventListener('click', () => { ws.playPause(); });
+            } catch (e) {
+                console.error('[WaveSurfer] 初始化失败:', e);
+                el.innerHTML = `<audio controls preload="none" src="${src}" title="${label}"></audio>`;
+            }
+        });
+    }
+
     enhanceCodeBlock(pre) {
         // 创建包装器
         const wrapper = document.createElement('div');
@@ -1169,6 +1261,7 @@ class ChatUI {
                                 this.enhanceCodeBlock(pre);
                             }
                         });
+                        this.initWaveSurferPlayers(node);
                     }
                 });
             });
@@ -2221,6 +2314,9 @@ class ChatUI {
                         hljs.highlightElement(block);
                     });
 
+                    // 初始化 WaveSurfer 播放器
+                    this.initWaveSurferPlayers(contentDiv);
+
                     //// 在内容更新后触发 MathJax 渲染
                     //if (contentDiv && window.MathJax) {
                     //    try {
@@ -2294,6 +2390,9 @@ class ChatUI {
                     hljs.highlightElement(block);
                 });
 
+                // 初始化 WaveSurfer 播放器
+                this.initWaveSurferPlayers(contentDiv);
+
                 /// 在内容更新后触发 MathJax 渲染
                 //if (contentDiv) {
                 //    renderMath(contentDiv);
@@ -2329,9 +2428,9 @@ class ChatUI {
                     // 预处理内容（移除 think 标签，转换 ~~~ 为 ```）
                     const processedContent = this.preprocessMarkdown(this.messageBuffer);
 
-                    // 流式阶段暂不挂载 waveform-player，避免组件在多次重渲染时反复中止流请求。
-                    if (processedContent.includes('<waveform-player')) {
-                        const placeholderContent = processedContent.replace(/<waveform-player[\s\S]*/i, '\n\n音频播放器加载中...');
+                    // 流式阶段暂不挂载 wavesurfer，避免组件在多次重渲染时反复中止流请求。
+                    if (processedContent.includes('wavesurfer-player')) {
+                        const placeholderContent = processedContent.replace(/<div class="wavesurfer-player"[\s\S]*/i, '\n\n音频播放器加载中...');
                         contentDiv.innerHTML = marked.parse(placeholderContent);
                         contentDiv.dataset.rawContent = this.messageBuffer;
                         this.scrollToBottom();
@@ -2668,6 +2767,9 @@ class ChatUI {
                             this.enhanceCodeBlock(pre);
                         }
                     });
+
+                    // 流式传输完成后，初始化 WaveSurfer 播放器
+                    this.initWaveSurferPlayers(this.currentMessageElement);
                 }
                 this.currentMessageElement = null;
                 this.stopRequested = false;
@@ -3359,6 +3461,9 @@ class ChatUI {
                             this.enhanceCodeBlock(pre);
                         }
                     });
+
+                    // 初始化 WaveSurfer 播放器
+                    this.initWaveSurferPlayers(this.currentMessageElement);
                 }
 
                 this.currentMessageElement = null;
@@ -3479,6 +3584,9 @@ class ChatUI {
                             this.enhanceCodeBlock(pre);
                         }
                     });
+
+                    // 初始化 WaveSurfer 播放器
+                    this.initWaveSurferPlayers(this.currentMessageElement);
                 }
 
                 this.currentMessageElement = null;

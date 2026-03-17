@@ -7099,8 +7099,8 @@ namespace ChatBot.Web.Services
                 ?? false;
             var streamAttribute = streamEnabled ? " stream" : string.Empty;
             var resolvedContentType = ResolveAudioContentTypeFromFormat(extension);
-            return $"已生成语音文件。\n\n可直接向用户返回以下播放器：\n\n<audio controls preload=\"none\"{streamAttribute} title=\"{safeLabel}\">\n  <source src=\"{relativeUrl}\" type=\"{resolvedContentType}\">\n  您的浏览器不支持音频播放。\n</audio>";
-            //return $"已生成语音文件。\n\n音频链接：{relativeUrl}\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+            //return $"已生成语音文件。\n\n可直接向用户返回以下播放器：\n\n<audio controls preload=\"none\"{streamAttribute} title=\"{safeLabel}\">\n  <source src=\"{relativeUrl}\" type=\"{resolvedContentType}\">\n  您的浏览器不支持音频播放。\n</audio>";
+            return $"已生成语音文件。\n\n音频链接：{relativeUrl}\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
         }
 
         private string CreateStreamingSpeechResponse(string provider, List<string> inputtexts, string? voice)

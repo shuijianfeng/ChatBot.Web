@@ -109,6 +109,7 @@
       this._mediaSourceUrl   = null;    // MediaSource object URL
       this._streamAutoPlay   = false;   // 流模式下是否自动播放
       this._streamDuration   = 0;       // 流模式下的已知时长
+      this._streamFinalizeTimer = null; // 流完成判定的延迟定时器
 
       this._ready = this._init();
     }
@@ -197,6 +198,10 @@
       this.$audio.addEventListener('pause', function () {
         self._updateIcon();
         self._stopLiveCapture();
+        /* ★ STREAM: 暂停时如果完整数据已就绪，切换到 Blob URL 启用拖拽进度 */
+        if (self._streamMode && self._streamBlob && !self._streamBlobSwitched) {
+          self._switchToBlobUrl();
+        }
       });
       this.$audio.addEventListener('ended', function () {
         self._updateIcon();
@@ -205,31 +210,30 @@
           self._liveCollected = true;
           self._finalizeLivePeaks();
         }
-        /* ★ STREAM: 流模式播放结束后标记完成，启用下载 */
-        if (self._streamMode && !self._streamComplete) {
-          self._streamComplete = true;
-          self._syncDownloadVisible();
-          if (isFinite(self.$audio.duration)) {
-            self._streamDuration = self.$audio.duration;
+        /* ★ STREAM: 流模式播放结束后获取完整数据，启用拖拽进度和真实波形 */
+        if (self._streamMode) {
+          if (!self._streamComplete) {
+            self._finalizeStreamPlayback();
+          } else if (self._streamBlob && !self._streamBlobSwitched) {
+            self._switchToBlobUrl();
           }
-          self.dispatchEvent(new CustomEvent('stream-end', {
-            bubbles: true,
-            detail: { duration: self._getDisplayDuration() }
-          }));
         }
         self._draw();
       });
       this.$audio.addEventListener('timeupdate', function () {
-        /* ★ STREAM: 流模式下 duration 可能是 Infinity，用 _streamDuration 代替 */
-        var dur = self._getDisplayDuration();
-        self.$timeLabel.textContent =
-          self._fmt(self.$audio.currentTime) + ' / ' + self._fmt(dur);
+        self._updateTimeLabel();
         self._draw();
       });
       this.$audio.addEventListener('loadedmetadata', function () {
-        var dur = self._getDisplayDuration();
-        self.$timeLabel.textContent =
-          self._fmt(0) + ' / ' + self._fmt(dur);
+        self._updateTimeLabel();
+      });
+      this.$audio.addEventListener('durationchange', function () {
+        self._updateTimeLabel();
+      });
+      this.$audio.addEventListener('progress', function () {
+        if (self._streamMode) {
+          self._updateTimeLabel();
+        }
       });
 
       this.$canvas.addEventListener('click', function (e) {
@@ -296,18 +300,75 @@
        ★ STREAM: 获取用于显示的 duration
        流模式下 audio.duration 可能是 Infinity
     ════════════════════════════════ */
+    _getBufferedEnd() {
+      if (!this.$audio) return 0;
+      var buffered = this.$audio.buffered;
+      if (!buffered || buffered.length === 0) return 0;
+
+      try {
+        return buffered.end(buffered.length - 1) || 0;
+      } catch (_) {
+        return 0;
+      }
+    }
+
     _getDisplayDuration() {
       var d = this.$audio.duration;
+      if (!this._streamMode || this._streamComplete || this._streamBlobSwitched) {
+        if (isFinite(d) && d > 0) {
+          this._streamDuration = Math.max(d, this.$audio.currentTime || 0, this._streamDuration || 0);
+          return this._streamDuration;
+        }
+
+        if (this._streamMode && this._streamDuration > 0) {
+          return Math.max(this._streamDuration, this.$audio.currentTime || 0);
+        }
+
+        return d;
+      }
+
+      var bufferedEnd = this._getBufferedEnd();
+      var receivedDuration = Math.max(bufferedEnd, this.$audio.currentTime || 0, this._streamDuration || 0);
+
+      if (receivedDuration > 0) {
+        this._streamDuration = receivedDuration;
+        return receivedDuration;
+      }
+
       if (isFinite(d) && d > 0) {
         this._streamDuration = d;        // 缓存有限时长
         return d;
       }
-      /* 流模式下用缓存的时长或当前时间作为近似 */
-      if (this._streamMode) {
-        if (this._streamDuration > 0) return this._streamDuration;
-        return this.$audio.currentTime || 0;
+
+      if (this._streamDuration > 0) return this._streamDuration;
+      return this.$audio.currentTime || 0;
+    }
+
+    _updateTimeLabel() {
+      if (!this.$timeLabel || !this.$audio) return;
+
+      var currentTime = this.$audio.currentTime || 0;
+      var duration = this._getDisplayDuration();
+      this.$timeLabel.textContent =
+        this._fmt(currentTime) + ' / ' + this._fmt(duration);
+    }
+
+    _clearStreamFinalizeTimer() {
+      if (this._streamFinalizeTimer) {
+        clearTimeout(this._streamFinalizeTimer);
+        this._streamFinalizeTimer = null;
       }
-      return d;
+    }
+
+    _scheduleStreamFinalize() {
+      var self = this;
+      this._clearStreamFinalizeTimer();
+      this._streamFinalizeTimer = setTimeout(function () {
+        self._streamFinalizeTimer = null;
+        if (!self._streamComplete) {
+          self._finalizeStreamPlayback();
+        }
+      }, 1200);
     }
 
     /* ════════════════════════════════
@@ -503,6 +564,161 @@
           '\u26A0\uFE0F 音频流加载失败</div>';
       }
       this.$audio.addEventListener('error', onError);
+
+      /* ★ STREAM: 监测浏览器是否已完整接收流数据。
+         完成后重新获取（服务端已缓存）→ 解码真实波形 → 切换到 Blob URL 支持拖拽进度 */
+      this._streamBufferCheck = function () {
+        if (self._streamComplete) return;
+        var bufferedEnd = self._getBufferedEnd();
+        if (bufferedEnd > 0) {
+          self._streamDuration = Math.max(self._streamDuration, bufferedEnd, self.$audio.currentTime || 0);
+        }
+
+        self._updateTimeLabel();
+
+        var idleState = typeof self.$audio.NETWORK_IDLE === 'number' ? self.$audio.NETWORK_IDLE : 1;
+        var enoughDataState = typeof self.$audio.HAVE_ENOUGH_DATA === 'number' ? self.$audio.HAVE_ENOUGH_DATA : 4;
+        if (bufferedEnd > 0
+          && self.$audio.networkState === idleState
+          && self.$audio.readyState >= enoughDataState) {
+          self._scheduleStreamFinalize();
+        } else {
+          self._clearStreamFinalizeTimer();
+        }
+      };
+      this.$audio.addEventListener('progress', this._streamBufferCheck);
+      this.$audio.addEventListener('durationchange', this._streamBufferCheck);
+      this.$audio.addEventListener('canplaythrough', this._streamBufferCheck);
+      this.$audio.addEventListener('suspend', this._streamBufferCheck);
+    }
+
+    /* ──────────────────────────────────────────────────
+       ★ STREAM: 流接收完成后获取完整数据
+       服务端在首次流式响应后会缓存音频，再次请求返回完整数据。
+       据此解码真实波形并切换到可拖拽的 Blob URL。
+    ────────────────────────────────────────────────── */
+    async _finalizeStreamPlayback() {
+      if (this._streamComplete) return;
+      this._streamComplete = true;
+      this._clearStreamFinalizeTimer();
+      var decodedPeaks = null;
+
+      /* 移除缓冲监测监听器 */
+      if (this._streamBufferCheck) {
+        this.$audio.removeEventListener('progress', this._streamBufferCheck);
+        this.$audio.removeEventListener('durationchange', this._streamBufferCheck);
+        this.$audio.removeEventListener('canplaythrough', this._streamBufferCheck);
+        this.$audio.removeEventListener('suspend', this._streamBufferCheck);
+        this._streamBufferCheck = null;
+      }
+
+      /* 缓存当前时长 */
+      if (isFinite(this.$audio.duration)) {
+        this._streamDuration = Math.max(this.$audio.duration, this.$audio.currentTime || 0, this._streamDuration || 0);
+      }
+
+      var url = this.getAttribute('src');
+      if (url) {
+        try {
+          var response = await fetch(url);
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          var buf = await response.arrayBuffer();
+          if (buf.byteLength > 0) {
+            var ct = (response.headers.get('content-type') || 'audio/mpeg').split(';')[0].trim();
+
+            /* 先复制一份用于波形解码，因为 new Blob([buf]) 会 detach 原 ArrayBuffer */
+            var bufCopy = buf.slice(0);
+            this._streamBlob = new Blob([buf], { type: ct });
+
+            /* 解码真实波形 */
+            try {
+              decodedPeaks = await this._decodeBuffer(bufCopy);
+            } catch (e) {
+              console.warn('[waveform-player] 流数据波形解码失败:', e);
+            }
+
+            /* 切换到 Blob URL（可任意拖拽进度、显示真实时长） */
+            this._switchToBlobUrl(undefined, decodedPeaks);
+          }
+        } catch (e) {
+          console.warn('[waveform-player] 流数据重新获取失败:', e);
+        }
+      }
+
+      if (!this._streamBlobSwitched && decodedPeaks && decodedPeaks.length) {
+        this._applyPeakData(decodedPeaks);
+      }
+
+      this._syncDownloadVisible();
+
+      /* 更新时间标签 */
+      this._updateTimeLabel();
+
+      var dur = this._getDisplayDuration();
+
+      this.dispatchEvent(new CustomEvent('stream-end', {
+        bubbles: true,
+        detail: { duration: dur }
+      }));
+
+      this.dispatchEvent(new CustomEvent('waveform-ready', {
+        bubbles: true,
+        detail: { duration: dur }
+      }));
+    }
+
+    /* ──────────────────────────────────────────────────
+       ★ STREAM: 切换到 Blob URL（启用完整拖拽进度）
+       保留当前播放位置和播放状态。
+    ────────────────────────────────────────────────── */
+    _switchToBlobUrl(seekTo, finalPeakData) {
+      if (!this._streamBlob || this._streamBlobSwitched) return;
+      this._streamBlobSwitched = true;
+
+      var wasPlaying = !this.$audio.paused && !this.$audio.ended;
+      var wasEnded   = this.$audio.ended;
+      var restoreTime = (seekTo !== undefined) ? seekTo
+                      : wasEnded ? 0
+                      : this.$audio.currentTime;
+
+      if (this._objectUrl) URL.revokeObjectURL(this._objectUrl);
+      this._objectUrl = URL.createObjectURL(this._streamBlob);
+      this.$audio.preload = 'auto';
+      this.$audio.src = this._objectUrl;
+
+      var self = this;
+      function onLoaded() {
+        self.$audio.removeEventListener('loadedmetadata', onLoaded);
+
+        /* 缓存真实时长并刷新显示 */
+        if (isFinite(self.$audio.duration) && self.$audio.duration > 0) {
+          self._streamDuration = Math.max(self.$audio.duration, restoreTime || 0, self._streamDuration || 0);
+        }
+
+        if (restoreTime > 0 && isFinite(restoreTime)) {
+          self.$audio.currentTime = Math.min(restoreTime, self.$audio.duration || restoreTime);
+        }
+        if (finalPeakData && finalPeakData.length) {
+          self._applyPeakData(finalPeakData);
+        }
+        self._updateTimeLabel();
+        if (wasPlaying) {
+          self.$audio.play().catch(function () {});
+        }
+        self._draw();
+      }
+      this.$audio.addEventListener('loadedmetadata', onLoaded);
+      this.$audio.load();
+    }
+
+    _applyPeakData(peaks) {
+      if (!peaks || !peaks.length) return;
+
+      var self = this;
+      requestAnimationFrame(function () {
+        self._peakData = peaks;
+        self._draw();
+      });
     }
 
     /* ──────────────────────────────────────────────────
@@ -834,8 +1050,10 @@
 
       /* 缓存时长 */
       if (isFinite(this.$audio.duration)) {
-        this._streamDuration = this.$audio.duration;
+        this._streamDuration = Math.max(this.$audio.duration, this.$audio.currentTime || 0, this._streamDuration || 0);
       }
+
+      this._updateTimeLabel();
 
       /* 派发事件 */
       this.dispatchEvent(new CustomEvent('stream-end', {
@@ -1330,6 +1548,17 @@
       this._streamBlob       = null;
       this._streamAutoPlay   = false;
       this._streamDuration   = 0;
+      this._streamBlobSwitched = false;
+      this._clearStreamFinalizeTimer();
+
+      /* 清理流缓冲监测监听器 */
+      if (this._streamBufferCheck && this.$audio) {
+        this.$audio.removeEventListener('progress', this._streamBufferCheck);
+        this.$audio.removeEventListener('durationchange', this._streamBufferCheck);
+        this.$audio.removeEventListener('canplaythrough', this._streamBufferCheck);
+        this.$audio.removeEventListener('suspend', this._streamBufferCheck);
+        this._streamBufferCheck = null;
+      }
 
       /* 清理 MediaSource */
       if (this._mediaSourceUrl) {
@@ -1372,11 +1601,29 @@
     }
 
     _seekByEvent(e) {
-      var dur = this._getDisplayDuration();               /* ★ STREAM: 安全时长 */
+      var dur = this._getDisplayDuration();
       if (!dur) return;
       var rect  = this.$canvas.getBoundingClientRect();
       var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      this.$audio.currentTime = ratio * dur;
+      var targetTime = ratio * dur;
+
+      /* ★ STREAM: 完整数据已就绪时切换到 Blob URL 再 seek（支持任意位置拖拽） */
+      if (this._streamMode && this._streamBlob && !this._streamBlobSwitched) {
+        this._switchToBlobUrl(targetTime);
+        return;
+      }
+
+      /* ★ STREAM: 流式播放中，限制 seek 在浏览器已缓冲的范围内 */
+      if (this._streamMode && !this._streamBlobSwitched) {
+        var buffered = this.$audio.buffered;
+        if (buffered.length > 0) {
+          targetTime = Math.min(targetTime, buffered.end(buffered.length - 1) - 0.1);
+          targetTime = Math.max(0, targetTime);
+        }
+      }
+
+      this.$audio.currentTime = targetTime;
+      this._updateTimeLabel();
       this._draw();
     }
 
