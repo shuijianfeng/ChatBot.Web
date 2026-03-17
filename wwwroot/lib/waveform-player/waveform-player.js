@@ -188,6 +188,10 @@
 
       this.$audio.addEventListener('play', function () {
         self._updateIcon();
+        /* ★ STREAM: 播放开始时确保遮罩隐藏（作为 canplay 的后备） */
+        if (self._streamMode) {
+          self.$mask.classList.add('hidden');
+        }
         if (self._liveMode && !self._liveCollected) self._startLiveCapture();
       });
       this.$audio.addEventListener('pause', function () {
@@ -200,6 +204,18 @@
         if (self._liveMode && !self._liveCollected) {
           self._liveCollected = true;
           self._finalizeLivePeaks();
+        }
+        /* ★ STREAM: 流模式播放结束后标记完成，启用下载 */
+        if (self._streamMode && !self._streamComplete) {
+          self._streamComplete = true;
+          self._syncDownloadVisible();
+          if (isFinite(self.$audio.duration)) {
+            self._streamDuration = self.$audio.duration;
+          }
+          self.dispatchEvent(new CustomEvent('stream-end', {
+            bubbles: true,
+            detail: { duration: self._getDisplayDuration() }
+          }));
         }
         self._draw();
       });
@@ -271,7 +287,7 @@
     _syncDownloadVisible() {
       if (!this.$dlBtn) return;
       var forceHide = this.hasAttribute('no-download');
-      /* ★ STREAM: 流模式下，未传输完成则禁用/隐藏 */
+      /* ★ STREAM: 流模式下未完成则隐藏下载按钮 */
       var streamPending = this._streamMode && !this._streamComplete;
       this.$dlBtn.classList.toggle('hidden', forceHide || streamPending);
     }
@@ -331,7 +347,7 @@
           var xhr = new XMLHttpRequest();
           xhr.open('GET', url, true);
           xhr.responseType = 'arraybuffer';
-          xhr.timeout = 15000;
+          xhr.timeout = 5000;
           xhr.onload = function () {
             (xhr.status === 0 || xhr.status === 200)
               ? resolve(xhr.response)
@@ -396,10 +412,6 @@
 
       this._updateLabel('\uD83C\uDFB5 ' + decodeURIComponent(url.split('/').pop()));
 
-      this.$audio.removeAttribute('crossOrigin');
-      this.$audio.src = url;
-      this.$audio.load();
-
       this._peakData = [];
       this.$mask.classList.remove('hidden');
       this.$mask.innerHTML = '<div class="spin"></div> 正在解析波形…';
@@ -409,6 +421,13 @@
 
       try {
         var buf = await this._fetchAudioBuffer(url);
+        /* 复用已下载的数据创建 ObjectURL 给 audio 元素，避免重复下载 */
+        var blob = new Blob([buf]);
+        if (this._objectUrl) URL.revokeObjectURL(this._objectUrl);
+        this._objectUrl = URL.createObjectURL(blob);
+        this.$audio.removeAttribute('crossOrigin');
+        this.$audio.src = this._objectUrl;
+        this.$audio.load();
         this._peakData = await this._decodeBuffer(buf);
         this.$mask.classList.add('hidden');
         this._draw();
@@ -441,10 +460,9 @@
 
     /* ════════════════════════════════════════════════════
        ★ STREAM: 流模式核心加载
-       1. 优先尝试 MediaSource 边收边播
-       2. 不支持则降级为收完再播
-       3. 过程中用 AnalyserNode 采集实时波形
-       4. 完成后解码精确波形并开放下载
+       使用 preload="none" + audio.src = url，与原生 <audio> 行为一致。
+       用户点击播放时 play() 触发加载，浏览器边收边播。
+       波形使用确定性伪随机模拟数据。
     ════════════════════════════════════════════════════ */
     async _loadSrcStream(url) {
       this._resetState();
@@ -459,49 +477,32 @@
       this.$player.classList.add('show');
       this.$fileZone.classList.add('hidden');
       this._updateLabel('\uD83C\uDFB5 ' + decodeURIComponent(url.split('/').pop()));
-      this._syncDownloadVisible();                 // 隐藏下载按钮
+      this._syncDownloadVisible();
 
-      this._peakData = [];
-      this.$mask.classList.remove('hidden');
-      this.$mask.innerHTML = '<div class="spin"></div> 正在接收流数据…';
+      /* 立即生成模拟波形，无需等待音频加载 */
+      this._generateSimulatedPeaks();
       this.$timeLabel.textContent = '--:-- / --:--';
       this._initCanvas();
       this._draw();
+      this.$mask.classList.add('hidden');
 
-      /* 准备 AbortController */
-      if (this._streamAbort) this._streamAbort.abort();
-      this._streamAbort = new AbortController();
+      /* ★ STREAM: 设置音频源但不预加载，与 <audio preload="none"> 行为一致。
+         用户点击播放时 play() 会触发加载并开始流式播放。
+         这确保一次性流 URL 仅在用户操作时被消费。 */
+      this.$audio.removeAttribute('crossOrigin');
+      this.$audio.preload = 'none';
+      this.$audio.src = url;
 
-      try {
-        var response = await fetch(url, { signal: this._streamAbort.signal });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        if (!response.body) throw new Error('ReadableStream not supported');
-
-        var contentType = response.headers.get('content-type') || '';
-
-        /* ★ SSE: 如果响应是 text/event-stream，解析事件提取音频 */
-        if (contentType.indexOf('text/event-stream') >= 0) {
-          await this._streamFromSSE(response.body.getReader());
-          return;
-        }
-
-        var mimeForMS   = this._detectMSEMime(url, contentType);
-
-        /* ★ STREAM: 尝试 MediaSource 边收边播 */
-        if (window.MediaSource && mimeForMS && MediaSource.isTypeSupported(mimeForMS)) {
-          await this._streamViaMediaSource(response.body.getReader(), mimeForMS);
-        } else {
-          /* ★ STREAM: 降级 — 先收完再播放 */
-          await this._streamCollectThenPlay(response.body.getReader(), url, contentType);
-        }
-      } catch (e) {
-        if (e.name === 'AbortError') return;       // 被取消
-        console.error('[waveform-player] stream error:', e);
-        this.$mask.classList.remove('hidden');
-        this.$mask.innerHTML =
+      /* 监听加载错误（play() 触发加载后才可能发生） */
+      var self = this;
+      function onError() {
+        self.$audio.removeEventListener('error', onError);
+        self.$mask.classList.remove('hidden');
+        self.$mask.innerHTML =
           '<div style="text-align:center;line-height:1.6;font-size:11px">' +
-          '\u26A0\uFE0F 流加载失败：' + e.message + '</div>';
+          '\u26A0\uFE0F 音频流加载失败</div>';
       }
+      this.$audio.addEventListener('error', onError);
     }
 
     /* ──────────────────────────────────────────────────
@@ -566,6 +567,9 @@
         self.$audio.src = self._mediaSourceUrl;
         self.$audio.load();
 
+        /* ★ STREAM: 设置 AnalyserNode，播放时即可采集实时波形 */
+        self._setupStreamAnalyser();
+
         ms.addEventListener('sourceopen', function onOpen() {
           ms.removeEventListener('sourceopen', onOpen);
 
@@ -595,6 +599,14 @@
 
           sb.addEventListener('updateend', function () {
             appending = false;
+
+            /* ★ STREAM: 首次缓冲完成后自动播放，触发实时波形采集 */
+            if (!self._streamAutoPlay && self.$audio.paused) {
+              self._streamAutoPlay = true;
+              self.$mask.classList.add('hidden');
+              self.$audio.play().catch(function () {});
+            }
+
             if (queue.length > 0) {
               flushQueue();
             } else if (done && ms.readyState === 'open') {
@@ -764,41 +776,57 @@
       this._streamComplete = true;
       this._stopLiveCapture();
 
-      /* 合并 Blob（如果尚未构建） */
-      if (!this._streamBlob) {
+      /* ★ STREAM: 标记实时波形采集完成 */
+      if (this._liveMode && !this._liveCollected) {
+        this._liveCollected = true;
+        this._finalizeLivePeaks();
+      }
+
+      /* 合并 Blob（如果有收集到的分块数据） */
+      if (!this._streamBlob && this._streamChunks.length > 0) {
         this._streamBlob = new Blob(this._streamChunks);
       }
 
-      /* 修正 WAV 头部 */
-      try {
-        var headerBuf = await this._streamBlob.slice(0, 12).arrayBuffer();
-        var hdr = new Uint8Array(headerBuf);
-        if (hdr[0] === 0x52 && hdr[1] === 0x49 && hdr[2] === 0x46 && hdr[3] === 0x46) {
-          this.$audio.pause();
-          var fullBuf = new Uint8Array(await this._streamBlob.arrayBuffer());
-          this._fixWavHeader(fullBuf);
-          this._streamBlob = new Blob([fullBuf], { type: 'audio/wav' });
-          if (this._objectUrl) URL.revokeObjectURL(this._objectUrl);
-          this._objectUrl = URL.createObjectURL(this._streamBlob);
-          this.$audio.src = this._objectUrl;
-          this.$audio.load();
-        }
-      } catch (_) {}
+      /* 仅在有 Blob 数据时尝试精确波形解码 */
+      if (this._streamBlob && this._streamBlob.size > 0) {
+        /* 修正 WAV 头部（仅在 RIFF 大小字段不正确时才重建） */
+        try {
+          var headerBuf = await this._streamBlob.slice(0, 44).arrayBuffer();
+          var hdr = new Uint8Array(headerBuf);
+          if (hdr[0] === 0x52 && hdr[1] === 0x49 && hdr[2] === 0x46 && hdr[3] === 0x46 && hdr.length >= 8) {
+            var hdv = new DataView(headerBuf);
+            var riffSize = hdv.getUint32(4, true);
+            if (riffSize !== this._streamBlob.size - 8) {
+              this.$audio.pause();
+              var fullBuf = new Uint8Array(await this._streamBlob.arrayBuffer());
+              this._fixWavHeader(fullBuf);
+              this._streamBlob = new Blob([fullBuf], { type: 'audio/wav' });
+              if (this._objectUrl) URL.revokeObjectURL(this._objectUrl);
+              this._objectUrl = URL.createObjectURL(this._streamBlob);
+              this.$audio.src = this._objectUrl;
+              this.$audio.load();
+            }
+          }
+        } catch (_) {}
 
-      /* 解码精确波形 */
-      try {
-        var buf = await this._streamBlob.arrayBuffer();
-        this._peakData = await this._decodeBuffer(buf);
+        /* 解码精确波形 */
+        try {
+          var buf = await this._streamBlob.arrayBuffer();
+          this._peakData = await this._decodeBuffer(buf);
+          this.$mask.classList.add('hidden');
+          this._draw();
+        } catch (e) {
+          console.warn('[waveform-player] 流数据波形解码失败:', e);
+          if (this._peakData.length) {
+            this.$mask.classList.add('hidden');
+          } else {
+            this.$mask.innerHTML = '\u26A0\uFE0F 波形解码失败';
+          }
+        }
+      } else {
+        /* 原生流模式：无 Blob 数据，直接使用实时波形 */
         this.$mask.classList.add('hidden');
         this._draw();
-      } catch (e) {
-        console.warn('[waveform-player] 流数据波形解码失败:', e);
-        /* 如果解码失败但有实时波形数据，也可以用 */
-        if (this._peakData.length) {
-          this.$mask.classList.add('hidden');
-        } else {
-          this.$mask.innerHTML = '\u26A0\uFE0F 波形解码失败';
-        }
       }
 
       /* 显示下载按钮 */
@@ -920,10 +948,7 @@
        ★ STREAM: 下载功能 — 流完成后才执行
     ════════════════════════════════ */
     _doDownload() {
-      /* ★ STREAM: 流模式下若未完成，直接返回 */
-      if (this._streamMode && !this._streamComplete) return;
-
-      /* ★ STREAM: 从收集的 Blob 下载 */
+      /* ★ STREAM: 从收集的 Blob 下载（如有）；否则走后续 fetch 下载 */
       if (this._streamMode && this._streamBlob) {
         var blobUrl = URL.createObjectURL(this._streamBlob);
         var filename = this._guessFilename(this.getAttribute('src') || '');
@@ -1053,6 +1078,29 @@
         peaks[i] = Math.max(0.04, peaks[i]);
       }
       return peaks;
+    }
+
+    /* ════════════════════════════════
+       生成模拟波形数据（流模式用）
+       使用确定性伪随机 + 平滑，产生自然的波形外观
+    ════════════════════════════════ */
+    _generateSimulatedPeaks() {
+      var N = 1000;
+      var raw = new Float32Array(N);
+      var seed = 12345;
+      for (var i = 0; i < N; i++) {
+        seed = (seed * 16807) % 2147483647;
+        raw[i] = 0.10 + 0.80 * ((seed & 0xffff) / 0xffff);
+      }
+      var peaks = new Float32Array(N);
+      for (var i = 0; i < N; i++) {
+        var s = 0, c = 0;
+        for (var j = Math.max(0, i - 3); j <= Math.min(N - 1, i + 3); j++) {
+          s += raw[j]; c++;
+        }
+        peaks[i] = Math.max(0.04, s / c);
+      }
+      this._peakData = peaks;
     }
 
     /* ════════════════════════════════
@@ -1261,6 +1309,7 @@
       /* 停止当前播放，防止切换音源时出现多重声音 */
       if (this.$audio) {
         this.$audio.pause();
+        this.$audio.preload = 'auto';  /* 恢复默认预加载（流模式会设为 none） */
       }
 
       this._liveMode      = false;
@@ -1300,10 +1349,20 @@
 
     _togglePlay() {
       if (!this.$audio.src || this.$audio.error) return;
+      /* ★ STREAM: 首次点击时生成模拟波形（canplay 未触发时的后备） */
+      if (this._streamMode && !this._peakData.length) {
+        this._generateSimulatedPeaks();
+        this.$mask.classList.add('hidden');
+        this._draw();
+      }
       if (this._liveCtx && this._liveCtx.state === 'suspended') {
         this._liveCtx.resume();
       }
-      this.$audio.paused ? this.$audio.play() : this.$audio.pause();
+      if (this.$audio.paused) {
+        this.$audio.play().catch(function () {});
+      } else {
+        this.$audio.pause();
+      }
     }
 
     _updateIcon() {

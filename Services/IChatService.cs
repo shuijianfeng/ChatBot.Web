@@ -14,6 +14,7 @@ using OpenAI.Chat;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Diagnostics;
@@ -6466,18 +6467,14 @@ namespace ChatBot.Web.Services
                     _ => $"生成失败：不支持的文本转语音提供商 '{provider}'。"
                 };
             }
-            
-            switch (provider)
+
+            return provider switch
             {
-                case "QwenTTS":
-                    return await TextToSpeechViaQwenTts(normalizedTexts, voice, cancellationToken);
-                case "ChatTTS":
-                    return await TextToSpeechViaChatTts(normalizedTexts, voice, cancellationToken);
-                case "ElevenLabs":
-                    return await TextToSpeechViaElevenLabs(normalizedTexts, voice, cancellationToken);
-                default:
-                    return $"生成失败：不支持的文本转语音提供商 '{provider}'。";
-            }
+                "QwenTTS" => await TextToSpeechViaQwenTts(normalizedTexts, voice, cancellationToken),
+                "ChatTTS" => await TextToSpeechViaChatTts(normalizedTexts, voice, cancellationToken),
+                "ElevenLabs" => await TextToSpeechViaElevenLabs(normalizedTexts, voice, cancellationToken),
+                _ => $"生成失败：不支持的文本转语音提供商 '{provider}'。"
+            };
         }
 
         private async Task<string> TextToSpeechViaQwenTts(List<string> inputtexts, string? voice = null, CancellationToken cancellationToken = default)
@@ -6500,7 +6497,7 @@ namespace ChatBot.Web.Services
                     return "生成失败：未配置文本转语音 API Key。请配置 TextToSpeech:ApiKey 或 TextToSpeech:ApiKeyEnvironmentName。";
                 }
 
-                var model = _configuration["TextToSpeech:QwenTTS:Model"]
+                var ttsmodel = _configuration["TextToSpeech:QwenTTS:Model"]
                     ?? "qwen3-tts-flash";
 
                 var responseFormat = (_configuration["TextToSpeech:QwenTTS:ResponseFormat"]
@@ -6517,19 +6514,17 @@ namespace ChatBot.Web.Services
                 client.Timeout = TimeSpan.FromMinutes(5);
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
-                var segmentResults = new List<(byte[] AudioBytes, string? AudioUrl, string? AudioContentType)>();
+                var segmentResults = new List<(byte[] AudioBytes, string? AudioUrl, string? AudioContentType)>(inputtexts.Count);
                 foreach (var segment in inputtexts)
                 {
                     var requestContent = new
                     {
-                        model = model,
+                        model= ttsmodel,
                         input = new
                         {
                             text = segment,
                             voice = resolvedVoice,
                             response_format = responseFormat
-                            
-
                         }
                     };
 
@@ -6567,7 +6562,7 @@ namespace ChatBot.Web.Services
                 {
                     return "生成失败：未配置 ChatTTS 接口地址。";
                 }
-                var model = _configuration["TextToSpeech:ChatTTS:Model"]
+                var modeltts = _configuration["TextToSpeech:ChatTTS:Model"]
                     ?? "gpt-4o-mini-tts";
                 var responseFormat = (_configuration["TextToSpeech:ChatTTS:ResponseFormat"]
                     ?? "mp3").ToLowerInvariant();
@@ -6587,15 +6582,15 @@ namespace ChatBot.Web.Services
                     client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
                 }
 
-                var segmentResults = new List<(byte[] AudioBytes, string? AudioUrl, string? AudioContentType)>();
+                var segmentResults = new List<(byte[] AudioBytes, string? AudioUrl, string? AudioContentType)>(inputtexts.Count);
                 foreach (var segment in inputtexts)
                 {
                     var requestContent = new
                     {
-                        model,
+                        model= modeltts,
                         input = segment,
                         voice = resolvedVoice,
-                        response_format= responseFormat
+                        response_format = responseFormat
                     };
 
                     var segmentResult = await RequestAudioSegmentAsync(client, apiEndpoint, requestContent, "ChatTTS 接口", cancellationToken);
@@ -6648,9 +6643,7 @@ namespace ChatBot.Web.Services
                 client.DefaultRequestHeaders.Add("xi-api-key", apiKey);
                 client.DefaultRequestHeaders.Add("Accept", "audio/mpeg");
 
-                var voiceSettings = new Dictionary<string, object?>();
-                
-                var segmentResults = new List<(byte[] AudioBytes, string? AudioUrl, string? AudioContentType)>();
+                var segmentResults = new List<(byte[] AudioBytes, string? AudioUrl, string? AudioContentType)>(inputtexts.Count);
                 for (int i = 0; i < inputtexts.Count; i++)
                 {
                     var segment = inputtexts[i];
@@ -6662,8 +6655,8 @@ namespace ChatBot.Web.Services
                         text = segment,
                         model_id = modelId,
                         output_format = responseFormat,
-                        previous_text = previousText,
-                        next_text = nextText,
+                        //previous_text = previousText,
+                        //next_text = nextText,
                         voice_settings = new
                         {
                             use_speaker_boost = true
@@ -6697,71 +6690,21 @@ namespace ChatBot.Web.Services
             }
         }
 
-        private string? ResolveQwenTtsApiKey()
+        private string? ResolveTtsApiKey(string providerConfigSection, string fallbackEnvVar)
         {
-            var apiKeyEnvironmentName = _configuration["TextToSpeech:QwenTTS:ApiKeyEnvironmentName"];
-            if (!string.IsNullOrWhiteSpace(apiKeyEnvironmentName))
+            var envName = _configuration[$"TextToSpeech:{providerConfigSection}:ApiKeyEnvironmentName"];
+            if (!string.IsNullOrWhiteSpace(envName))
             {
-                var apiKeyFromNamedEnvironment = Environment.GetEnvironmentVariable(apiKeyEnvironmentName);
-                if (!string.IsNullOrWhiteSpace(apiKeyFromNamedEnvironment))
-                {
-                    return apiKeyFromNamedEnvironment;
-                }
+                var key = Environment.GetEnvironmentVariable(envName);
+                if (!string.IsNullOrWhiteSpace(key)) return key;
             }
-
-            return Environment.GetEnvironmentVariable("AiApiKey")
-                ?? string.Empty;
-                
+            return Environment.GetEnvironmentVariable(fallbackEnvVar) ?? string.Empty;
         }
 
-        private string? ResolveBytedanceTtsApiKey()
-        {
-            var apiKeyEnvironmentName = _configuration["TextToSpeech:Bytedance:ApiKeyEnvironmentName"];
-            if (!string.IsNullOrWhiteSpace(apiKeyEnvironmentName))
-            {
-                var apiKeyFromNamedEnvironment = Environment.GetEnvironmentVariable(apiKeyEnvironmentName);
-                if (!string.IsNullOrWhiteSpace(apiKeyFromNamedEnvironment))
-                {
-                    return apiKeyFromNamedEnvironment;
-                }
-            }
-
-            return Environment.GetEnvironmentVariable("BytedanceKey")
-                ?? string.Empty;
-
-        }
-
-        private string? ResolveChatTtsApiKey()
-        {
-            var apiKeyEnvironmentName = _configuration["TextToSpeech:ChatTTS:ApiKeyEnvironmentName"];
-            if (!string.IsNullOrWhiteSpace(apiKeyEnvironmentName))
-            {
-                var apiKeyFromNamedEnvironment = Environment.GetEnvironmentVariable(apiKeyEnvironmentName);
-                if (!string.IsNullOrWhiteSpace(apiKeyFromNamedEnvironment))
-                {
-                    return apiKeyFromNamedEnvironment;
-                }
-            }
-            return Environment.GetEnvironmentVariable("OpenAiKey")
-                            ?? string.Empty;
-        }
-
-        private string? ResolveElevenLabsApiKey()
-        {
-            var apiKeyEnvironmentName = _configuration["TextToSpeech:ElevenLabs:ApiKeyEnvironmentName"];
-            if (!string.IsNullOrWhiteSpace(apiKeyEnvironmentName))
-            {
-                var apiKeyFromNamedEnvironment = Environment.GetEnvironmentVariable(apiKeyEnvironmentName);
-                if (!string.IsNullOrWhiteSpace(apiKeyFromNamedEnvironment))
-                {
-                    return apiKeyFromNamedEnvironment;
-                }
-            }
-
-            return Environment.GetEnvironmentVariable("ElevenLabsKey")
-                
-                ?? string.Empty;
-        }
+        private string? ResolveQwenTtsApiKey() => ResolveTtsApiKey("QwenTTS", "AiApiKey");
+        private string? ResolveBytedanceTtsApiKey() => ResolveTtsApiKey("Bytedance", "BytedanceKey");
+        private string? ResolveChatTtsApiKey() => ResolveTtsApiKey("ChatTTS", "OpenAiKey");
+        private string? ResolveElevenLabsApiKey() => ResolveTtsApiKey("ElevenLabs", "ElevenLabsKey");
 
         private double? GetConfiguredDouble(string key)
         {
@@ -6800,17 +6743,21 @@ namespace ChatBot.Web.Services
             return segments;
         }
 
+        // SearchValues<char>: JIT 生成 SIMD 向量化搜索指令，比 LastIndexOfAny(char[]) 快数倍
+        private static readonly SearchValues<char> s_sentenceSplitChars =
+            SearchValues.Create("。！？.!?,，;； ");
+
         private static List<string> SplitTextToSpeechSegments(string input, int maxSegmentLength)
         {
-            var segments = new List<string>();
             if (string.IsNullOrWhiteSpace(input))
             {
-                return segments;
+                return [];
             }
 
             var normalizedInput = input.Replace("\r\n", "\n").Trim();
             var paragraphs = normalizedInput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var builder = new StringBuilder();
+            var segments = new List<string>(paragraphs.Length);
+            var builder = new StringBuilder(maxSegmentLength);
 
             foreach (var paragraph in paragraphs)
             {
@@ -6854,7 +6801,9 @@ namespace ChatBot.Web.Services
                 var remaining = text.Trim();
                 while (remaining.Length > maxLength)
                 {
-                    var splitIndex = remaining.LastIndexOfAny(new[] { '。', '！', '？', '.', '!', '?', ',', '，', ';', '；', ' ' }, maxLength - 1);
+                    // SearchValues<char> 使用 SIMD 加速查找
+                    var searchSlice = remaining.AsSpan(0, maxLength);
+                    var splitIndex = searchSlice.LastIndexOfAny(s_sentenceSplitChars);
                     if (splitIndex < maxLength / 2)
                     {
                         splitIndex = maxLength;
@@ -7040,35 +6989,43 @@ namespace ChatBot.Web.Services
 
         private static byte[] MergeBinaryAudio(IReadOnlyList<byte[]> audioSegments)
         {
-            using var stream = new MemoryStream();
+            var totalLength = 0;
+            foreach (var segment in audioSegments) totalLength += segment.Length;
+
+            using var stream = new MemoryStream(totalLength);
             foreach (var segment in audioSegments)
             {
-                stream.Write(segment, 0, segment.Length);
+                stream.Write(segment);
             }
 
             return stream.ToArray();
         }
+
+        // RIFF 魔术字节，用 ReadOnlySpan<byte> 避免字符串分配
+        private static ReadOnlySpan<byte> RiffHeader => "RIFF"u8;
+        private static ReadOnlySpan<byte> DataChunkId => "data"u8;
 
         private static byte[] MergeWaveAudio(IReadOnlyList<byte[]> audioSegments)
         {
             using var output = new MemoryStream();
             using var writer = new BinaryWriter(output, Encoding.UTF8, leaveOpen: true);
 
-            var dataChunks = new List<byte[]>();
+            var dataChunks = new List<byte[]>(audioSegments.Count);
             int sampleRate = 24000;
             short channels = 1;
             short bitsPerSample = 16;
 
             foreach (var segment in audioSegments)
             {
-                using var input = new MemoryStream(segment);
-                using var reader = new BinaryReader(input, Encoding.UTF8, leaveOpen: true);
-
-                if (input.Length < 44 || new string(reader.ReadChars(4)) != "RIFF")
+                // 使用 ReadOnlySpan<byte> 比较 RIFF 头，零分配
+                if (segment.Length < 44 || !segment.AsSpan(0, 4).SequenceEqual(RiffHeader))
                 {
                     dataChunks.Add(segment);
                     continue;
                 }
+
+                using var input = new MemoryStream(segment);
+                using var reader = new BinaryReader(input, Encoding.UTF8, leaveOpen: true);
 
                 input.Position = 22;
                 channels = reader.ReadInt16();
@@ -7079,9 +7036,10 @@ namespace ChatBot.Web.Services
                 input.Position = 12;
                 while (input.Position + 8 <= input.Length)
                 {
-                    var chunkId = new string(reader.ReadChars(4));
+                    Span<byte> chunkIdBuf = stackalloc byte[4];
+                    input.ReadExactly(chunkIdBuf);
                     var chunkSize = reader.ReadInt32();
-                    if (chunkId == "data")
+                    if (chunkIdBuf.SequenceEqual(DataChunkId))
                     {
                         dataChunks.Add(reader.ReadBytes(chunkSize));
                         break;
@@ -7140,7 +7098,8 @@ namespace ChatBot.Web.Services
                 ?? GetConfiguredBool($"TextToSpeech:{provider}:stream")
                 ?? false;
             var streamAttribute = streamEnabled ? " stream" : string.Empty;
-            return $"已生成语音文件。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\"{streamAttribute} src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+            var resolvedContentType = ResolveAudioContentTypeFromFormat(extension);
+            return $"已生成语音文件。\n\n可直接向用户返回以下播放器：\n\n<audio controls preload=\"none\"{streamAttribute} title=\"{safeLabel}\">\n  <source src=\"{relativeUrl}\" type=\"{resolvedContentType}\">\n  您的浏览器不支持音频播放。\n</audio>";
             //return $"已生成语音文件。\n\n音频链接：{relativeUrl}\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
         }
 
@@ -7160,7 +7119,7 @@ namespace ChatBot.Web.Services
                     {
                         "QwenTTS" => CreateQwenTtsStreamResponseAsync(text, voice, cancellationToken),
                         "ChatTTS" => CreateChatTtsStreamResponseAsync(text, voice, cancellationToken),
-                        "ElevenLabs" => CreateElevenLabsTtsStreamResponseAsync(text, previousText, nextText, voice, cancellationToken),
+                        "ElevenLabs" => CreateElevenLabsTtsStreamResponseAsync(text, null, null, voice, cancellationToken),
                         "Bytedance" => CreateBytedanceTtsStreamResponseAsync(text, voice, cancellationToken),
                         _ => throw new InvalidOperationException($"不支持的文本转语音提供商 '{provider}'。")
                     };
@@ -7230,7 +7189,6 @@ namespace ChatBot.Web.Services
 
                 // 非 WAV 格式（MP3 等）：通过管道逐片段流式传输，实现边收边播
                 var pipe = new Pipe();
-                var remainingTexts = inputtexts.Skip(1).ToList();
 
                 _ = Task.Run(async () =>
                 {
@@ -7243,12 +7201,11 @@ namespace ChatBot.Web.Services
                             await firstStream.CopyToAsync(writerStream, cancellationToken);
                             await writerStream.FlushAsync(cancellationToken);
                         }
-                        firstResponse.Dispose();
 
                         // 逐个写入后续片段
-                        for (int i = 0; i < remainingTexts.Count; i++)
+                        for (int i = 1; i < inputtexts.Count; i++)
                         {
-                            using var segResponse = await CreateSegment(i + 1);
+                            using var segResponse = await CreateSegment(i);
                             if (!segResponse.IsSuccessStatusCode) break;
                             await using var segStream = await segResponse.Content.ReadAsStreamAsync(cancellationToken);
                             await segStream.CopyToAsync(writerStream, cancellationToken);
@@ -7275,8 +7232,14 @@ namespace ChatBot.Web.Services
                 };
             };
 
+            // 延迟清理工厂，防止 _ttsStreamFactories 内存泄漏
+            _ = Task.Delay(TimeSpan.FromMinutes(10)).ContinueWith(__ => _ttsStreamFactories.TryRemove(streamId, out _));
+
             var relativeUrl = $"/share/media/stream/{streamId}";
             var safeLabel = System.Net.WebUtility.HtmlEncode($"语音播报 - {voice ?? provider}");
+            var responseFormat = GetStreamingTextToSpeechResponseFormat(provider);
+            var audioContentType = ResolveAudioContentTypeFromFormat(responseFormat);
+            //return $"已生成流式语音。\n\n可直接向用户返回以下播放器：\n\n<audio controls preload=\"none\" title=\"{safeLabel}\">\n  <source src=\"{relativeUrl}\" type=\"{audioContentType}\">\n  您的浏览器不支持音频播放。\n</audio>";
             return $"已生成流式语音。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" stream src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
         }
 
@@ -7444,7 +7407,7 @@ namespace ChatBot.Web.Services
         private async Task<HttpResponseMessage> CreateQwenTtsStreamResponseAsync(string inputtext, string? voice, CancellationToken cancellationToken)
         {
             var apiKey = ResolveQwenTtsApiKey();
-            var model = _configuration["TextToSpeech:QwenTTS:Model"] ?? "qwen3-tts-flash";
+            var modeltts = _configuration["TextToSpeech:QwenTTS:Model"] ?? "qwen3-tts-flash";
             var resolvedVoice = string.IsNullOrWhiteSpace(voice)
                 ? (_configuration["TextToSpeech:QwenTTS:Voice"] ?? "Cherry")
                 : voice;
@@ -7460,7 +7423,7 @@ namespace ChatBot.Web.Services
 
             var requestContent = new
             {
-                model,
+                model= modeltts,
                 input = new
                 {
                     text = inputtext,
@@ -7518,7 +7481,7 @@ namespace ChatBot.Web.Services
             var apiEndpoint = _configuration["TextToSpeech:ChatTTS:ApiEndpoint"]
                 ?? "https://cdsjf.xyz/openai/v1/audio/speech";
             var apiKey = ResolveChatTtsApiKey();
-            var model = _configuration["TextToSpeech:ChatTTS:Model"] ?? "gpt-4o-mini-tts";
+            var modeltts = _configuration["TextToSpeech:ChatTTS:Model"] ?? "gpt-4o-mini-tts";
             var resolvedVoice = string.IsNullOrWhiteSpace(voice)
                 ? (_configuration["TextToSpeech:ChatTTS:Voice"] ?? "alloy")
                 : voice;
@@ -7532,7 +7495,7 @@ namespace ChatBot.Web.Services
 
             var requestContent = new
             {
-                model,
+                model= modeltts,
                 input = inputtext,
                 voice = resolvedVoice,
                 stream_format = "sse",
@@ -7565,8 +7528,8 @@ namespace ChatBot.Web.Services
                 text = inputtext,
                 model_id = modelId,
                 output_format = responseFormat,
-                previous_text = previoustext,
-                next_text = nexttext,
+                //previous_text = previoustext,
+                //next_text = nexttext,
                 voice_settings = new
                 {
                     use_speaker_boost = true
