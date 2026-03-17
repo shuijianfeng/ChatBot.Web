@@ -473,30 +473,53 @@
 
       this._updateLabel('\uD83C\uDFB5 ' + decodeURIComponent(url.split('/').pop()));
 
-      this._peakData = [];
-      this.$mask.classList.remove('hidden');
-      this.$mask.innerHTML = '<div class="spin"></div> 正在解析波形…';
-      this.$timeLabel.textContent = '--:-- / --:--';
+      /* 立即生成模拟波形并显示，无需等待音频加载和解码 */
+      this._generateSimulatedPeaks();
       this._initCanvas();
       this._draw();
+      this.$mask.classList.add('hidden');
 
+      /* 立即设置 audio src，浏览器开始加载元数据和音频数据，
+         用户可立即看到时长、可立即点击播放 */
+      this.$audio.removeAttribute('crossOrigin');
+      this.$audio.src = url;
+      this.$audio.load();
+
+      /* 并行获取音频数据用于真实波形解码 */
       try {
         var buf = await this._fetchAudioBuffer(url);
-        /* 复用已下载的数据创建 ObjectURL 给 audio 元素，避免重复下载 */
+        /* 必须在 decodeAudioData 之前创建 Blob，
+           因为 decodeAudioData 会 detach ArrayBuffer 导致其 byteLength 变为 0 */
         var blob = new Blob([buf]);
         if (this._objectUrl) URL.revokeObjectURL(this._objectUrl);
         this._objectUrl = URL.createObjectURL(blob);
-        this.$audio.removeAttribute('crossOrigin');
+
+        this._peakData = await this._decodeBuffer(buf);
+        this._draw();
+        this._updateTimeLabel();
+
+        /* 用 Blob URL 替换原始 URL，避免播放时重复下载 */
+        var wasPlaying = !this.$audio.paused && !this.$audio.ended;
+        var restoreTime = this.$audio.currentTime || 0;
         this.$audio.src = this._objectUrl;
         this.$audio.load();
-        this._peakData = await this._decodeBuffer(buf);
-        this.$mask.classList.add('hidden');
-        this._draw();
+        var self = this;
+        function onMeta() {
+          self.$audio.removeEventListener('loadedmetadata', onMeta);
+          if (restoreTime > 0 && isFinite(restoreTime)) {
+            self.$audio.currentTime = Math.min(restoreTime, self.$audio.duration || restoreTime);
+          }
+          if (wasPlaying) self.$audio.play().catch(function () {});
+          self._updateTimeLabel();
+        }
+        this.$audio.addEventListener('loadedmetadata', onMeta);
         return;
       } catch (e) {
         console.warn('[waveform-player] 原始数据获取失败:', e.message);
       }
 
+      /* audio.src 已设置，即使波形解码失败，播放仍可用。
+         尝试 CORS 探测以启用实时波形分析。 */
       try {
         var corsOK = await this._testCORS(url);
         if (corsOK) {
@@ -507,16 +530,6 @@
           return;
         }
       } catch (_) {}
-
-      this.$audio.removeAttribute('crossOrigin');
-      this.$audio.src = url;
-      this.$audio.load();
-      this.$mask.classList.remove('hidden');
-      this.$mask.innerHTML =
-        '<div style="text-align:center;line-height:1.6;font-size:11px">' +
-        '\u26A0\uFE0F 跨域限制无法解析真实波形<br>' +
-        '<span style="opacity:.7">请在服务器添加 CORS 头 或 拖拽本地文件</span>' +
-        '</div>';
     }
 
     /* ════════════════════════════════════════════════════
@@ -626,7 +639,7 @@
           if (buf.byteLength > 0) {
             var ct = (response.headers.get('content-type') || 'audio/mpeg').split(';')[0].trim();
 
-            /* 先复制一份用于波形解码，因为 new Blob([buf]) 会 detach 原 ArrayBuffer */
+            /* 创建 Blob 用于 audio src；复制一份 buf 用于 decodeAudioData（它会 detach 传入的 ArrayBuffer） */
             var bufCopy = buf.slice(0);
             this._streamBlob = new Blob([buf], { type: ct });
 
@@ -1142,22 +1155,21 @@
       this.$audio.src = this._objectUrl;
       this.$audio.load();
 
-      this._peakData = [];
-      this.$mask.classList.remove('hidden');
-      this.$mask.innerHTML = '<div class="spin"></div> 正在解析波形…';
-      this.$timeLabel.textContent = '--:-- / --:--';
+      /* 立即生成模拟波形并显示，无需等待解码 */
+      this._generateSimulatedPeaks();
       this._initCanvas();
       this._draw();
+      this.$mask.classList.add('hidden');
 
       try {
         this._peakData = await this._decodeBuffer(await file.arrayBuffer());
-        this.$mask.classList.add('hidden');
         this._draw();
         this.dispatchEvent(new CustomEvent('waveform-ready', {
           bubbles: true,
           detail: { file: file, duration: this.$audio.duration }
         }));
       } catch (err) {
+        this.$mask.classList.remove('hidden');
         this.$mask.innerHTML = '\u26A0\uFE0F 解析失败：' + err.message;
       }
     }
