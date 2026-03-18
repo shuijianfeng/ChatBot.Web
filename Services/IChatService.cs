@@ -6506,7 +6506,7 @@ namespace ChatBot.Web.Services
                     ?? "mp3").ToLowerInvariant();
 
                 var resolvedVoice = string.IsNullOrWhiteSpace(voice)
-                    ? (_configuration["TextToSpeech:QwenTTS:Voice"]
+                    ? (_configuration["TextToSpeech:QwenTTS:Voice:Voiceid"]
                         ?? "Cherry")
                     : voice;
 
@@ -6570,7 +6570,7 @@ namespace ChatBot.Web.Services
                     ?? "mp3").ToLowerInvariant();
 
                 var resolvedVoice = string.IsNullOrWhiteSpace(voice)
-                    ? (_configuration["TextToSpeech:ChatTTS:Voice"]
+                    ? (_configuration["TextToSpeech:ChatTTS:Voice:Voiceid"]
                         
                         ?? "alloy")
                     : voice;
@@ -6632,7 +6632,7 @@ namespace ChatBot.Web.Services
                 }
 
                 var voiceId = string.IsNullOrWhiteSpace(voice)
-                    ? (_configuration["TextToSpeech:ElevenLabs:Voice"] ?? "JBFqnCBsd6RMkjVDRZzb")
+                    ? (_configuration["TextToSpeech:ElevenLabs:Voice:Voiceid"] ?? "JBFqnCBsd6RMkjVDRZzb")
                     : voice;
 
                 var modelId = _configuration["TextToSpeech:ElevenLabs:Model"] ?? "eleven_multilingual_v2";
@@ -7094,19 +7094,22 @@ namespace ChatBot.Web.Services
             await System.IO.File.WriteAllBytesAsync(filePath, audioBytes, cancellationToken);
 
             var relativeUrl = $"/share/media/{fileName}";
-            var safeLabel = System.Net.WebUtility.HtmlEncode($"语音播报 - {voice}");
+            
             var provider = _configuration["TextToSpeech:Provider"] ?? "QwenTTS";
+            var voicename = _configuration[$"TextToSpeech:{provider}:Voice:Name"] ?? string.Empty;
+            var safeLabel = System.Net.WebUtility.HtmlEncode($"语音播报 - {provider} {voicename}");
             var streamEnabled = GetConfiguredBool($"TextToSpeech:{provider}:Stream")
                 ?? GetConfiguredBool($"TextToSpeech:{provider}:stream")
                 ?? false;
             var streamAttribute = streamEnabled ? " stream" : string.Empty;
             var resolvedContentType = ResolveAudioContentTypeFromFormat(extension);
             //return $"已生成语音文件。\n\n可直接向用户返回以下播放器：\n\n<audio controls preload=\"none\"{streamAttribute} title=\"{safeLabel}\">\n  <source src=\"{relativeUrl}\" type=\"{resolvedContentType}\">\n  您的浏览器不支持音频播放。\n</audio>";
-            return $"已生成语音文件。\n\n音频链接：{relativeUrl}\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+            return $"已生成语音文件。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
         }
 
         private string CreateStreamingSpeechResponse(string provider, List<string> inputtexts, string? voice)
         {
+            var voicename = _configuration[$"TextToSpeech:{provider}:Voice:Name"]??string.Empty;
             var streamId = Guid.NewGuid().ToString("N");
             _ttsStreamFactories[streamId] = async cancellationToken =>
             {
@@ -7238,7 +7241,7 @@ namespace ChatBot.Web.Services
             _ = Task.Delay(TimeSpan.FromMinutes(10)).ContinueWith(__ => _ttsStreamFactories.TryRemove(streamId, out _));
 
             var relativeUrl = $"/share/media/stream/{streamId}";
-            var safeLabel = System.Net.WebUtility.HtmlEncode($"语音播报 - {voice ?? provider}");
+            var safeLabel = System.Net.WebUtility.HtmlEncode($"语音播报 - {provider} {voicename}");
             var responseFormat = GetStreamingTextToSpeechResponseFormat(provider);
             var audioContentType = ResolveAudioContentTypeFromFormat(responseFormat);
             //return $"已生成流式语音。\n\n可直接向用户返回以下播放器：\n\n<audio controls preload=\"none\" title=\"{safeLabel}\">\n  <source src=\"{relativeUrl}\" type=\"{audioContentType}\">\n  您的浏览器不支持音频播放。\n</audio>";
@@ -7411,7 +7414,7 @@ namespace ChatBot.Web.Services
             var apiKey = ResolveQwenTtsApiKey();
             var modeltts = _configuration["TextToSpeech:QwenTTS:Model"] ?? "qwen3-tts-flash";
             var resolvedVoice = string.IsNullOrWhiteSpace(voice)
-                ? (_configuration["TextToSpeech:QwenTTS:Voice"] ?? "Cherry")
+                ? (_configuration["TextToSpeech:QwenTTS:Voice:Voiceid"] ?? "Cherry")
                 : voice;
             var responseFormat = GetStreamingTextToSpeechResponseFormat("QwenTTS");
 
@@ -7444,7 +7447,7 @@ namespace ChatBot.Web.Services
             var apiKey = ResolveBytedanceTtsApiKey();
             var ttsmodel = _configuration["TextToSpeech:Bytedance:Model"] ?? "seed-tts-2.0";
             var resolvedVoice = string.IsNullOrWhiteSpace(voice)
-                ? (_configuration["TextToSpeech:Bytedance:Voice"] ?? "Cherry")
+                ? (_configuration["TextToSpeech:Bytedance:Voice:Voiceid"] ?? "Cherry")
                 : voice;
             var responseFormat = GetStreamingTextToSpeechResponseFormat("Bytedance");
 
@@ -7485,7 +7488,7 @@ namespace ChatBot.Web.Services
             var apiKey = ResolveChatTtsApiKey();
             var modeltts = _configuration["TextToSpeech:ChatTTS:Model"] ?? "gpt-4o-mini-tts";
             var resolvedVoice = string.IsNullOrWhiteSpace(voice)
-                ? (_configuration["TextToSpeech:ChatTTS:Voice"] ?? "alloy")
+                ? (_configuration["TextToSpeech:ChatTTS:Voice:Voiceid"] ?? "alloy")
                 : voice;
             var responseFormat = GetStreamingTextToSpeechResponseFormat("ChatTTS");
             var client = _httpClientFactory.CreateClient();
@@ -7514,7 +7517,7 @@ namespace ChatBot.Web.Services
                 ?? "https://api.elevenlabs.io/v1/text-to-speech";
             var apiKey = ResolveElevenLabsApiKey();
             var voiceId = string.IsNullOrWhiteSpace(voice)
-                ? (_configuration["TextToSpeech:ElevenLabs:Voice"] ?? "JBFqnCBsd6RMkjVDRZzb")
+                ? (_configuration["TextToSpeech:ElevenLabs:Voice:Voiceid"] ?? "JBFqnCBsd6RMkjVDRZzb")
                 : voice;
             var modelId = _configuration["TextToSpeech:ElevenLabs:Model"] ?? "eleven_multilingual_v2";
             var responseFormat = GetStreamingTextToSpeechResponseFormat("ElevenLabs");
@@ -7531,7 +7534,7 @@ namespace ChatBot.Web.Services
                 model_id = modelId,
                 output_format = responseFormat,
                 //previous_text = previoustext,
-                //next_text = nexttext,
+                //next_text = nexttext??string.Empty,
                 voice_settings = new
                 {
                     use_speaker_boost = true

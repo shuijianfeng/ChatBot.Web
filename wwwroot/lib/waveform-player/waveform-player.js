@@ -115,6 +115,7 @@
       this._streamUiTimer    = null;    // 接收期间刷新时长/响应播放意图
       this._streamStarted    = false;   // 是否已开始实际接收流数据
       this._loadedSrc        = null;    // 当前已加载的 src，避免重复初始化
+      this._streamMaskLocked = false;   // 流式加载阶段锁定遮罩显示，避免闪烁
 
       this._ready = this._init();
     }
@@ -208,7 +209,7 @@
         }
         self._updateIcon();
         /* ★ STREAM: 播放开始时确保遮罩隐藏（作为 canplay 的后备） */
-        if (self._streamMode) {
+        if (self._streamMode && !self._streamMaskLocked) {
           self.$mask.classList.add('hidden');
         }
         if (self._liveMode && !self._liveCollected) self._startLiveCapture();
@@ -623,6 +624,7 @@
       this._generateSimulatedPeaks();
       this._initCanvas();
       this._draw();
+      this._streamMaskLocked = true;
       this.$mask.classList.remove('hidden');
       this.$mask.innerHTML = '<div class="spin"></div> 点击播放后开始接收音频…';
 
@@ -646,6 +648,7 @@
       try {
         var response = await fetch(url);
         if (!response.ok) {
+          this._streamMaskLocked = false;
           this._streamLoading = false;
           this.$mask.classList.remove('hidden');
           this.$mask.innerHTML =
@@ -674,6 +677,7 @@
         this._streamLoading = false;
         return;
       } catch (e) {
+        this._streamMaskLocked = false;
         this._streamLoading = false;
         this.$mask.classList.remove('hidden');
         this.$mask.innerHTML =
@@ -704,6 +708,7 @@
     async _finalizeStreamPlayback() {
       if (this._streamComplete) return;
       this._streamComplete = true;
+      this._streamMaskLocked = false;
       this._clearStreamFinalizeTimer();
       this._stopStreamUiTimer();
       var decodedPeaks = null;
@@ -779,6 +784,7 @@
     _switchToBlobUrl(seekTo, finalPeakData) {
       if (!this._streamBlob || this._streamBlobSwitched) return;
       this._streamBlobSwitched = true;
+      this._streamMaskLocked = false;
 
       var wasPlaying = !this.$audio.paused && !this.$audio.ended;
       var wasEnded   = this.$audio.ended;
@@ -1676,6 +1682,7 @@
       this._streamLoading    = false;
       this._streamPendingPlay = false;
       this._streamStarted    = false;
+      this._streamMaskLocked = false;
       this._clearStreamFinalizeTimer();
       this._stopStreamUiTimer();
 
@@ -1709,6 +1716,7 @@
         this._streamPendingPlay = true;
         this._streamStarted = true;
         this._streamLoading = true;
+        this._streamMaskLocked = true;
         this._startStreamUiTimer();
         this.$mask.classList.remove('hidden');
         this.$mask.innerHTML = '<div class="spin"></div> 正在接收流数据…';
