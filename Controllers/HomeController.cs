@@ -722,6 +722,31 @@ namespace ChatBot.Controllers
         /// 代理输出文本转语音的流式音频响应。
         /// 首次请求时从上游 TTS 逐块转发音频数据到客户端（边收边播），同时缓存完整数据。
         /// 后续请求直接返回缓存数据。音频同时持久化到磁盘，应用重启后仍可访问。
+        /// <summary>
+        /// 检查流式音频是否已缓存。waveform-player 用此接口判断是否可安全预加载。
+        /// 仅检查内存缓存和磁盘持久化，不触发上游 TTS 调用。
+        /// 返回 204 表示已缓存，404 表示未缓存（流尚未消费）。
+        /// </summary>
+        [HttpHead]
+        [Route("/share/media/stream/{streamId}")]
+        public IActionResult HeadSharedMediaStream(string streamId)
+        {
+            if (string.IsNullOrWhiteSpace(streamId))
+                return BadRequest();
+
+            if (_consumedTtsStreams.ContainsKey(streamId))
+                return NoContent();
+
+            if (FindPersistedStreamFile(streamId) != null)
+                return NoContent();
+
+            return NotFound();
+        }
+
+        /// <summary>
+        /// 代理输出文本转语音的流式音频响应。
+        /// 首次请求时从上游 TTS 逐块转发音频数据到客户端（边收边播），同时缓存完整数据。
+        /// 后续请求直接返回缓存数据。音频同时持久化到磁盘，应用重启后仍可访问。
         /// 使用 SemaphoreSlim 防止并发请求重复调用上游 TTS（避免 429 限流）。
         /// </summary>
         [HttpGet]
@@ -810,13 +835,28 @@ namespace ChatBot.Controllers
                     {
                         await using var upstreamStream = await upstreamResponse.Content.ReadAsStreamAsync(CancellationToken.None);
                         using var buffer = new MemoryStream(64 * 1024);
+                        bool clientWriteFailed = false;
                         int bytesRead;
                         while ((bytesRead = await upstreamStream.ReadAsync(chunk.AsMemory(), CancellationToken.None)) > 0)
                         {
-                            var slice = chunk.AsMemory(0, bytesRead);
-                            await Response.Body.WriteAsync(slice, CancellationToken.None);
-                            await Response.Body.FlushAsync(CancellationToken.None);
+                            // 始终先写入缓冲区，确保数据完整性
                             buffer.Write(chunk, 0, bytesRead);
+
+                            // 尝试转发到客户端；即使客户端断开也继续读取上游数据以保证缓存
+                            if (!clientWriteFailed)
+                            {
+                                try
+                                {
+                                    var slice = chunk.AsMemory(0, bytesRead);
+                                    await Response.Body.WriteAsync(slice, CancellationToken.None);
+                                    await Response.Body.FlushAsync(CancellationToken.None);
+                                }
+                                catch
+                                {
+                                    // 客户端已断开连接，继续读取上游数据以确保缓存完成
+                                    clientWriteFailed = true;
+                                }
+                            }
                         }
 
                         var audioBytes = buffer.ToArray();

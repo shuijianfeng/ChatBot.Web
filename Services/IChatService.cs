@@ -119,7 +119,8 @@ namespace ChatBot.Web.Services
     {
         private const int maxSearchCount = 5;
         private const int SearchCount = 10;
-        private const int TextToSpeechMaxSegmentLength = 1600;
+        private int TextToSpeechMaxSegmentLength = 1600;
+
         static string SessionId = string.Empty;
         private static readonly ConcurrentDictionary<string, byte> _responsesUnsupportedPreviousResponseIdEndpoints = new(StringComparer.OrdinalIgnoreCase);
         private readonly IHttpClientFactory _httpClientFactory;
@@ -166,6 +167,7 @@ namespace ChatBot.Web.Services
 
             // 初始化 MCP 客户端（异步启动）
             _ = _mcpClientManager.InitializeAsync();
+            TextToSpeechMaxSegmentLength = int.Parse(_configuration[$"TextToSpeech:{_configuration["TextToSpeech:Provider"] ?? "QwenTTS"}:TextToSpeechMaxSegmentLength"] ?? "1600") ;
         }
 
         #region 搜索相关
@@ -3129,7 +3131,7 @@ namespace ChatBot.Web.Services
                             texts = new
                             {
                                 type = "array",
-                                description = "要转换为语音的文本列表。系统会自动将每段按1600字符以内切分后再合并音频。",
+                                description = $"要转换为语音的文本列表。系统会自动将每段按{TextToSpeechMaxSegmentLength}字符以内切分后再合并音频。",
                                 items = new
                                 {
                                     type = "string",
@@ -3574,7 +3576,7 @@ namespace ChatBot.Web.Services
                                 texts = new
                                 {
                                     type = "array",
-                                    description = "要转换为语音的文本列表。系统会自动将每段按1600字符以内切分后再合并音频。",
+                                    description = $"要转换为语音的文本列表。系统会自动将每段按{TextToSpeechMaxSegmentLength}字符以内切分后再合并音频。",
                                     items = new
                                     {
                                         type = "string",
@@ -3835,7 +3837,7 @@ namespace ChatBot.Web.Services
                             texts = new
                             {
                                 type = "array",
-                                description = "要转换为语音的文本列表。系统会自动将每段按1600字符以内切分后再合并音频。",
+                                description = $"要转换为语音的文本列表。系统会自动将每段按{TextToSpeechMaxSegmentLength}字符以内切分后再合并音频。",
                                 items = new
                                 {
                                     type = "string",
@@ -4219,7 +4221,7 @@ namespace ChatBot.Web.Services
                         texts = new
                         {
                             type = "array",
-                            description = "要转换为语音的文本列表。系统会自动将每段按1600字符以内切分后再合并音频。",
+                            description = $"要转换为语音的文本列表。系统会自动将每段按{TextToSpeechMaxSegmentLength}字符以内切分后再合并音频。",
                             items = new { type = "string", description = "待转换文本片段" }
                         },
                         voice = new { type = "string", description = "可选语音音色名称，不传则使用默认音色" }
