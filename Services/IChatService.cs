@@ -4430,22 +4430,6 @@ namespace ChatBot.Web.Services
 
             var tools = new List<object>();
 
-            //tools.Add(new
-            //{
-            //    name = nameof(TextToSpeech),
-            //    description = "将文本转换为语音音频文件，返回可访问的音频链接和播放器 HTML。",
-            //    parameters = new
-            //    {
-            //        type = "object",
-            //        properties = new
-            //        {
-            //            text = new { type = "string", description = "要转换为语音的文本内容" },
-            //            voice = new { type = "string", description = "可选语音音色名称，不传则使用默认音色" }
-            //        },
-            //        required = new[] { "text" }
-            //    }
-            //});
-
             //if (search)
             //{
             //    tools.Add(new
@@ -4500,6 +4484,27 @@ namespace ChatBot.Web.Services
 
             //tools.Add(new
             //{
+            //    name = nameof(TextToSpeech),
+            //    description = "将文本转换为语音音频文件，返回可访问的音频链接和播放器 HTML。",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            texts = new
+            //            {
+            //                type = "array",
+            //                description = $"要转换为语音的文本列表。系统会自动将每段按{TextToSpeechMaxSegmentLength}字符以内切分后再合并音频。",
+            //                items = new { type = "string", description = "待转换文本片段" }
+            //            },
+            //            voice = new { type = "string", description = "可选语音音色名称，不传则使用默认音色" }
+            //        },
+            //        required = new[] { "texts" }
+            //    }
+            //});
+
+            //tools.Add(new
+            //{
             //    name = nameof(SearchTrainTicket),
             //    description = "获取指定日期的火车票、火车车次",
             //    parameters = new
@@ -4526,9 +4531,52 @@ namespace ChatBot.Web.Services
             //        required = new[] { "startingplace", "arrivalplace", "date" }
             //    }
             //});
+            //tools.Add(new
+            //{
+            //    name = nameof(RunPythonFile),
+            //    description = "运行指定的Python文件并返回结果",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            filePath = new { type = "string", description = "Python文件路径" },
+            //            arguments = new { type = "string", description = "传递给Python文件的参数" }
+            //        },
+            //        required = new[] { "filePath", "arguments" } // <-- 正确：放在 parameters 内部
+            //    }
+            //});
 
+            //tools.Add(new
+            //{
+            //    name = nameof(ReadFile),
+            //    description = "读取指定文件的内容并返回",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            filePath = new { type = "string", description = "文件路径" }
+            //        },
+            //        required = new[] { "filePath" }
+            //    }
+            //});
 
-            //// 加载 MCP 工具
+            //tools.Add(new
+            //{
+            //    name = nameof(GetDirectoryContents),
+            //    description = "获取指定文件夹下的所有文件和子文件夹信息",
+            //    parameters = new
+            //    {
+            //        type = "object",
+            //        properties = new
+            //        {
+            //            directoryPath = new { type = "string", description = "文件夹路径" }
+            //        },
+            //        required = new[] { "directoryPath" }
+            //    }
+            //});
+            // 加载 MCP 工具
             //if (_mcpClientManager.IsEnabled)
             //{
             //    try
@@ -4536,6 +4584,7 @@ namespace ChatBot.Web.Services
             //        var mcpTools = await _mcpClientManager.GetAllToolsAsync(cancellationToken);
             //        foreach (var mcpTool in mcpTools)
             //        {
+
             //            // 从 MCP InputSchema 中动态提取字段，过滤掉 Gemini 不支持的字段
             //            object? inputSchema;
             //            if (mcpTool.InputSchema.HasValue)
@@ -4563,7 +4612,7 @@ namespace ChatBot.Web.Services
             //        _logger.LogWarning(ex, "加载 MCP 工具失败");
             //    }
             //}
-
+            
             object File_search = null;
             if (!string.IsNullOrWhiteSpace(config.File_search_store_names))
             {
