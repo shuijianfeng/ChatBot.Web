@@ -546,10 +546,92 @@ class ChatUI {
         });
     }
 
+    enhanceStreamingThoughtsBlocks(container) {
+        if (!container) return;
+
+        container.querySelectorAll('pre code.language-thoughts').forEach((block) => {
+            const pre = block.parentElement;
+            if (!pre || pre.closest('.thoughts-details')) {
+                return;
+            }
+
+            pre.style.maxWidth = '700px';
+            pre.style.width = '100%';
+            pre.style.height = 'auto';
+            pre.style.overflow = 'hidden';
+            pre.style.whiteSpace = 'pre-wrap';
+            pre.style.overflowWrap = 'break-word';
+            pre.style.wordWrap = 'break-word';
+
+            block.style.width = '100%';
+            block.style.height = 'auto';
+            block.style.overflow = 'hidden';
+            block.style.whiteSpace = 'pre-wrap';
+            block.style.overflowWrap = 'break-word';
+
+            const details = document.createElement('details');
+            details.open = true;
+            details.className = 'thoughts-details';
+
+            const summary = document.createElement('summary');
+            summary.className = 'thoughts-summary';
+
+            const arrow = document.createElement('span');
+            arrow.className = 'thoughts-arrow';
+            arrow.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>';
+
+            details.addEventListener('toggle', () => {
+                arrow.innerHTML = details.open
+                    ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>'
+                    : '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>';
+            });
+
+            const textSpan = document.createElement('span');
+            const thinkTime = Math.max(3, Math.min(30, Math.floor((block.textContent || '').length / 100)));
+            textSpan.textContent = `Thought for ${thinkTime}s`;
+
+            summary.appendChild(arrow);
+            summary.appendChild(textSpan);
+            details.appendChild(summary);
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'code-block-wrapper thoughts-wrapper';
+            wrapper.style.maxWidth = '700px';
+            wrapper.style.width = '100%';
+            wrapper.style.height = 'auto';
+
+            pre.parentNode.insertBefore(wrapper, pre);
+            details.appendChild(pre);
+            wrapper.appendChild(details);
+        });
+    }
+
     initWaveSurferPlayers(container) {
         const players = (container || document).querySelectorAll('waveform-player:not([data-wp-init])');
         players.forEach(el => {
             el.setAttribute('data-wp-init', 'true');
+            const ownerMessage = el.closest('.assistant-message') || el.closest('.message');
+
+            const scrollAfterReady = () => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => this.scrollCurrentMessageBottomIntoView(ownerMessage));
+                });
+            };
+
+            el.addEventListener('waveform-ready', scrollAfterReady, { once: true });
+            el.addEventListener('stream-end', scrollAfterReady, { once: true });
+
+            if ('ResizeObserver' in window && ownerMessage) {
+                const ro = new ResizeObserver(() => {
+                    this.scrollCurrentMessageBottomIntoView(ownerMessage);
+                });
+
+                ro.observe(el);
+
+                el.addEventListener('waveform-ready', () => ro.disconnect(), { once: true });
+                el.addEventListener('stream-end', () => ro.disconnect(), { once: true });
+            }
+
             if (!el.hasAttribute('stream')) {
                 const src = el.getAttribute('src') || '';
                 if (src.indexOf('/share/media/stream/') !== -1) {
@@ -1918,6 +2000,17 @@ class ChatUI {
         // 导出renderMath方法供外部使用
         this.renderMath = renderMath;
 
+        this.completeOpenMarkdownFences = (content) => {
+            if (!content) return content;
+
+            const fenceCount = (content.match(/```/g) || []).length;
+            if (fenceCount % 2 !== 0) {
+                return content + '\n```';
+            }
+
+            return content;
+        };
+
         // 检测内容是否包含数学公式语法
         this.hasMathContent = (content) => {
             // 检测行内公式 $...$ 或块级公式 $$...$$
@@ -2348,11 +2441,12 @@ class ChatUI {
 
                     // 预处理内容（移除 think 标签，转换 ~~~ 为 ```）
                     const processedContent = this.preprocessMarkdown(this.messageBuffer);
+                    const renderContent = this.completeOpenMarkdownFences(processedContent);
 
                     // 流式阶段暂不挂载 waveform-player，避免组件在多次重渲染时反复中止流请求导致 TTS 音频无法缓存。
                     // 流完成后在 finally 块中做最终渲染，此时组件只创建一次。
                     if (processedContent.includes('<waveform-player')) {
-                        const placeholderContent = processedContent.replace(/<waveform-player[\s\S]*/i, '\n\n🎵 音频播放器加载中...');
+                        const placeholderContent = renderContent.replace(/<waveform-player[\s\S]*/i, '\n\n🎵 音频播放器加载中...');
                         contentDiv.innerHTML = marked.parse(placeholderContent);
                         contentDiv.dataset.rawContent = this.messageBuffer;
                         this.scrollToBottom();
@@ -2360,10 +2454,12 @@ class ChatUI {
                     }
 
                     // 渲染 markdown 内容
-                    contentDiv.innerHTML = marked.parse(processedContent);
+                    contentDiv.innerHTML = marked.parse(renderContent);
 
                     // 更新 rawContent 数据属性，以便于复制等功能
                     contentDiv.dataset.rawContent = this.messageBuffer;
+
+                    this.enhanceStreamingThoughtsBlocks(contentDiv);
 
                     // 处理所有代码块
                     contentDiv.querySelectorAll('pre code').forEach((block) => {
@@ -2371,6 +2467,26 @@ class ChatUI {
                         const language = block.getAttribute('class') || '';
                         if (language) {
                             block.parentElement.classList.add('language-' + language.replace('language-', ''));
+                        }
+
+                        if (language.indexOf('language-thoughts') !== -1) {
+                            const pre = block.parentElement;
+                            if (pre && pre.closest('.thoughts-details')) {
+                                return;
+                            }
+                            pre.style.maxWidth = '700px';
+                            pre.style.width = '100%';
+                            pre.style.height = 'auto';
+                            pre.style.overflow = 'hidden';
+                            pre.style.whiteSpace = 'pre-wrap';
+                            pre.style.overflowWrap = 'break-word';
+                            pre.style.wordWrap = 'break-word';
+
+                            block.style.width = '100%';
+                            block.style.height = 'auto';
+                            block.style.overflow = 'hidden';
+                            block.style.whiteSpace = 'pre-wrap';
+                            block.style.overflowWrap = 'break-word';
                         }
 
                         // 注意：流式传输期间不调用 enhanceCodeBlock，
@@ -2382,14 +2498,14 @@ class ChatUI {
                     });
 
                     // 公式实时渲染 - 使用防抖机制避免频繁调用
-                    if (this.hasMathContent(processedContent)) {
+                    if (this.hasMathContent(renderContent)) {
                         // 清除之前的防抖计时器
                         if (this.mathRenderDebounceTimer) {
                             clearTimeout(this.mathRenderDebounceTimer);
                         }
                         // 设置防抖延迟（300ms）
                         this.mathRenderDebounceTimer = setTimeout(() => {
-                            this.renderMathIfReady(contentDiv, processedContent);
+                            this.renderMathIfReady(contentDiv, renderContent);
                         }, 300);
                     }
                 } catch (e) {
@@ -2447,6 +2563,42 @@ class ChatUI {
 
     scrollToBottom() {
         this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
+
+    scrollCurrentMessageBottomIntoView(messageElement = this.currentMessageElement) {
+        if (!messageElement || !this.messagesContainer) {
+            this.scrollToBottom();
+            return;
+        }
+
+        const container = this.messagesContainer;
+        const bottomPadding = 24;
+        const messageBottom = messageElement.offsetTop + messageElement.offsetHeight;
+        const viewportBottom = container.scrollTop + container.clientHeight;
+        const delta = messageBottom - viewportBottom + bottomPadding;
+
+        if (delta > 0) {
+            container.scrollTop += delta;
+        }
+    }
+
+    scrollMessageIntoView(messageElement) {
+        if (!messageElement) {
+            this.scrollToBottom();
+            return;
+        }
+
+        const container = this.messagesContainer;
+        const containerRect = container.getBoundingClientRect();
+        const messageRect = messageElement.getBoundingClientRect();
+        const bottomGap = 24;
+        const overflowBottom = messageRect.bottom - containerRect.bottom + bottomGap;
+
+        if (overflowBottom > 0) {
+            container.scrollTop += overflowBottom;
+        } else if (messageRect.top < containerRect.top) {
+            container.scrollTop -= (containerRect.top - messageRect.top) + 8;
+        }
     }
 
     // 从 DOM 重新同步 messages 数组，确保消息顺序和内容正确
@@ -2573,7 +2725,13 @@ class ChatUI {
                                     this.receivedContentLength += parsed.content.length;
                                     // 同步更新 savedContentLength
                                     this.savedContentLength = this.receivedContentLength;
-                                    this.appendMessage('assistant', parsed.content, this.stream);
+
+                                    if (!this.currentMessageElement) {
+                                        this.messageBuffer = '';
+                                        this.appendMessage('assistant', '', true);
+                                    }
+
+                                    this.appendStreamContent(parsed.content);
                                 }
                             } catch (e) {
                                 console.error('SSE数据解析错误:', e);
@@ -2649,6 +2807,9 @@ class ChatUI {
                             try {
                                 const finalContent = this.preprocessMarkdown(rawContent);
                                 contentDiv.innerHTML = marked.parse(finalContent);
+                                requestAnimationFrame(() => {
+                                    requestAnimationFrame(() => this.scrollCurrentMessageBottomIntoView(this.currentMessageElement));
+                                });
                             } catch (e) {
                                 console.error('最终渲染错误:', e);
                             }

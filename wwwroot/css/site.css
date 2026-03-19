@@ -196,6 +196,14 @@ body {
     overflow-x: auto;
 }
 
+.message-content waveform-player {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
 /* 消息容器样式 */
 .message-container {
     padding: 4px 8px;
