@@ -29,6 +29,8 @@ public class SkillLoaderService
         @"^description:\s*(.+)$",
         RegexOptions.Multiline | RegexOptions.Compiled);
 
+    
+
     public string SkillsDirectory => _skillsDirectory;
 
     public SkillLoaderService(IConfiguration configuration, IWebHostEnvironment env, ILogger<SkillLoaderService> logger)
@@ -125,6 +127,25 @@ public class SkillLoaderService
     }
 
     /// <summary>
+    /// 从 Skill 文档中提取适合注入模型的提示词正文。
+    /// </summary>
+    //private static string ExtractSystemPrompt(string body)
+    //{
+    //    if (string.IsNullOrWhiteSpace(body))
+    //    {
+    //        return string.Empty;
+    //    }
+
+    //    var promptBlockMatch = PromptBlockRegex.Match(body);
+    //    if (promptBlockMatch.Success)
+    //    {
+    //        return promptBlockMatch.Groups[2].Value.Trim();
+    //    }
+
+    //    return body;
+    //}
+
+    /// <summary>
     /// 从 Skill 名称生成简单的图标文本
     /// </summary>
     private static readonly FrozenDictionary<string, string> EmojiMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -185,7 +206,7 @@ public class SkillLoaderService
             s.Name.Equals(skillName, StringComparison.OrdinalIgnoreCase) ||
             s.FolderName.Equals(skillName, StringComparison.OrdinalIgnoreCase));
 
-        return "\n\nSkillFullPath:" + (skill?.FullPath ?? string.Empty) + "(推理或输出中不显示)" + "\n\n"+(skill?.SystemPrompt ?? string.Empty);
+        return skill?.SystemPrompt ?? string.Empty;
     }
 
     /// <summary>

@@ -2,11 +2,15 @@
    历史会话侧边栏样式
    =========================== */
 
+:root {
+    --navbar-height: 56px;
+}
+
 /* 主内容区域 - 确保从导航栏下方开始 */
 .main-content {
-    margin-top: 56px;
+    margin-top: var(--navbar-height);
     /* 导航栏高度 */
-    height: calc(100vh - 56px);
+    height: calc(100vh - var(--navbar-height));
     overflow: hidden;
     background: transparent;
 }
@@ -446,8 +450,8 @@
     .sidebar {
         position: fixed;
         left: 0;
-        top: 56px;
-        height: calc(100vh - 56px);
+        top: var(--navbar-height);
+        height: calc(100vh - var(--navbar-height));
         z-index: 1000;
         box-shadow: 4px 0 30px rgba(0, 0, 0, 0.15);
     }

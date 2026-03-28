@@ -3719,5 +3719,20 @@ class ChatUI {
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
+    const navbar = document.querySelector('.navbar');
+
+    const updateNavbarHeight = () => {
+        const navbarHeight = navbar ? navbar.offsetHeight : 56;
+        document.documentElement.style.setProperty('--navbar-height', `${navbarHeight}px`);
+    };
+
+    updateNavbarHeight();
+    window.addEventListener('resize', updateNavbarHeight);
+
+    if (navbar && 'ResizeObserver' in window) {
+        const navbarResizeObserver = new ResizeObserver(() => updateNavbarHeight());
+        navbarResizeObserver.observe(navbar);
+    }
+
     const chat = new ChatUI();
 });
