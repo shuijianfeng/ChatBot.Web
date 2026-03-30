@@ -67,6 +67,13 @@ namespace ChatBot.Controllers
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim>
             _streamLocks = new();
 
+        private string BuildAbsoluteUrl(string relativePath)
+        {
+            var pathBase = Request.PathBase.HasValue ? Request.PathBase.Value : string.Empty;
+            relativePath = relativePath.StartsWith('/') ? relativePath : $"/{relativePath}";
+            return $"{Request.Scheme}://{Request.Host}{pathBase}{relativePath}";
+        }
+
         public HomeController(
             ILogger<HomeController> logger,
             IChatService chatService,
@@ -642,7 +649,7 @@ namespace ChatBot.Controllers
                 await System.IO.File.WriteAllTextAsync(filePath, request.HtmlContent, Encoding.UTF8);
 
                 // 返回动态访问链接
-                var shareUrl = $"{Request.Scheme}://{Request.Host}/share/view/{fileName}";
+                var shareUrl = BuildAbsoluteUrl($"/share/view/{fileName}");
                 return Ok(new { success = true, url = shareUrl, fileName });
             }
             catch (Exception ex)
@@ -988,7 +995,7 @@ namespace ChatBot.Controllers
             }
 
             // 返回图片的URL
-            var imageUrl = $"{Request.Scheme}://{Request.Host}/uploads/{fileName}";
+            var imageUrl = BuildAbsoluteUrl($"/uploads/{fileName}");
             return Ok(new { url = imageUrl });
         }
 

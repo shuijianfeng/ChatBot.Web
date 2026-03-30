@@ -160,6 +160,12 @@
     _ensureSrcLoaded() {
       var src = this.getAttribute('src');
       if (!src || this._loadedSrc === src) return;
+      // 将以 /share/media/ 开头的绝对路径转为相对路径，
+      // 以便通过 <base href> 正确解析子路径部署的 URL
+      if (src.charAt(0) === '/' && src.indexOf('/share/media/') === 0) {
+        src = src.substring(1);
+        this.setAttribute('src', src);
+      }
       this._loadedSrc = src;
       this._loadSrc(src);
     }

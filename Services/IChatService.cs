@@ -7177,7 +7177,7 @@ namespace ChatBot.Web.Services
 
             await System.IO.File.WriteAllBytesAsync(filePath, audioBytes, cancellationToken);
 
-            var relativeUrl = $"/share/media/{fileName}";
+            var relativeUrl = $"share/media/{fileName}";
             
             var provider = _configuration["TextToSpeech:Provider"] ?? "QwenTTS";
             var voicename = _configuration[$"TextToSpeech:{provider}:Voice:Name"] ?? string.Empty;
@@ -7324,7 +7324,7 @@ namespace ChatBot.Web.Services
             // 延迟清理工厂，防止 _ttsStreamFactories 内存泄漏
             _ = Task.Delay(TimeSpan.FromMinutes(10)).ContinueWith(__ => _ttsStreamFactories.TryRemove(streamId, out _));
 
-            var relativeUrl = $"/share/media/stream/{streamId}";
+            var relativeUrl = $"share/media/stream/{streamId}";
             var safeLabel = System.Net.WebUtility.HtmlEncode($"语音播报 - {provider} {voicename}");
             var responseFormat = GetStreamingTextToSpeechResponseFormat(provider);
             var audioContentType = ResolveAudioContentTypeFromFormat(responseFormat);

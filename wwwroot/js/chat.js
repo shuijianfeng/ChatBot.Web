@@ -154,9 +154,17 @@ class ChatUI {
         this.init();
     }
 
+    buildUrl(path) {
+        return new URL(path.replace(/^\/+/, ''), document.baseURI).toString();
+    }
+
+    apiUrl(path) {
+        return this.buildUrl(`api/${path.replace(/^\/+/, '')}`);
+    }
+
     async fetchChatModels() {
         try {
-            const response = await fetch('/api/chat/GetChatModels');
+            const response = await fetch(this.apiUrl('chat/GetChatModels'));
             if (!response.ok) {
                 throw new Error('无法获取聊天模型配置');
             }
@@ -170,7 +178,7 @@ class ChatUI {
     // 获取 Skills 列表
     async fetchSkills() {
         try {
-            const response = await fetch('/api/chat/GetSkills');
+            const response = await fetch(this.apiUrl('chat/GetSkills'));
             if (!response.ok) {
                 throw new Error('无法获取技能列表');
             }
@@ -324,7 +332,7 @@ class ChatUI {
                 formData.append('image', file);
 
                 // 发送图片到后端API
-                const response = await fetch('/api/chat/upload-image', {
+                const response = await fetch(this.apiUrl('chat/upload-image'), {
                     method: 'POST',
                     body: formData
                 });
@@ -610,6 +618,14 @@ class ChatUI {
         const players = (container || document).querySelectorAll('waveform-player:not([data-wp-init])');
         players.forEach(el => {
             el.setAttribute('data-wp-init', 'true');
+
+            // 修正旧的绝对路径 /share/media/... 为相对路径 share/media/...
+            // 避免浏览器跳过 <base href> 直接请求根路径导致 404
+            const src = el.getAttribute('src') || '';
+            if (src.startsWith('/share/media/')) {
+                el.setAttribute('src', src.substring(1));
+            }
+
             const ownerMessage = el.closest('.assistant-message') || el.closest('.message');
 
             const scrollAfterReady = () => {
@@ -634,7 +650,7 @@ class ChatUI {
 
             if (!el.hasAttribute('stream')) {
                 const src = el.getAttribute('src') || '';
-                if (src.indexOf('/share/media/stream/') !== -1) {
+                if (src.indexOf('/share/media/stream/') !== -1 || src.indexOf('share/media/stream/') !== -1) {
                     el.setAttribute('stream', '');
                 }
             }
@@ -1017,7 +1033,7 @@ class ChatUI {
 
                 try {
                     console.log('[Share] 开始调用 API');
-                    const response = await fetch('/api/chat/save-html', {
+                    const response = await fetch(this.apiUrl('chat/save-html'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -1440,7 +1456,7 @@ class ChatUI {
             // 导出前移除推理内容
             const filteredContent = this.removeThoughtsForExport(content);
 
-            const response = await fetch('/api/chat/export-message-docx', {
+            const response = await fetch(this.apiUrl('chat/export-message-docx'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1485,7 +1501,7 @@ class ChatUI {
             // 导出前移除推理内容
             const filteredContent = this.removeThoughtsForExport(content);
 
-            const response = await fetch('/api/chat/export-message-pdf', {
+            const response = await fetch(this.apiUrl('chat/export-message-pdf'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1765,7 +1781,7 @@ class ChatUI {
             const timeoutId = setTimeout(() => abortController.abort(), 12000); // 8秒超时
 
             // 调用后端API获取链接预览
-            const response = await fetch('/api/chat/link-preview', {
+            const response = await fetch(this.apiUrl('chat/link-preview'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -2659,7 +2675,7 @@ class ChatUI {
             const message = this.messageInput.value.trim();
 
             const history = this.convertToApiMessages();
-            const response = await fetch('/api/chat/stream', {
+            const response = await fetch(this.apiUrl('chat/stream'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -3032,7 +3048,7 @@ class ChatUI {
         if (!sessionsList) return;
 
         try {
-            const response = await fetch(`/api/sessions/${encodeURIComponent(this.uid)}`);
+            const response = await fetch(this.apiUrl(`sessions/${encodeURIComponent(this.uid)}`));
             if (!response.ok) {
                 throw new Error('获取会话列表失败');
             }
@@ -3183,7 +3199,7 @@ class ChatUI {
         }
 
         try {
-            const response = await fetch(`/api/sessions/${encodeURIComponent(this.uid)}/${encodeURIComponent(sessionId)}`);
+            const response = await fetch(this.apiUrl(`sessions/${encodeURIComponent(this.uid)}/${encodeURIComponent(sessionId)}`));
             if (!response.ok) {
                 throw new Error('获取会话详情失败');
             }
@@ -3318,7 +3334,7 @@ class ChatUI {
         };
 
         try {
-            const response = await fetch('/api/sessions/save', {
+            const response = await fetch(this.apiUrl('sessions/save'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -3391,7 +3407,7 @@ class ChatUI {
     // 删除会话
     async deleteSession(sessionId) {
         try {
-            const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+            const response = await fetch(this.apiUrl(`sessions/${encodeURIComponent(sessionId)}`), {
                 method: 'DELETE'
             });
 
@@ -3491,7 +3507,7 @@ class ChatUI {
             this.controller = new AbortController();
             const signal = this.controller.signal;
 
-            const url = `/api/chat/stream/${this.currentStreamId}/resume?offset=${this.receivedContentLength}`;
+            const url = this.apiUrl(`chat/stream/${this.currentStreamId}/resume?offset=${this.receivedContentLength}`);
             const response = await fetch(url, { signal });
 
             if (!response.ok) {
@@ -3614,7 +3630,7 @@ class ChatUI {
             this.controller = new AbortController();
             const signal = this.controller.signal;
 
-            const url = `/api/chat/stream/${streamId}/resume?offset=${offset}`;
+            const url = this.apiUrl(`chat/stream/${streamId}/resume?offset=${offset}`);
             const response = await fetch(url, { signal });
 
             if (!response.ok) {
