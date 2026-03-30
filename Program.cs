@@ -1,11 +1,12 @@
 using ChatBot.Controllers;
 using ChatBot.Models;
 using ChatBot.Web.Services;
+using Microsoft.Net.Http.Headers;
 using Microsoft.AspNetCore.ResponseCompression;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
-
+const string Http3AltSvcHeaderValue = "h3=\":36000\"; ma=86400";
 // 1. 定义 CORS 策略名
 var myAllowSpecificOrigins = "_myAllowSpecificOrigins";
 
@@ -50,12 +51,15 @@ builder.Services.AddScoped<ChatSessionRepository>();
 builder.Services.AddSingleton<StreamCacheService>();
 
 // 响应压缩（Brotli + Gzip）
-builder.Services.AddResponseCompression(options =>
+if (!builder.Environment.IsDevelopment())
 {
-    options.EnableForHttps = true;
-    options.Providers.Add<BrotliCompressionProvider>();
-    options.Providers.Add<GzipCompressionProvider>();
-});
+    builder.Services.AddResponseCompression(options =>
+    {
+        options.EnableForHttps = true;
+        options.Providers.Add<BrotliCompressionProvider>();
+        options.Providers.Add<GzipCompressionProvider>();
+    });
+}
 
 
 var app = builder.Build();
@@ -63,18 +67,41 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var sessionRepository = scope.ServiceProvider.GetRequiredService<ChatSessionRepository>();
-    await sessionRepository.EnsureTablesExistAsync();
+    //await sessionRepository.EnsureTablesExistAsync();
 }
 
+// 当应用部署在反向代理子路径下时（如 /chat），强制设置 PathBase。
+// 反向代理（Nginx 等）通常会剥离前缀再转发，因此入站路径不含前缀，
+// UsePathBase 无法自动匹配。这里通过中间件在每个请求上强制设置 PathBase，
+// 使 Url.Content("~/")、<base href> 等均能正确生成带前缀的 URL。
+// 在 appsettings.json 中配置: "PathBase": "/chat"
+var pathBase = app.Configuration["PathBase"];
+if (!string.IsNullOrEmpty(pathBase))
+{
+    app.Use((context, next) =>
+    {
+        context.Request.PathBase = new PathString(pathBase);
+        return next(context);
+    });
+}
 
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
+    app.UseResponseCompression();
 }
 
-app.UseResponseCompression();
 app.UseHttpsRedirection();
+//app.Use(static async (context, next) =>
+//{
+//    if (context.Request.IsHttps)
+//    {
+//        context.Response.Headers[HeaderNames.AltSvc] = Http3AltSvcHeaderValue;
+//    }
+
+//    await next(context);
+//});
 app.UseStaticFiles();
 app.MapStaticAssets();
 app.UseRouting();
