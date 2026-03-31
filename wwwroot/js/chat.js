@@ -1378,8 +1378,9 @@ class ChatUI {
                 });
             });
             const copyButton = this.createCopyButton(content);
-            exportPdfBtn.onclick = () => this.exportMessageToPdf(copyButton.dataset.copyContent);
-            exportDocxBtn.onclick = () => this.exportMessageToDocx(copyButton.dataset.copyContent);
+            copyButton.classList.add('message-copy-button');
+            exportPdfBtn.onclick = () => this.exportMessageToPdf(this.getMessageActionContent(messageDiv));
+            exportDocxBtn.onclick = () => this.exportMessageToDocx(this.getMessageActionContent(messageDiv));
             exportGroup.appendChild(deleteButton);
             exportGroup.appendChild(copyButton);
             actionsDiv.appendChild(exportGroup);
@@ -1421,8 +1422,9 @@ class ChatUI {
 
                 // 添加消息复制按钮
                 const copyButton = this.createCopyButton(content);
-                exportPdfBtn.onclick = () => this.exportMessageToPdf(copyButton.dataset.copyContent);
-                exportDocxBtn.onclick = () => this.exportMessageToDocx(copyButton.dataset.copyContent);
+                copyButton.classList.add('message-copy-button');
+                exportPdfBtn.onclick = () => this.exportMessageToPdf(this.getMessageActionContent(messageDiv));
+                exportDocxBtn.onclick = () => this.exportMessageToDocx(this.getMessageActionContent(messageDiv));
                 exportGroup.appendChild(deleteButton);
                 exportGroup.appendChild(copyButton);
                 actionsDiv.appendChild(exportGroup);
@@ -1467,7 +1469,16 @@ class ChatUI {
             });
 
             if (!response.ok) {
-                throw new Error('导出失败');
+                let errorMessage = '导出失败';
+
+                try {
+                    const errorResult = await response.json();
+                    errorMessage = errorResult?.error || errorMessage;
+                } catch {
+                    // ignore
+                }
+
+                throw new Error(errorMessage);
             }
 
             // 获取文件名
@@ -1492,7 +1503,7 @@ class ChatUI {
             window.URL.revokeObjectURL(url);
         } catch (error) {
             console.error('导出DOCX失败:', error);
-            alert('导出DOCX失败,请重试');
+            alert(`导出DOCX失败: ${error.message || '请重试'}`);
         }
     }
 
@@ -1512,7 +1523,16 @@ class ChatUI {
             });
 
             if (!response.ok) {
-                throw new Error('导出失败');
+                let errorMessage = '导出失败';
+
+                try {
+                    const errorResult = await response.json();
+                    errorMessage = errorResult?.error || errorMessage;
+                } catch {
+                    // ignore
+                }
+
+                throw new Error(errorMessage);
             }
 
             // 获取文件名
@@ -1537,7 +1557,7 @@ class ChatUI {
             window.URL.revokeObjectURL(url);
         } catch (error) {
             console.error('导出PDF失败:', error);
-            alert('导出PDF失败,请重试');
+            alert(`导出PDF失败: ${error.message || '请重试'}`);
         }
     }
 
@@ -1559,11 +1579,33 @@ class ChatUI {
         <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
     </svg>`;
     }
+
+    getMessageActionContent(messageElement) {
+        if (!messageElement) return '';
+
+        const contentDiv = messageElement.querySelector('.message-content');
+        const copyButton = messageElement.querySelector('.message-copy-button');
+
+        return copyButton?.dataset.copyContent || contentDiv?.dataset.rawContent || '';
+    }
+
+    updateMessageActionContent(messageElement, content) {
+        if (!messageElement) return;
+
+        const normalizedContent = content || '';
+        const copyButton = messageElement.querySelector('.message-copy-button');
+
+        if (copyButton) {
+            copyButton.dataset.copyContent = normalizedContent;
+        }
+    }
+
     createCopyButton(textToCopy) {
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-button';
         copyButton.title = '复制消息';
         copyButton.setAttribute('aria-label', 'Copy');
+        copyButton.dataset.copyContent = textToCopy || '';
         copyButton.innerHTML = `
         <svg class="icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
             <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5z"/>
@@ -2299,7 +2341,7 @@ class ChatUI {
                 this.currentMessageElement = messageDiv;
                 // 更新现有消息的内容
                 const contentDiv = this.currentMessageElement.querySelector('.message-content');
-                const copyButton = this.currentMessageElement.querySelector('.copy-button');
+                const copyButton = this.currentMessageElement.querySelector('.message-copy-button');
 
                 if (!contentDiv.dataset.rawContent) {
                     contentDiv.dataset.rawContent = '';
@@ -2312,7 +2354,7 @@ class ChatUI {
                     this.messages[this.messages.length - 1].images = this.uploadedImageUrls.slice(); // 确保 images 更新
                 }
 
-                copyButton.dataset.copyContent = contentDiv.dataset.rawContent;
+                this.updateMessageActionContent(this.currentMessageElement, contentDiv.dataset.rawContent);
 
                 try {
 
@@ -2375,7 +2417,7 @@ class ChatUI {
         } else {
             // 更新现有消息的内容
             const contentDiv = this.currentMessageElement.querySelector('.message-content');
-            const copyButton = this.currentMessageElement.querySelector('.copy-button');
+            const copyButton = this.currentMessageElement.querySelector('.message-copy-button');
 
             if (!contentDiv.dataset.rawContent) {
                 contentDiv.dataset.rawContent = '';
@@ -2388,7 +2430,7 @@ class ChatUI {
                 this.messages[this.messages.length - 1].images = this.uploadedImageUrls.slice(); // 确保 images 更新
             }
 
-            copyButton.dataset.copyContent = contentDiv.dataset.rawContent;
+            this.updateMessageActionContent(this.currentMessageElement, contentDiv.dataset.rawContent);
 
             try {
 
@@ -2474,6 +2516,7 @@ class ChatUI {
 
                     // 更新 rawContent 数据属性，以便于复制等功能
                     contentDiv.dataset.rawContent = this.messageBuffer;
+                    this.updateMessageActionContent(this.currentMessageElement, this.messageBuffer);
 
                     this.enhanceStreamingThoughtsBlocks(contentDiv);
 
@@ -2830,6 +2873,8 @@ class ChatUI {
                                 console.error('最终渲染错误:', e);
                             }
                         }
+
+                        this.updateMessageActionContent(this.currentMessageElement, contentDiv.dataset.rawContent);
                     }
 
                     try {
@@ -3558,10 +3603,7 @@ class ChatUI {
                     }
 
                     // 更新 copyButton 的内容，确保导出数据完整
-                    const copyButton = this.currentMessageElement.querySelector('.copy-button');
-                    if (copyButton) {
-                        copyButton.dataset.copyContent = this.messageBuffer;
-                    }
+                    this.updateMessageActionContent(this.currentMessageElement, this.messageBuffer);
 
                     try {
                         await this.renderMath(this.currentMessageElement);
@@ -3681,10 +3723,7 @@ class ChatUI {
                     }
 
                     // 更新 copyButton 的内容，确保导出数据完整
-                    const copyButton = this.currentMessageElement.querySelector('.copy-button');
-                    if (copyButton) {
-                        copyButton.dataset.copyContent = this.messageBuffer;
-                    }
+                    this.updateMessageActionContent(this.currentMessageElement, this.messageBuffer);
 
                     try {
                         await this.renderMath(this.currentMessageElement);
