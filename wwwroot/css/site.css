@@ -131,6 +131,7 @@ body {
     margin-bottom: 20px;
     position: relative;
     max-width: 100%;
+    min-width: 0;
     border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -192,8 +193,10 @@ body {
     /*xing*/
     flex: 1;
     min-width: 0;
+    max-width: 100%;
     margin-left: 2px;
     overflow-x: auto;
+    box-sizing: border-box;
 }
 
 .message-content waveform-player {
@@ -207,6 +210,10 @@ body {
 /* 消息容器样式 */
 .message-container {
     padding: 4px 8px;
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* 消息头部样式 */
@@ -1610,19 +1617,22 @@ img.image-preview-img {
 
 /* 消息内容中的图片样式 */
 .message-content img.message-image {
+    width: min(100%, 400px);
     max-width: 100%;
     height: auto;
     border-radius: 8px;
     margin: 8px 0;
     cursor: pointer;
     transition: all 0.2s ease;
+    display: block;
+    box-sizing: border-box;
     /* 添加过渡效果 */
 }
 
 /* AI助手消息中的图片样式 */
 .assistant-message .message-content img.message-image {
-    max-width: 400px;
-    display: block;
+    width: min(100%, 400px);
+    max-width: 100%;
 }
 
 /* 悬停效果 - 浅色模式 */

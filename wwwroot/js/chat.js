@@ -1453,6 +1453,46 @@ class ChatUI {
         return { messageDiv, contentDiv };
     }
 
+    normalizeMessageImages(container) {
+        if (!container) return;
+
+        const ownerMessage = container.closest('.message');
+        const isAssistantMessage = ownerMessage?.classList.contains('assistant-message');
+
+        container.querySelectorAll('img').forEach(img => {
+            img.classList.add('message-image');
+            img.style.width = isAssistantMessage ? 'min(100%, 500px)' : '100%';
+            img.style.height = 'auto';
+            img.style.maxWidth = '100%';
+            img.style.boxSizing = 'border-box';
+            img.style.marginTop = '8px';
+            img.style.marginBottom = '8px';
+
+            if (isAssistantMessage) {
+                img.style.display = 'block';
+                img.style.marginLeft = 'auto';
+                img.style.marginRight = 'auto';
+            } else {
+                img.style.marginLeft = '0';
+                img.style.marginRight = '0';
+            }
+
+            if (!img.dataset.fullsizeBound) {
+                img.addEventListener('dblclick', () => {
+                    this.showFullSizeImage(img.src);
+                });
+                img.dataset.fullsizeBound = 'true';
+            }
+
+            if (!img.dataset.resizeBound) {
+                img.addEventListener('load', () => {
+                    this.scrollCurrentMessageBottomIntoView(ownerMessage);
+                }, { once: true });
+                img.dataset.resizeBound = 'true';
+            }
+        });
+    }
+
     async exportMessageToDocx(content) {
         try {
             // 导出前移除推理内容
@@ -2359,15 +2399,7 @@ class ChatUI {
                 try {
 
                     contentDiv.innerHTML = marked.parse(contentDiv.dataset.rawContent);
-                    // 为所有图片添加双击事件和样式
-                    contentDiv.querySelectorAll('img').forEach(img => {
-                        // 添加样式类
-                        img.classList.add('message-image');
-                        // 添加双击事件
-                        img.addEventListener('dblclick', () => {
-                            this.showFullSizeImage(img.src);
-                        });
-                    });
+                    this.normalizeMessageImages(contentDiv);
                     // 处理所有代码块
                     contentDiv.querySelectorAll('pre code').forEach((block) => {
                         // 添加语言类标识
@@ -2435,15 +2467,7 @@ class ChatUI {
             try {
 
                 contentDiv.innerHTML = marked.parse(contentDiv.dataset.rawContent);
-                // 为所有图片添加双击事件和样式
-                contentDiv.querySelectorAll('img').forEach(img => {
-                    // 添加样式类
-                    img.classList.add('message-image');
-                    // 添加双击事件
-                    img.addEventListener('dblclick', () => {
-                        this.showFullSizeImage(img.src);
-                    });
-                });
+                this.normalizeMessageImages(contentDiv);
                 // 处理所有代码块
                 contentDiv.querySelectorAll('pre code').forEach((block) => {
                     // 添加语言类标识
@@ -2513,6 +2537,7 @@ class ChatUI {
 
                     // 渲染 markdown 内容
                     contentDiv.innerHTML = marked.parse(renderContent);
+                    this.normalizeMessageImages(contentDiv);
 
                     // 更新 rawContent 数据属性，以便于复制等功能
                     contentDiv.dataset.rawContent = this.messageBuffer;
@@ -2873,6 +2898,8 @@ class ChatUI {
                                 console.error('最终渲染错误:', e);
                             }
                         }
+
+                        this.normalizeMessageImages(contentDiv);
 
                         this.updateMessageActionContent(this.currentMessageElement, contentDiv.dataset.rawContent);
                     }
@@ -3600,6 +3627,7 @@ class ChatUI {
                         const processedContent = this.preprocessMarkdown(this.messageBuffer);
                         contentDiv.innerHTML = marked.parse(processedContent);
                         contentDiv.dataset.rawContent = this.messageBuffer;
+                        this.normalizeMessageImages(contentDiv);
                     }
 
                     // 更新 copyButton 的内容，确保导出数据完整
@@ -3720,6 +3748,7 @@ class ChatUI {
                         const processedContent = this.preprocessMarkdown(this.messageBuffer);
                         contentDiv.innerHTML = marked.parse(processedContent);
                         contentDiv.dataset.rawContent = this.messageBuffer;
+                        this.normalizeMessageImages(contentDiv);
                     }
 
                     // 更新 copyButton 的内容，确保导出数据完整

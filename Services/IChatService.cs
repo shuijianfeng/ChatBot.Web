@@ -14,10 +14,12 @@ using OpenAI.Chat;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
+using System.ComponentModel;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -3183,6 +3185,31 @@ namespace ChatBot.Web.Services
                     }
                 });
             tools.Add(
+                new
+                {
+                    type = "function",
+                    name = nameof(ElevenLabsVoiceChanger),
+                    description = "使用 ElevenLabs 对现有音频进行变声，返回新的音频链接和播放器 HTML。audioUrl 支持 http/https 地址，以及 share/media/... 或 /uploads/... 这类站内音频地址。",
+                    parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            audioUrl = new
+                            {
+                                type = "string",
+                                description = "待变声音频的地址"
+                            },
+                            voice = new
+                            {
+                                type = "string",
+                                description = "可选目标音色名称或 ElevenLabs voiceId，不传则使用默认音色"
+                            }
+                        },
+                        required = new[] { "audioUrl" }
+                    }
+                });
+            tools.Add(
                new
                {
                    type = "function",
@@ -3629,6 +3656,34 @@ namespace ChatBot.Web.Services
                     }
                 });
             tools.Add(
+                new
+                {
+                    type = "function",
+                    function = new
+                    {
+                        name = nameof(ElevenLabsVoiceChanger),
+                        description = "使用 ElevenLabs 对现有音频进行变声，返回新的音频链接和播放器 HTML。audioUrl 支持 http/https 地址，以及 share/media/... 或 /uploads/... 这类站内音频地址。",
+                        parameters = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                audioUrl = new
+                                {
+                                    type = "string",
+                                    description = "待变声音频的地址"
+                                },
+                                voice = new
+                                {
+                                    type = "string",
+                                    description = "可选目标音色名称或 ElevenLabs voiceId，不传则使用默认音色"
+                                }
+                            },
+                            required = new[] { "audioUrl" }
+                        }
+                    }
+                });
+            tools.Add(
                new
                {
                    type = "function",
@@ -3886,6 +3941,31 @@ namespace ChatBot.Web.Services
                             }
                         },
                         required = new[] { "texts" }
+                    }
+                });
+            tools.Add
+                (
+                new
+                {
+                    name = nameof(ElevenLabsVoiceChanger),
+                    description = "使用 ElevenLabs 对现有音频进行变声，返回新的音频链接和播放器 HTML。audioUrl 支持 http/https 地址，以及 share/media/... 或 /uploads/... 这类站内音频地址。",
+                    input_schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            audioUrl = new
+                            {
+                                type = "string",
+                                description = "待变声音频的地址"
+                            },
+                            voice = new
+                            {
+                                type = "string",
+                                description = "可选目标音色名称或 ElevenLabs voiceId，不传则使用默认音色"
+                            }
+                        },
+                        required = new[] { "audioUrl" }
                     }
                 });
 
@@ -4267,6 +4347,30 @@ namespace ChatBot.Web.Services
 
             tools.Add(new
             {
+                name = nameof(ElevenLabsVoiceChanger),
+                description = "使用 ElevenLabs 对现有音频进行变声，返回新的音频链接和播放器 HTML。audioUrl 支持 http/https 地址，以及 share/media/... 或 /uploads/... 这类站内音频地址。",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        audioUrl = new
+                        {
+                            type = "string",
+                            description = "待变声音频的地址"
+                        },
+                        voice = new
+                        {
+                            type = "string",
+                            description = "可选目标音色名称或 ElevenLabs voiceId，不传则使用默认音色"
+                        }
+                    },
+                    required = new[] { "audioUrl" }
+                }
+            });
+
+            tools.Add(new
+            {
                 name = nameof(SearchTrainTicket),
                 description = "获取指定日期的火车票、火车车次",
                 parameters = new
@@ -4339,78 +4443,7 @@ namespace ChatBot.Web.Services
                 }
             });
 
-            //// 携程酒店搜索
-            //tools.Add(new
-            //{
-            //    name = nameof(SearchCtripHotel),
-            //    description = "搜索携程酒店信息，获取指定城市的酒店列表、价格和评分",
-            //    parameters = new
-            //    {
-            //        type = "object",
-            //        properties = new
-            //        {
-            //            city = new { type = "string", description = "城市名称（如：上海、北京）" },
-            //            checkInDate = new { type = "string", description = "入住日期(格式:YYYY-MM-DD)" },
-            //            checkOutDate = new { type = "string", description = "离店日期(格式:YYYY-MM-DD)" },
-            //            keyword = new { type = "string", description = "搜索关键词（可选，如酒店名称、地标）" }
-            //        },
-            //        required = new[] { "city", "checkInDate", "checkOutDate" }
-            //    }
-            //});
-
-            //// 携程机票搜索
-            //tools.Add(new
-            //{
-            //    name = nameof(SearchCtripFlight),
-            //    description = "搜索携程机票信息，获取指定航线的航班列表和票价",
-            //    parameters = new
-            //    {
-            //        type = "object",
-            //        properties = new
-            //        {
-            //            departure = new { type = "string", description = "出发城市（如：北京、上海）" },
-            //            arrival = new { type = "string", description = "到达城市（如：广州、深圳）" },
-            //            date = new { type = "string", description = "出发日期(格式:YYYY-MM-DD)" },
-            //            isRoundTrip = new { type = "boolean", description = "是否往返（可选，默认单程）" }
-            //        },
-            //        required = new[] { "departure", "arrival", "date" }
-            //    }
-            //});
-
-            //// 携程景点门票搜索
-            //tools.Add(new
-            //{
-            //    name = nameof(SearchCtripAttraction),
-            //    description = "搜索携程景点门票信息，获取指定城市的景点列表和门票价格",
-            //    parameters = new
-            //    {
-            //        type = "object",
-            //        properties = new
-            //        {
-            //            city = new { type = "string", description = "城市名称（如：杭州、西安）" },
-            //            keyword = new { type = "string", description = "景点关键词（可选，如西湖、兵马俑）" }
-            //        },
-            //        required = new[] { "city" }
-            //    }
-            //});
-
-            //// 携程旅游产品搜索
-            //tools.Add(new
-            //{
-            //    name = nameof(SearchCtripTour),
-            //    description = "搜索携程旅游产品，获取跟团游、自由行等旅游线路信息",
-            //    parameters = new
-            //    {
-            //        type = "object",
-            //        properties = new
-            //        {
-            //            destination = new { type = "string", description = "目的地（如：三亚、丽江）" },
-            //            keyword = new { type = "string", description = "关键词（可选，如亲子游、蜜月）" }
-            //        },
-            //        required = new[] { "destination" }
-            //    }
-            //});
-
+            
 
             // 加载 MCP 工具
             if (_mcpClientManager.IsEnabled)
@@ -4776,6 +4809,27 @@ namespace ChatBot.Web.Services
                             : null;
 
                         return await TextToSpeech(texts, voice);
+                    }
+
+                case nameof(ElevenLabsVoiceChanger):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(pair.function.arguments);
+                        if (!argumentsJson.RootElement.TryGetProperty("audioUrl", out JsonElement audioUrlElement))
+                        {
+                            throw new ArgumentNullException("audioUrl", "The audioUrl argument is required.");
+                        }
+
+                        var audioUrl = audioUrlElement.GetString();
+                        if (string.IsNullOrWhiteSpace(audioUrl))
+                        {
+                            throw new ArgumentNullException("audioUrl", "The audioUrl argument cannot be null.");
+                        }
+
+                        string? voice = argumentsJson.RootElement.TryGetProperty("voice", out JsonElement voiceElement)
+                            ? voiceElement.GetString()
+                            : null;
+
+                        return await ElevenLabsVoiceChanger(audioUrl, voice);
                     }
 
                 case nameof(SearchTrainTicket):
@@ -5198,6 +5252,37 @@ namespace ChatBot.Web.Services
                         }
                         break;
                     }
+                case nameof(ElevenLabsVoiceChanger):
+                    {
+                        if (string.IsNullOrWhiteSpace(arguments) || arguments == "{}")
+                        {
+                            toolResult = "错误：变声参数不能为空";
+                            break;
+                        }
+
+                        using (JsonDocument argumentsJson = JsonDocument.Parse(arguments))
+                        {
+                            if (!argumentsJson.RootElement.TryGetProperty("audioUrl", out JsonElement audioUrlElement))
+                            {
+                                toolResult = "错误：缺少 audioUrl 参数";
+                                break;
+                            }
+
+                            var audioUrl = audioUrlElement.GetString();
+                            if (string.IsNullOrWhiteSpace(audioUrl))
+                            {
+                                toolResult = "错误：audioUrl 参数不能为空";
+                                break;
+                            }
+
+                            string? voice = argumentsJson.RootElement.TryGetProperty("voice", out JsonElement voiceElement)
+                                ? voiceElement.GetString()
+                                : null;
+
+                            toolResult = await ElevenLabsVoiceChanger(audioUrl, voice, cancellationToken);
+                        }
+                        break;
+                    }
                 case nameof(ReadFile):
                     {
                         if (string.IsNullOrWhiteSpace(arguments) || arguments == "{}")
@@ -5427,6 +5512,40 @@ namespace ChatBot.Web.Services
                         });
 
                         toolResult = await TextToSpeech(texts, voice, cancellationToken);
+                        break;
+                    }
+                case nameof(ElevenLabsVoiceChanger):
+                    {
+                        using JsonDocument argumentsJson = JsonDocument.Parse(argumentsJsonStr);
+                        if (!argumentsJson.RootElement.TryGetProperty("audioUrl", out JsonElement audioUrlElement))
+                        {
+                            throw new ArgumentNullException("audioUrl", "The audioUrl argument is required.");
+                        }
+
+                        var audioUrl = audioUrlElement.GetString();
+                        if (string.IsNullOrWhiteSpace(audioUrl))
+                        {
+                            throw new ArgumentNullException("audioUrl", "The audioUrl argument cannot be null.");
+                        }
+
+                        var voice = argumentsJson.RootElement.TryGetProperty("voice", out JsonElement voiceElement)
+                            ? voiceElement.GetString()
+                            : null;
+
+                        content.Add(new
+                        {
+                            type = "tool_use",
+                            id = id,
+                            name = name,
+                            input = new { audioUrl, voice }
+                        });
+                        toolsmessages.Add(new
+                        {
+                            role = "assistant",
+                            content = content
+                        });
+
+                        toolResult = await ElevenLabsVoiceChanger(audioUrl, voice, cancellationToken);
                         break;
                     }
                 case nameof(SearchTrainTicket):
@@ -6776,6 +6895,168 @@ namespace ChatBot.Web.Services
             }
         }
 
+        private async Task<string> ElevenLabsVoiceChanger(string audioUrl, string? voice = null, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(audioUrl))
+            {
+                return "变声失败：音频地址不能为空。";
+            }
+
+            try
+            {
+                var apiKey = ResolveElevenLabsApiKey();
+                if (string.IsNullOrWhiteSpace(apiKey))
+                {
+                    return "变声失败：未配置 ElevenLabs API Key。";
+                }
+
+                var sourceAudio = await ResolveAudioSourceAsync(audioUrl, cancellationToken);
+                if (sourceAudio.ErrorMessage != null)
+                {
+                    return sourceAudio.ErrorMessage;
+                }
+
+                if (sourceAudio.AudioBytes == null || sourceAudio.AudioBytes.Length == 0)
+                {
+                    return "变声失败：源音频为空。";
+                }
+
+                var voiceId = ResolveElevenLabsVoiceId(voice);
+                var voiceDisplayName = ResolveElevenLabsVoiceDisplayName(voiceId);
+                var baseEndpoint = _configuration["TextToSpeech:ElevenLabs:SpeechToSpeechApiEndpoint"]
+                    ?? "https://api.elevenlabs.io/v1/speech-to-speech";
+                var modelId = _configuration["TextToSpeech:ElevenLabs:SpeechToSpeechModel"]
+                    ?? "eleven_multilingual_sts_v2";
+                var outputFormat = (_configuration["TextToSpeech:ElevenLabs:ResponseFormat"]
+                    ?? "mp3_44100_128").ToLowerInvariant();
+                var apiEndpoint = baseEndpoint.TrimEnd('/') + "/" + Uri.EscapeDataString(voiceId)+ "/stream";
+                var maxAudioDurationSeconds = Math.Max(1, (int)Math.Floor(
+                    GetConfiguredDouble("TextToSpeech:ElevenLabs:SpeechToSpeechMaxAudioDurationSeconds") ?? 300d));
+
+                using var client = _httpClientFactory.CreateClient();
+                client.Timeout = TimeSpan.FromMinutes(5);
+                client.DefaultRequestHeaders.Add("xi-api-key", apiKey);
+                client.DefaultRequestHeaders.Add("Accept", "audio/mpeg");
+
+                var normalizedResponseFormat = NormalizeElevenLabsResponseFormat(outputFormat);
+                var streamingOutputFormat = NormalizeProgressiveElevenLabsResponseFormat(outputFormat);
+                var streamEnabled = GetConfiguredBool("TextToSpeech:ElevenLabs:Stream")
+                    ?? GetConfiguredBool("TextToSpeech:ElevenLabs:stream")
+                    ?? false;
+                var tempDirectory = Path.Combine(Path.GetTempPath(), "ChatBot.Web", "elevenlabs-sts", Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tempDirectory);
+                var shouldDeleteTempDirectoryImmediately = true;
+
+                try
+                {
+                    var sourceFileName = string.IsNullOrWhiteSpace(sourceAudio.FileName)
+                        ? $"source.{ResolveTextToSpeechExtension(string.Empty, sourceAudio.AudioContentType)}"
+                        : sourceAudio.FileName;
+                    var sourceExtension = Path.GetExtension(sourceFileName);
+                    if (string.IsNullOrWhiteSpace(sourceExtension))
+                    {
+                        sourceFileName = $"{Path.GetFileNameWithoutExtension(sourceFileName)}.{ResolveTextToSpeechExtension(string.Empty, sourceAudio.AudioContentType)}";
+                    }
+
+                    var sourcePath = Path.Combine(tempDirectory, Path.GetFileName(sourceFileName));
+                    await System.IO.File.WriteAllBytesAsync(sourcePath, sourceAudio.AudioBytes, cancellationToken);
+
+                    var preparedSourcePath = await ExtractAudioTrackForElevenLabsAsync(sourcePath, cancellationToken);
+
+                    var (segmentPaths, wasProcessedByFfmpeg) = await SplitAudioForElevenLabsSpeechToSpeechAsync(preparedSourcePath, maxAudioDurationSeconds, cancellationToken);
+
+                    if (streamEnabled)
+                    {
+                        shouldDeleteTempDirectoryImmediately = false;
+                        return CreateStreamingVoiceChangeResponse(
+                            tempDirectory,
+                            segmentPaths,
+                            apiKey,
+                            apiEndpoint,
+                            modelId,
+                            streamingOutputFormat,
+                            voiceDisplayName);
+                    }
+
+                    var convertedAudioSegments = new List<(string FilePath, string? AudioContentType)>();
+                    var convertedExtension = ResolveTextToSpeechExtension(normalizedResponseFormat, null);
+                    var convertedDirectory = Path.Combine(tempDirectory, "converted");
+                    Directory.CreateDirectory(convertedDirectory);
+
+                    for (int segmentIndex = 0; segmentIndex < segmentPaths.Count; segmentIndex++)
+                    {
+                        var segmentPath = segmentPaths[segmentIndex];
+                        var segmentBytes = await System.IO.File.ReadAllBytesAsync(segmentPath, cancellationToken);
+                        var segmentFileName = Path.GetFileName(segmentPath);
+                        var segmentContentType = ResolveAudioContentTypeFromFormat(Path.GetExtension(segmentPath).Trim('.'));
+                        var convertedSegmentPath = Path.Combine(convertedDirectory, $"converted-{segmentIndex:D3}.{convertedExtension}");
+
+                        var segmentResult = await RequestElevenLabsSpeechToSpeechSegmentAsync(
+                            client,
+                            apiEndpoint,
+                            modelId,
+                            outputFormat,
+                            segmentBytes,
+                            segmentFileName,
+                            segmentContentType,
+                            convertedSegmentPath,
+                            cancellationToken);
+
+                        if (segmentResult.ErrorMessage != null)
+                        {
+                            if (string.Equals(segmentResult.ErrorCode, "audio_too_long", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(segmentResult.ErrorCode, "invalid_audio_duration", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return wasProcessedByFfmpeg
+                                    ? $"变声失败：自动分段后的音频仍超过 ElevenLabs 的 {maxAudioDurationSeconds} 秒限制，请进一步缩短源音频后重试。"
+                                    : $"变声失败：源音频超过 ElevenLabs 的 {maxAudioDurationSeconds} 秒限制，且当前环境无法自动切分。请安装 ffmpeg 或在配置中设置 TextToSpeech:ElevenLabs:FfmpegPath。";
+                            }
+
+                            return segmentResult.ErrorMessage;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(segmentResult.FilePath) || !System.IO.File.Exists(segmentResult.FilePath))
+                        {
+                            return "变声失败：ElevenLabs 未返回有效音频。";
+                        }
+
+                        convertedAudioSegments.Add((segmentResult.FilePath, segmentResult.AudioContentType));
+                    }
+
+                    if (convertedAudioSegments.Count == 0)
+                    {
+                        return "变声失败：没有生成任何变声音频片段。";
+                    }
+
+                    if (convertedAudioSegments.Count == 1)
+                    {
+                        var single = convertedAudioSegments[0];
+                        return await SaveGeneratedVoiceChangeFromFileAsync(single.FilePath, voiceDisplayName, normalizedResponseFormat, single.AudioContentType, cancellationToken);
+                    }
+
+                    return await SaveCombinedVoiceChangeAsync(convertedAudioSegments, voiceDisplayName, normalizedResponseFormat, cancellationToken);
+                }
+                finally
+                {
+                    try
+                    {
+                        if (shouldDeleteTempDirectoryImmediately && Directory.Exists(tempDirectory))
+                        {
+                            Directory.Delete(tempDirectory, true);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ElevenLabs 变声失败。AudioUrl: {AudioUrl}", audioUrl);
+                return $"ElevenLabs 变声时发生异常: {ex.Message}";
+            }
+        }
+
         private string? ResolveTtsApiKey(string providerConfigSection, string fallbackEnvVar)
         {
             var envName = _configuration[$"TextToSpeech:{providerConfigSection}:ApiKeyEnvironmentName"];
@@ -6791,6 +7072,52 @@ namespace ChatBot.Web.Services
         private string? ResolveBytedanceTtsApiKey() => ResolveTtsApiKey("Bytedance", "BytedanceKey");
         private string? ResolveChatTtsApiKey() => ResolveTtsApiKey("ChatTTS", "OpenAiKey");
         private string? ResolveElevenLabsApiKey() => ResolveTtsApiKey("ElevenLabs", "ElevenLabsKey");
+
+        private string ResolveElevenLabsVoiceId(string? voice)
+        {
+            var voiceSection = _configuration.GetSection("TextToSpeech:ElevenLabs");
+            var configuredVoices = voiceSection
+                .GetChildren()
+                .Where(section => section.Key.StartsWith("Voice", StringComparison.OrdinalIgnoreCase))
+                .Select(section => new
+                {
+                    Key = section.Key,
+                    Name = section["Name"],
+                    VoiceId = section["Voiceid"]
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.VoiceId))
+                .ToList();
+
+            if (string.IsNullOrWhiteSpace(voice))
+            {
+                return configuredVoices.FirstOrDefault(item => string.Equals(item.Key, "Voice", StringComparison.OrdinalIgnoreCase))?.VoiceId
+                    ?? configuredVoices.FirstOrDefault()?.VoiceId
+                    ?? "JBFqnCBsd6RMkjVDRZzb";
+            }
+
+            var matchedVoice = configuredVoices.FirstOrDefault(item =>
+                string.Equals(item.Key, voice, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(item.Name, voice, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(item.VoiceId, voice, StringComparison.OrdinalIgnoreCase));
+
+            return matchedVoice?.VoiceId ?? voice;
+        }
+
+        private string ResolveElevenLabsVoiceDisplayName(string voiceId)
+        {
+            var configuredVoice = _configuration
+                .GetSection("TextToSpeech:ElevenLabs")
+                .GetChildren()
+                .Where(section => section.Key.StartsWith("Voice", StringComparison.OrdinalIgnoreCase))
+                .Select(section => new
+                {
+                    Name = section["Name"],
+                    VoiceId = section["Voiceid"]
+                })
+                .FirstOrDefault(item => string.Equals(item.VoiceId, voiceId, StringComparison.OrdinalIgnoreCase));
+
+            return configuredVoice?.Name ?? voiceId;
+        }
 
         private double? GetConfiguredDouble(string key)
         {
@@ -7191,6 +7518,552 @@ namespace ChatBot.Web.Services
             return $"已生成语音文件。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
         }
 
+        private async Task<string> SaveGeneratedVoiceChangeAsync(byte[] audioBytes, string voice, string responseFormat, string? audioContentType, CancellationToken cancellationToken)
+        {
+            var mediaDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Sharedmedia");
+            Directory.CreateDirectory(mediaDirectory);
+
+            var extension = ResolveTextToSpeechExtension(responseFormat, audioContentType, null);
+            var fileName = $"voice-change-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid():N}.{extension}";
+            var filePath = Path.Combine(mediaDirectory, fileName);
+
+            await System.IO.File.WriteAllBytesAsync(filePath, audioBytes, cancellationToken);
+
+            var relativeUrl = $"share/media/{fileName}";
+            var safeLabel = System.Net.WebUtility.HtmlEncode($"变声结果 - ElevenLabs {voice}");
+            return $"已完成 ElevenLabs 变声。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+        }
+
+        private async Task<string> SaveGeneratedVoiceChangeFromFileAsync(string sourceFilePath, string voice, string responseFormat, string? audioContentType, CancellationToken cancellationToken)
+        {
+            var mediaDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Sharedmedia");
+            Directory.CreateDirectory(mediaDirectory);
+
+            var extension = ResolveTextToSpeechExtension(responseFormat, audioContentType, null);
+            var fileName = $"voice-change-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid():N}.{extension}";
+            var filePath = Path.Combine(mediaDirectory, fileName);
+
+            await using (var sourceStream = System.IO.File.OpenRead(sourceFilePath))
+            await using (var destinationStream = System.IO.File.Create(filePath))
+            {
+                await sourceStream.CopyToAsync(destinationStream, cancellationToken);
+            }
+
+            var relativeUrl = $"share/media/{fileName}";
+            var safeLabel = System.Net.WebUtility.HtmlEncode($"变声结果 - ElevenLabs {voice}");
+            return $"已完成 ElevenLabs 变声。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+        }
+
+        private async Task<string> SaveCombinedVoiceChangeAsync(
+            List<(string FilePath, string? AudioContentType)> segmentResults,
+            string voice,
+            string responseFormat,
+            CancellationToken cancellationToken)
+        {
+            if (segmentResults.Count == 0)
+            {
+                return "变声失败：没有可用的变声音频分段。";
+            }
+
+            if (segmentResults.Count == 1)
+            {
+                var single = segmentResults[0];
+                return await SaveGeneratedVoiceChangeFromFileAsync(single.FilePath, voice, responseFormat, single.AudioContentType, cancellationToken);
+            }
+
+            var firstSegmentContentType = segmentResults[0].AudioContentType;
+            var normalizedFormat = ResolveTextToSpeechExtension(responseFormat, firstSegmentContentType, null);
+
+            if (string.Equals(normalizedFormat, "wav", StringComparison.OrdinalIgnoreCase))
+            {
+                var wavSegments = new List<byte[]>(segmentResults.Count);
+                foreach (var segment in segmentResults)
+                {
+                    wavSegments.Add(await System.IO.File.ReadAllBytesAsync(segment.FilePath, cancellationToken));
+                }
+
+                var mergedWaveBytes = MergeWaveAudio(wavSegments);
+                return await SaveGeneratedVoiceChangeAsync(mergedWaveBytes, voice, normalizedFormat, firstSegmentContentType, cancellationToken);
+            }
+
+            var mediaDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data", "Sharedmedia");
+            Directory.CreateDirectory(mediaDirectory);
+
+            var extension = ResolveTextToSpeechExtension(normalizedFormat, firstSegmentContentType, null);
+            var fileName = $"voice-change-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid():N}.{extension}";
+            var filePath = Path.Combine(mediaDirectory, fileName);
+
+            await using (var outputStream = System.IO.File.Create(filePath))
+            {
+                foreach (var segment in segmentResults)
+                {
+                    await using var inputStream = System.IO.File.OpenRead(segment.FilePath);
+                    await inputStream.CopyToAsync(outputStream, cancellationToken);
+                }
+            }
+
+            var relativeUrl = $"share/media/{fileName}";
+            var safeLabel = System.Net.WebUtility.HtmlEncode($"变声结果 - ElevenLabs {voice}");
+            return $"已完成 ElevenLabs 变声。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+        }
+
+        private async Task<(List<string> SegmentPaths, bool WasProcessedByFfmpeg)> SplitAudioForElevenLabsSpeechToSpeechAsync(string sourcePath, int maxAudioDurationSeconds, CancellationToken cancellationToken)
+        {
+            var ffmpegPath = _configuration["TextToSpeech:ElevenLabs:FfmpegPath"] ?? "ffmpeg";
+            var durationSeconds = await GetAudioDurationSecondsAsync(sourcePath, ffmpegPath, cancellationToken);
+            if (durationSeconds.HasValue && durationSeconds.Value <= maxAudioDurationSeconds)
+            {
+                return (new List<string> { sourcePath }, false);
+            }
+
+            var segmentDirectory = Path.Combine(Path.GetDirectoryName(sourcePath) ?? Path.GetTempPath(), "segments");
+            Directory.CreateDirectory(segmentDirectory);
+            var segmentDurationSeconds = Math.Max(1, maxAudioDurationSeconds - 5);
+            var sourceExtension = Path.GetExtension(sourcePath).ToLowerInvariant();
+            var outputExtension = sourceExtension switch
+            {
+                ".m4a" or ".mp4" => "m4a",
+                ".aac" => "aac",
+                ".wav" => "wav",
+                _ => "mp3"
+            };
+            var audioCodec = outputExtension switch
+            {
+                "m4a" or "aac" => "aac",
+                "wav" => "pcm_s16le",
+                _ => "libmp3lame"
+            };
+            var outputFormat = outputExtension switch
+            {
+                "m4a" => "ipod",
+                "aac" => "adts",
+                "wav" => "wav",
+                _ => string.Empty
+            };
+
+            var segmentPaths = new List<string>();
+            var totalDurationSeconds = durationSeconds;
+            var maxSegmentCount = totalDurationSeconds.HasValue
+                ? Math.Max(1, (int)Math.Ceiling(totalDurationSeconds.Value / segmentDurationSeconds))
+                : 128;
+
+            _logger.LogInformation(
+                "开始切分 ElevenLabs 变声音频。SourcePath: {SourcePath}, SourceExtension: {SourceExtension}, DurationSeconds: {DurationSeconds}, MaxAudioDurationSeconds: {MaxAudioDurationSeconds}, SegmentDurationSeconds: {SegmentDurationSeconds}, OutputExtension: {OutputExtension}",
+                sourcePath,
+                sourceExtension,
+                totalDurationSeconds,
+                maxAudioDurationSeconds,
+                segmentDurationSeconds,
+                outputExtension);
+
+            for (var segmentIndex = 0; segmentIndex < maxSegmentCount; segmentIndex++)
+            {
+                var offsetSeconds = segmentIndex * segmentDurationSeconds;
+                if (totalDurationSeconds.HasValue && offsetSeconds >= totalDurationSeconds.Value - 0.001d)
+                {
+                    break;
+                }
+
+                var currentSegmentDuration = totalDurationSeconds.HasValue
+                    ? Math.Min(segmentDurationSeconds, totalDurationSeconds.Value - offsetSeconds)
+                    : segmentDurationSeconds;
+                var segmentPath = Path.Combine(segmentDirectory, $"segment-{segmentIndex:D3}.{outputExtension}");
+
+                var ffmpegArgumentsBuilder = new StringBuilder();
+                ffmpegArgumentsBuilder.AppendFormat(
+                    CultureInfo.InvariantCulture,
+                    "-hide_banner -loglevel error -y -ss {0:F3} -t {1:F3} -i \"{2}\" -vn ",
+                    offsetSeconds,
+                    currentSegmentDuration,
+                    sourcePath);
+                if (!string.IsNullOrWhiteSpace(outputFormat))
+                {
+                    ffmpegArgumentsBuilder.Append("-f ").Append(outputFormat).Append(' ');
+                }
+
+                ffmpegArgumentsBuilder.Append("-acodec ").Append(audioCodec).Append(' ');
+                if (audioCodec == "libmp3lame")
+                {
+                    ffmpegArgumentsBuilder.Append("-b:a 192k ");
+                }
+                else if (audioCodec == "aac")
+                {
+                    ffmpegArgumentsBuilder.Append("-b:a 192k -movflags +faststart ");
+                }
+                else if (audioCodec == "pcm_s16le")
+                {
+                    ffmpegArgumentsBuilder.Append("-ar 44100 -ac 1 ");
+                }
+
+                ffmpegArgumentsBuilder.Append('"').Append(segmentPath).Append('"');
+
+                var ffmpegArguments = ffmpegArgumentsBuilder.ToString();
+
+                var ffmpegResult = await RunProcessAsync(ffmpegPath, ffmpegArguments, cancellationToken);
+                if (ffmpegResult.StartFailed)
+                {
+                    _logger.LogWarning("未能启动 ffmpeg，ElevenLabs 变声将尝试直接上传原音频。Message: {Message}", ffmpegResult.StandardError);
+                    return (new List<string> { sourcePath }, false);
+                }
+
+                if (ffmpegResult.ExitCode != 0)
+                {
+                    _logger.LogWarning("ffmpeg 切分音频失败，将尝试直接上传原音频。ExitCode: {ExitCode}, Error: {Error}", ffmpegResult.ExitCode, ffmpegResult.StandardError);
+                    return (new List<string> { sourcePath }, false);
+                }
+
+                if (!System.IO.File.Exists(segmentPath))
+                {
+                    if (segmentPaths.Count > 0)
+                    {
+                        break;
+                    }
+
+                    _logger.LogWarning("ffmpeg 未生成预期的音频分段文件。SegmentPath: {SegmentPath}", segmentPath);
+                    return (new List<string> { sourcePath }, false);
+                }
+
+                var fileInfo = new FileInfo(segmentPath);
+                if (fileInfo.Length == 0)
+                {
+                    try
+                    {
+                        System.IO.File.Delete(segmentPath);
+                    }
+                    catch
+                    {
+                    }
+
+                    if (segmentPaths.Count > 0)
+                    {
+                        break;
+                    }
+
+                    _logger.LogWarning("ffmpeg 生成了空音频分段文件。SegmentPath: {SegmentPath}", segmentPath);
+                    return (new List<string> { sourcePath }, false);
+                }
+
+                segmentPaths.Add(segmentPath);
+
+                if (!totalDurationSeconds.HasValue)
+                {
+                    var actualSegmentDuration = await GetAudioDurationSecondsAsync(segmentPath, ffmpegPath, cancellationToken);
+                    if (actualSegmentDuration.HasValue && actualSegmentDuration.Value < segmentDurationSeconds - 1)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            if (segmentPaths.Count == 0)
+            {
+                _logger.LogWarning("ffmpeg 未生成任何音频分段，将尝试直接上传原音频。SourcePath: {SourcePath}", sourcePath);
+                return (new List<string> { sourcePath }, false);
+            }
+
+            _logger.LogInformation(
+                "完成 ElevenLabs 变声音频切分。SourcePath: {SourcePath}, SegmentCount: {SegmentCount}, SegmentPaths: {SegmentPaths}",
+                sourcePath,
+                segmentPaths.Count,
+                string.Join(", ", segmentPaths.Select(Path.GetFileName)));
+
+            return (segmentPaths, true);
+        }
+
+        private async Task<string> ExtractAudioTrackForElevenLabsAsync(string sourcePath, CancellationToken cancellationToken)
+        {
+            var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+            if (extension is not (".mp4" or ".m4v" or ".mov" or ".mkv" or ".avi" or ".webm" or ".ts" or ".mts" or ".m2ts"))
+            {
+                return sourcePath;
+            }
+
+            var ffmpegPath = _configuration["TextToSpeech:ElevenLabs:FfmpegPath"] ?? "ffmpeg";
+            var audioPath = Path.Combine(
+                Path.GetDirectoryName(sourcePath) ?? Path.GetTempPath(),
+                $"{Path.GetFileNameWithoutExtension(sourcePath)}-audio.m4a");
+            var ffmpegArguments = string.Format(
+                CultureInfo.InvariantCulture,
+                "-hide_banner -loglevel error -y -i \"{0}\" -vn -acodec aac -b:a 192k -movflags +faststart \"{1}\"",
+                sourcePath,
+                audioPath);
+
+            var ffmpegResult = await RunProcessAsync(ffmpegPath, ffmpegArguments, cancellationToken);
+            if (ffmpegResult.StartFailed)
+            {
+                _logger.LogWarning("未能启动 ffmpeg，无法从视频中分离音频，将继续直接使用原文件。SourcePath: {SourcePath}, Message: {Message}", sourcePath, ffmpegResult.StandardError);
+                return sourcePath;
+            }
+
+            if (ffmpegResult.ExitCode != 0)
+            {
+                _logger.LogWarning("ffmpeg 分离视频音频失败，将继续直接使用原文件。SourcePath: {SourcePath}, ExitCode: {ExitCode}, Error: {Error}", sourcePath, ffmpegResult.ExitCode, ffmpegResult.StandardError);
+                return sourcePath;
+            }
+
+            if (!System.IO.File.Exists(audioPath))
+            {
+                _logger.LogWarning("ffmpeg 未生成预期的音频文件，将继续直接使用原文件。SourcePath: {SourcePath}, AudioPath: {AudioPath}", sourcePath, audioPath);
+                return sourcePath;
+            }
+
+            var audioFileInfo = new FileInfo(audioPath);
+            if (audioFileInfo.Length == 0)
+            {
+                _logger.LogWarning("ffmpeg 生成了空音频文件，将继续直接使用原文件。SourcePath: {SourcePath}, AudioPath: {AudioPath}", sourcePath, audioPath);
+                return sourcePath;
+            }
+
+            _logger.LogInformation("已从视频中分离出音频。SourcePath: {SourcePath}, AudioPath: {AudioPath}, AudioSize: {AudioSize}", sourcePath, audioPath, audioFileInfo.Length);
+            return audioPath;
+        }
+
+        private async Task<double?> GetAudioDurationSecondsAsync(string sourcePath, string ffmpegPath, CancellationToken cancellationToken)
+        {
+            var ffprobePath = _configuration["TextToSpeech:ElevenLabs:FfprobePath"];
+            if (string.IsNullOrWhiteSpace(ffprobePath))
+            {
+                ffprobePath = Path.GetFileName(ffmpegPath).Equals("ffmpeg.exe", StringComparison.OrdinalIgnoreCase)
+                    ? Path.Combine(Path.GetDirectoryName(ffmpegPath) ?? string.Empty, "ffprobe.exe")
+                    : Path.GetFileName(ffmpegPath).Equals("ffmpeg", StringComparison.OrdinalIgnoreCase)
+                        ? Path.Combine(Path.GetDirectoryName(ffmpegPath) ?? string.Empty, "ffprobe")
+                        : "ffprobe";
+            }
+
+            var ffprobeArguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{sourcePath}\"";
+            var ffprobeResult = await RunProcessAsync(ffprobePath, ffprobeArguments, cancellationToken);
+            if (!ffprobeResult.StartFailed
+                && ffprobeResult.ExitCode == 0
+                && double.TryParse(ffprobeResult.StandardOutput.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var ffprobeDuration)
+                && ffprobeDuration > 0)
+            {
+                return ffprobeDuration;
+            }
+
+            var ffmpegProbeArguments = $"-i \"{sourcePath}\" -f null -";
+            var ffmpegProbeResult = await RunProcessAsync(ffmpegPath, ffmpegProbeArguments, cancellationToken);
+            var durationMatch = Regex.Match(ffmpegProbeResult.StandardError, @"Duration:\s*(?<hours>\d{2}):(?<minutes>\d{2}):(?<seconds>\d{2}(?:\.\d+)?)");
+            if (durationMatch.Success
+                && int.TryParse(durationMatch.Groups["hours"].Value, out var hours)
+                && int.TryParse(durationMatch.Groups["minutes"].Value, out var minutes)
+                && double.TryParse(durationMatch.Groups["seconds"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds))
+            {
+                return (hours * 3600d) + (minutes * 60d) + seconds;
+            }
+
+            return null;
+        }
+
+        private async Task<(string? FilePath, string? AudioContentType, string? ErrorMessage, string? ErrorCode)> RequestElevenLabsSpeechToSpeechSegmentAsync(
+            HttpClient client,
+            string apiEndpoint,
+            string modelId,
+            string outputFormat,
+            byte[] audioBytes,
+            string fileName,
+            string audioContentType,
+            string destinationPath,
+            CancellationToken cancellationToken)
+        {
+            using var formData = new MultipartFormDataContent();
+            using var audioContent = new ByteArrayContent(audioBytes);
+            audioContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(audioContentType);
+            formData.Add(audioContent, "audio", fileName);
+            formData.Add(new StringContent(modelId), "model_id");
+            formData.Add(new StringContent(outputFormat), "output_format");
+
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+            {
+                Content = formData
+            };
+            using var response = await client.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                return (null, null, $"变声失败: StatusCode {response.StatusCode}\n{errorContent}", ExtractElevenLabsErrorCode(errorContent));
+            }
+
+            var resultContentType = response.Content.Headers.ContentType?.MediaType;
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? Path.GetTempPath());
+
+            await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+            await responseStream.CopyToAsync(fileStream, cancellationToken);
+            await fileStream.FlushAsync(cancellationToken);
+
+            return (destinationPath, resultContentType, null, null);
+        }
+
+        private static string? ExtractElevenLabsErrorCode(string errorContent)
+        {
+            if (string.IsNullOrWhiteSpace(errorContent))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(errorContent);
+                var root = document.RootElement;
+
+                if (root.TryGetProperty("detail", out var detailElement) && detailElement.ValueKind == JsonValueKind.Object)
+                {
+                    if (detailElement.TryGetProperty("code", out var codeElement) && codeElement.ValueKind == JsonValueKind.String)
+                    {
+                        return codeElement.GetString();
+                    }
+
+                    if (detailElement.TryGetProperty("status", out var statusElement) && statusElement.ValueKind == JsonValueKind.String)
+                    {
+                        return statusElement.GetString();
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+            }
+
+            return null;
+        }
+
+        private static async Task<(int ExitCode, string StandardOutput, string StandardError, bool StartFailed)> RunProcessAsync(string fileName, string arguments, CancellationToken cancellationToken)
+        {
+            try
+            {
+                using var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = fileName,
+                        Arguments = arguments,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        StandardOutputEncoding = Encoding.UTF8,
+                        StandardErrorEncoding = Encoding.UTF8
+                    }
+                };
+
+                if (!process.Start())
+                {
+                    return (-1, string.Empty, $"无法启动进程 {fileName}", true);
+                }
+
+                var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+                var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+                await process.WaitForExitAsync(cancellationToken);
+
+                return (process.ExitCode, await standardOutputTask, await standardErrorTask, false);
+            }
+            catch (Exception ex) when (ex is Win32Exception || ex is InvalidOperationException)
+            {
+                return (-1, string.Empty, ex.Message, true);
+            }
+        }
+
+        private async Task<(byte[]? AudioBytes, string FileName, string AudioContentType, string? ErrorMessage)> ResolveAudioSourceAsync(string audioSource, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(audioSource))
+            {
+                return (null, string.Empty, "audio/mpeg", "变声失败：音频地址不能为空。");
+            }
+
+            var normalizedSource = audioSource.Trim();
+            if (Uri.TryCreate(normalizedSource, UriKind.Absolute, out var absoluteUri))
+            {
+                if (absoluteUri.Scheme == Uri.UriSchemeHttp || absoluteUri.Scheme == Uri.UriSchemeHttps)
+                {
+                    using var client = _httpClientFactory.CreateClient();
+                    client.Timeout = TimeSpan.FromMinutes(2);
+                    using var response = await client.GetAsync(absoluteUri, cancellationToken);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                        return (null, string.Empty, "audio/mpeg", $"变声失败：下载源音频失败。StatusCode {response.StatusCode}\n{errorContent}");
+                    }
+
+                    var audioBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                    var fileName = Path.GetFileName(absoluteUri.LocalPath);
+                    if (string.IsNullOrWhiteSpace(fileName))
+                    {
+                        fileName = $"source-{Guid.NewGuid():N}.mp3";
+                    }
+
+                    var audioContentType = response.Content.Headers.ContentType?.MediaType;
+                    if (string.IsNullOrWhiteSpace(audioContentType) || !audioContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        audioContentType = ResolveAudioContentTypeFromFormat(Path.GetExtension(fileName).Trim('.'));
+                    }
+
+                    return (audioBytes, fileName, audioContentType, null);
+                }
+
+                if (absoluteUri.IsFile)
+                {
+                    return await ReadAllowedLocalAudioFileAsync(absoluteUri.LocalPath, cancellationToken);
+                }
+            }
+
+            var localPath = ResolveAllowedAudioLocalPath(normalizedSource);
+            if (localPath == null)
+            {
+                return (null, string.Empty, "audio/mpeg", "变声失败：仅支持 http/https 音频地址，或站内 share/media/...、uploads/... 音频地址。");
+            }
+
+            return await ReadAllowedLocalAudioFileAsync(localPath, cancellationToken);
+        }
+
+        private async Task<(byte[]? AudioBytes, string FileName, string AudioContentType, string? ErrorMessage)> ReadAllowedLocalAudioFileAsync(string filePath, CancellationToken cancellationToken)
+        {
+            if (!System.IO.File.Exists(filePath))
+            {
+                return (null, string.Empty, "audio/mpeg", $"变声失败：找不到源音频文件 '{filePath}'。");
+            }
+
+            var audioBytes = await System.IO.File.ReadAllBytesAsync(filePath, cancellationToken);
+            var fileName = Path.GetFileName(filePath);
+            var audioContentType = ResolveAudioContentTypeFromFormat(Path.GetExtension(filePath).Trim('.'));
+            return (audioBytes, fileName, audioContentType, null);
+        }
+
+        private string? ResolveAllowedAudioLocalPath(string audioSource)
+        {
+            var source = audioSource.Trim();
+            var trimmedSource = source.TrimStart('~').TrimStart('/').TrimStart('\\');
+
+            if (trimmedSource.StartsWith("share/media/", StringComparison.OrdinalIgnoreCase)
+                || trimmedSource.StartsWith("share\\media\\", StringComparison.OrdinalIgnoreCase))
+            {
+                var fileName = Path.GetFileName(trimmedSource);
+                return Path.Combine(Directory.GetCurrentDirectory(), "Data", "Sharedmedia", fileName);
+            }
+
+            if (trimmedSource.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
+                || trimmedSource.StartsWith("uploads\\", StringComparison.OrdinalIgnoreCase))
+            {
+                var fileName = Path.GetFileName(trimmedSource);
+                return Path.Combine(_webHostEnvironment.WebRootPath, "uploads", fileName);
+            }
+
+            if (!Path.IsPathRooted(source))
+            {
+                return null;
+            }
+
+            var fullPath = Path.GetFullPath(source);
+            var uploadsRoot = Path.GetFullPath(Path.Combine(_webHostEnvironment.WebRootPath, "uploads"));
+            var sharedMediaRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "Data", "Sharedmedia"));
+
+            if (fullPath.StartsWith(uploadsRoot, StringComparison.OrdinalIgnoreCase)
+                || fullPath.StartsWith(sharedMediaRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return fullPath;
+            }
+
+            return null;
+        }
+
         private string CreateStreamingSpeechResponse(string provider, List<string> inputtexts, string? voice)
         {
             var voicename = _configuration[$"TextToSpeech:{provider}:Voice:Name"]??string.Empty;
@@ -7330,6 +8203,161 @@ namespace ChatBot.Web.Services
             var audioContentType = ResolveAudioContentTypeFromFormat(responseFormat);
             //return $"已生成流式语音。\n\n可直接向用户返回以下播放器：\n\n<audio controls preload=\"none\" title=\"{safeLabel}\">\n  <source src=\"{relativeUrl}\" type=\"{audioContentType}\">\n  您的浏览器不支持音频播放。\n</audio>";
             return $"已生成流式语音。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" stream src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+        }
+
+        private string CreateStreamingVoiceChangeResponse(
+            string tempDirectory,
+            List<string> segmentPaths,
+            string apiKey,
+            string apiEndpoint,
+            string modelId,
+            string outputFormat,
+            string voiceDisplayName)
+        {
+            var streamId = Guid.NewGuid().ToString("N");
+
+            _ttsStreamFactories[streamId] = async cancellationToken =>
+            {
+                if (segmentPaths.Count == 0)
+                {
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway)
+                    {
+                        Content = new StringContent("变声失败：没有可用的音频分段。", Encoding.UTF8, "text/plain")
+                    };
+                }
+
+                var client = _httpClientFactory.CreateClient();
+                client.Timeout = TimeSpan.FromMinutes(10);
+                client.DefaultRequestHeaders.Add("xi-api-key", apiKey);
+                client.DefaultRequestHeaders.Add("Accept", "audio/mpeg");
+
+                Task<HttpResponseMessage> CreateSegment(int index)
+                {
+                    var segmentPath = segmentPaths[index];
+                    var segmentFileName = Path.GetFileName(segmentPath);
+                    var segmentContentType = ResolveAudioContentTypeFromFormat(Path.GetExtension(segmentPath).Trim('.'));
+                    return CreateElevenLabsVoiceChangeSegmentResponseAsync(
+                        client,
+                        apiEndpoint,
+                        modelId,
+                        outputFormat,
+                        segmentPath,
+                        segmentFileName,
+                        segmentContentType,
+                        cancellationToken);
+                }
+
+                var firstResponse = await CreateSegment(0);
+                if (!firstResponse.IsSuccessStatusCode)
+                {
+                    CleanupStreamingVoiceChangeTempDirectory(tempDirectory);
+                    return firstResponse;
+                }
+
+                var rawContentType = firstResponse.Content.Headers.ContentType?.MediaType;
+                var contentType = !string.IsNullOrWhiteSpace(rawContentType)
+                    && rawContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase)
+                    ? rawContentType
+                    : ResolveAudioContentTypeFromFormat(outputFormat);
+
+                var pipe = new Pipe();
+
+                _ = Task.Run(async () =>
+                {
+                    Exception? backgroundException = null;
+                    try
+                    {
+                        await using var writerStream = pipe.Writer.AsStream();
+                        await using (var firstStream = await firstResponse.Content.ReadAsStreamAsync(cancellationToken))
+                        {
+                            await firstStream.CopyToAsync(writerStream, cancellationToken);
+                            await writerStream.FlushAsync(cancellationToken);
+                        }
+
+                        for (int i = 1; i < segmentPaths.Count; i++)
+                        {
+                            using var segResponse = await CreateSegment(i);
+                            if (!segResponse.IsSuccessStatusCode)
+                            {
+                                var errorContent = await segResponse.Content.ReadAsStringAsync(CancellationToken.None);
+                                throw new InvalidOperationException($"ElevenLabs 变声流式分段失败: StatusCode {segResponse.StatusCode}\n{errorContent}");
+                            }
+
+                            await using var segStream = await segResponse.Content.ReadAsStreamAsync(cancellationToken);
+                            await segStream.CopyToAsync(writerStream, cancellationToken);
+                            await writerStream.FlushAsync(cancellationToken);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        backgroundException = ex;
+                        _logger.LogError(ex, "ElevenLabs 变声流式转发失败。StreamId: {StreamId}", streamId);
+                    }
+                    finally
+                    {
+                        firstResponse.Dispose();
+                        client.Dispose();
+                        CleanupStreamingVoiceChangeTempDirectory(tempDirectory);
+                        await pipe.Writer.CompleteAsync(backgroundException);
+                    }
+                }, cancellationToken);
+
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StreamContent(pipe.Reader.AsStream())
+                    {
+                        Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType ?? "audio/mpeg") }
+                    }
+                };
+            };
+
+            _ = Task.Delay(TimeSpan.FromMinutes(30)).ContinueWith(__ =>
+            {
+                _ttsStreamFactories.TryRemove(streamId, out _);
+                CleanupStreamingVoiceChangeTempDirectory(tempDirectory);
+            });
+
+            var relativeUrl = $"share/media/stream/{streamId}";
+            var safeLabel = System.Net.WebUtility.HtmlEncode($"变声结果 - ElevenLabs {voiceDisplayName}");
+            return $"已创建流式变声任务。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" stream src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+        }
+
+        private async Task<HttpResponseMessage> CreateElevenLabsVoiceChangeSegmentResponseAsync(
+            HttpClient client,
+            string apiEndpoint,
+            string modelId,
+            string outputFormat,
+            string sourceFilePath,
+            string fileName,
+            string audioContentType,
+            CancellationToken cancellationToken)
+        {
+            using var formData = new MultipartFormDataContent();
+            await using var fileStream = System.IO.File.OpenRead(sourceFilePath);
+            using var audioContent = new StreamContent(fileStream);
+            audioContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(audioContentType);
+            formData.Add(audioContent, "audio", fileName);
+            formData.Add(new StringContent(modelId), "model_id");
+            formData.Add(new StringContent(outputFormat), "output_format");
+
+            return await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+            {
+                Content = formData
+            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+
+        private static void CleanupStreamingVoiceChangeTempDirectory(string tempDirectory)
+        {
+            try
+            {
+                if (Directory.Exists(tempDirectory))
+                {
+                    Directory.Delete(tempDirectory, true);
+                }
+            }
+            catch
+            {
+            }
         }
 
         /// <summary>
