@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.ResponseCompression;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
-const string Http3AltSvcHeaderValue = "h3=\":36000\"; ma=86400";
+const string Http3AltSvcHeaderValue = "h3=\":443\"; ma=86400";
 // 1. 定义 CORS 策略名
 var myAllowSpecificOrigins = "_myAllowSpecificOrigins";
 
@@ -93,15 +93,15 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-//app.Use(static async (context, next) =>
-//{
-//    if (context.Request.IsHttps)
-//    {
-//        context.Response.Headers[HeaderNames.AltSvc] = Http3AltSvcHeaderValue;
-//    }
+app.Use(static async (context, next) =>
+{
+    if (context.Request.IsHttps)
+    {
+        context.Response.Headers[HeaderNames.AltSvc] = Http3AltSvcHeaderValue;
+    }
 
-//    await next(context);
-//});
+    await next(context);
+});
 app.UseStaticFiles();
 app.MapStaticAssets();
 app.UseRouting();

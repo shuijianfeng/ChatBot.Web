@@ -3243,76 +3243,76 @@ namespace ChatBot.Web.Services
                    required = new[] { "startingplace", "arrivalplace", "date" }
                });
 
-            tools.Add(
-               new
-               {
-                   type = "function",
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
 
-                   name = nameof(RunPythonFile),
-                   description = "运行指定的Python文件并返回结果",
-                   parameters = new
-                   {
-                       type = "object",
-                       properties = new
-                       {
+            //       name = nameof(RunPythonFile),
+            //       description = "运行指定的Python文件并返回结果,仅在Skill环境下可用",
+            //       parameters = new
+            //       {
+            //           type = "object",
+            //           properties = new
+            //           {
 
-                           filePath = new
-                           {
-                               type = "string",
-                               description = "Python文件路径"
-                           },
-                           arguments = new
-                           {
-                               type = "string",
-                               description = "传递给Python文件的参数"
-                           }
-                       }
-                   },
-                   required = new[] { "filePath", "arguments" }
-               });
+            //               filePath = new
+            //               {
+            //                   type = "string",
+            //                   description = "Python文件路径"
+            //               },
+            //               arguments = new
+            //               {
+            //                   type = "string",
+            //                   description = "传递给Python文件的参数"
+            //               }
+            //           }
+            //       },
+            //       required = new[] { "filePath", "arguments" }
+            //   });
 
-            tools.Add(
-               new
-               {
-                   type = "function",
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
 
-                   name = nameof(ReadFile),
-                   description = "读取指定文件的内容并返回",
-                   parameters = new
-                   {
-                       type = "object",
-                       properties = new
-                       {
-                           filePath = new
-                           {
-                               type = "string",
-                               description = "文件路径"
-                           }
-                       }
-                   },
-                   required = new[] { "filePath" }
-               });
+            //       name = nameof(ReadFile),
+            //       description = "读取指定文件的内容并返回,仅在Skill环境下可用",
+            //       parameters = new
+            //       {
+            //           type = "object",
+            //           properties = new
+            //           {
+            //               filePath = new
+            //               {
+            //                   type = "string",
+            //                   description = "文件路径"
+            //               }
+            //           }
+            //       },
+            //       required = new[] { "filePath" }
+            //   });
 
-            tools.Add(
-               new
-               {
-                   type = "function",
-                   name = nameof(GetDirectoryContents),
-                   description = "获取指定文件夹下的所有文件和子文件夹信息",
-                   parameters = new
-                   {
-                       type = "object",
-                       properties = new
-                       {
-                           directoryPath = new
-                           {
-                               type = "string",
-                               description = "文件夹路径"
-                           }
-                       }
-                   },
-                   required = new[] { "directoryPath" }
-               });
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       name = nameof(GetDirectoryContents),
+            //       description = "获取指定文件夹下的所有文件和子文件夹信息,仅在Skill环境下可用",
+            //       parameters = new
+            //       {
+            //           type = "object",
+            //           properties = new
+            //           {
+            //               directoryPath = new
+            //               {
+            //                   type = "string",
+            //                   description = "文件夹路径"
+            //               }
+            //           }
+            //       },
+            //       required = new[] { "directoryPath" }
+            //   });
                               
             //// 携程酒店搜索
             //tools.Add(
@@ -3505,83 +3505,83 @@ namespace ChatBot.Web.Services
                         }
                     });
             }
-            tools.Add(
-               new
-               {
-                   type = "function",
-                   function = new
-                   {
-                       name = nameof(RunPythonFile),
-                       description = "运行指定的Python文件并返回结果",
-                       parameters = new
-                       {
-                           type = "object",
-                           properties = new
-                           {
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       function = new
+            //       {
+            //           name = nameof(RunPythonFile),
+            //           description = "运行指定的Python文件并返回结果,仅在Skill环境下可用",
+            //           parameters = new
+            //           {
+            //               type = "object",
+            //               properties = new
+            //               {
 
-                               filePath = new
-                               {
-                                   type = "string",
-                                   description = "Python文件路径"
-                               },
-                               arguments = new
-                               {
-                                   type = "string",
-                                   description = "传递给Python文件的参数"
-                               }
-                           }
-                       },
-                       required = new[] { "filePath", "arguments" }
-                   }
-               });
+            //                   filePath = new
+            //                   {
+            //                       type = "string",
+            //                       description = "Python文件路径"
+            //                   },
+            //                   arguments = new
+            //                   {
+            //                       type = "string",
+            //                       description = "传递给Python文件的参数"
+            //                   }
+            //               }
+            //           },
+            //           required = new[] { "filePath", "arguments" }
+            //       }
+            //   });
 
-            tools.Add(
-               new
-               {
-                   type = "function",
-                   function = new
-                   {
-                       name = nameof(ReadFile),
-                       description = "读取指定文件的内容并返回",
-                       parameters = new
-                       {
-                           type = "object",
-                           properties = new
-                           {
-                               filePath = new
-                               {
-                                   type = "string",
-                                   description = "文件路径"
-                               }
-                           }
-                       },
-                       required = new[] { "filePath" }
-                   }
-               });
+            //tools.Add(
+            //   new
+            //   {
+            //       type = "function",
+            //       function = new
+            //       {
+            //           name = nameof(ReadFile),
+            //           description = "读取指定文件的内容并返回,仅在Skill环境下可用",
+            //           parameters = new
+            //           {
+            //               type = "object",
+            //               properties = new
+            //               {
+            //                   filePath = new
+            //                   {
+            //                       type = "string",
+            //                       description = "文件路径"
+            //                   }
+            //               }
+            //           },
+            //           required = new[] { "filePath" }
+            //       }
+            //   });
 
-            tools.Add(
-                new
-                {
-                    type = "function",
-                    function = new
-                    {
-                        name = nameof(GetDirectoryContents),
-                        description = "获取指定文件夹下的所有文件和子文件夹信息",
-                        parameters = new
-                        {
-                            type = "object",
-                            properties = new
-                            {
-                                directoryPath = new
-                                {
-                                    type = "string",
-                                    description = "文件夹路径"
-                                }
-                            }
-                        },
-                        required = new[] { "directoryPath" }
-                    }
-                });
+            //tools.Add(
+            //    new
+            //    {
+            //        type = "function",
+            //        function = new
+            //        {
+            //            name = nameof(GetDirectoryContents),
+            //            description = "获取指定文件夹下的所有文件和子文件夹信息,仅在Skill环境下可用",
+            //            parameters = new
+            //            {
+            //                type = "object",
+            //                properties = new
+            //                {
+            //                    directoryPath = new
+            //                    {
+            //                        type = "string",
+            //                        description = "文件夹路径"
+            //                    }
+            //                }
+            //            },
+            //            required = new[] { "directoryPath" }
+            //        }
+            //    });
 
             tools.Add(
                  new
@@ -3999,74 +3999,74 @@ namespace ChatBot.Web.Services
                         required = new[] { "startingplace", "arrivalplace", "date" }
                     }
                 });
-            tools.Add(
-               new
-               {
-                   name = nameof(RunPythonFile),
-                   description = "运行指定的Python文件并返回结果",
-                   input_schema = new
-                   {
-                       type = "object",
-                       properties = new
-                       {
+            //tools.Add(
+            //   new
+            //   {
+            //       name = nameof(RunPythonFile),
+            //       description = "运行指定的Python文件并返回结果,仅在Skill环境下可用",
+            //       input_schema = new
+            //       {
+            //           type = "object",
+            //           properties = new
+            //           {
 
-                           filePath = new
-                           {
-                               type = "string",
-                               description = "Python文件路径"
-                           },
-                           arguments = new
-                           {
-                               type = "string",
-                               description = "传递给Python文件的参数"
-                           }
-                       }
-                       ,
-                       required = new[] { "filePath", "arguments" }
-                   }
+            //               filePath = new
+            //               {
+            //                   type = "string",
+            //                   description = "Python文件路径"
+            //               },
+            //               arguments = new
+            //               {
+            //                   type = "string",
+            //                   description = "传递给Python文件的参数"
+            //               }
+            //           }
+            //           ,
+            //           required = new[] { "filePath", "arguments" }
+            //       }
                    
-               });
+            //   });
 
-            tools.Add(
-               new
-               {
-                   name = nameof(ReadFile),
-                   description = "读取指定文件的内容并返回",
-                   input_schema = new
-                   {
-                       type = "object",
-                       properties = new
-                       {
-                           filePath = new
-                           {
-                               type = "string",
-                               description = "文件路径"
-                           }
-                       },
-                       required = new[] { "filePath" }
-                   }
-               });
+            //tools.Add(
+            //   new
+            //   {
+            //       name = nameof(ReadFile),
+            //       description = "读取指定文件的内容并返回,仅在Skill环境下可用",
+            //       input_schema = new
+            //       {
+            //           type = "object",
+            //           properties = new
+            //           {
+            //               filePath = new
+            //               {
+            //                   type = "string",
+            //                   description = "文件路径"
+            //               }
+            //           },
+            //           required = new[] { "filePath" }
+            //       }
+            //   });
 
-            tools.Add
-                (
-                   new
-                   {
-                       name = nameof(GetDirectoryContents),
-                       description = "获取指定文件夹下的所有文件和子文件夹信息",
-                       input_schema = new
-                       {
-                           type = "object",
-                           properties = new
-                           {
-                               directoryPath = new
-                               {
-                                   type = "string",
-                                   description = "文件夹路径"
-                               }
-                           },
-                           required = new[] { "directoryPath" }
-                       }
-                   });
+            //tools.Add
+            //    (
+            //       new
+            //       {
+            //           name = nameof(GetDirectoryContents),
+            //           description = "获取指定文件夹下的所有文件和子文件夹信息,仅在Skill环境下可用",
+            //           input_schema = new
+            //           {
+            //               type = "object",
+            //               properties = new
+            //               {
+            //                   directoryPath = new
+            //                   {
+            //                       type = "string",
+            //                       description = "文件夹路径"
+            //                   }
+            //               },
+            //               required = new[] { "directoryPath" }
+            //           }
+            //       });
 
             //// 携程酒店搜索
             //tools.Add(
@@ -4400,7 +4400,7 @@ namespace ChatBot.Web.Services
             tools.Add(new
             {
                 name = nameof(RunPythonFile),
-                description = "运行指定的Python文件并返回结果",
+                description = "运行指定的Python文件并返回结果,仅在Skill环境下可用",
                 parameters = new
                 {
                     type = "object",
@@ -4416,7 +4416,7 @@ namespace ChatBot.Web.Services
             tools.Add(new
             {
                 name = nameof(ReadFile),
-                description = "读取指定文件的内容并返回",
+                description = "读取指定文件的内容并返回,仅在Skill环境下可用",
                 parameters = new
                 {
                     type = "object",
@@ -4431,7 +4431,7 @@ namespace ChatBot.Web.Services
             tools.Add(new
             {
                 name = nameof(GetDirectoryContents),
-                description = "获取指定文件夹下的所有文件和子文件夹信息",
+                description = "获取指定文件夹下的所有文件和子文件夹信息,仅在Skill环境下可用",
                 parameters = new
                 {
                     type = "object",
@@ -6862,6 +6862,7 @@ namespace ChatBot.Web.Services
                         output_format = responseFormat,
                         //previous_text = previousText,
                         //next_text = nextText,
+                        apply_text_normalization = "on",
                         voice_settings = new
                         {
                             use_speaker_boost = true
@@ -8647,6 +8648,8 @@ namespace ChatBot.Web.Services
                 output_format = responseFormat,
                 //previous_text = previoustext,
                 //next_text = nexttext??string.Empty,
+                apply_text_normalization = "on",
+
                 voice_settings = new
                 {
                     use_speaker_boost = true
