@@ -1009,7 +1009,7 @@ namespace ChatBot.Controllers
 
             // 使用独立的取消令牌，防止客户端断开连接（如锁屏）导致后端停止生成
             // 设置 5 分钟超时作为安全限制，防止无限挂起
-            using var generationCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            using var generationCts = new CancellationTokenSource(TimeSpan.FromMinutes(40));
             var requestToken = HttpContext.RequestAborted;
 
             try
@@ -1026,7 +1026,7 @@ namespace ChatBot.Controllers
                     // 忽略初始写入错误（如已断开），继续执行后端生成以便缓存
                 }
 
-                bool Incremental_output = _chatService.GetModelConfig(request.Model).Incremental_output;
+                
 
                 // 关键点：传递 generationCts.Token 而不是 requestToken 给生成服务
                 // 这样即使 requestToken 取消（客户端断开），生成也会继续
@@ -1036,11 +1036,7 @@ namespace ChatBot.Controllers
                 await foreach (var chunk in stream)
                 {
                     string str = chunk;
-                    if (!Incremental_output)
-                    {
-                        str = chunk.Substring(count);
-                        count = chunk.Length;
-                    }
+                   
 
                     // 写入缓存 (这是最重要的，供 Resume 使用)
                     _streamCache.AppendContent(streamId, str);

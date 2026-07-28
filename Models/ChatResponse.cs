@@ -423,6 +423,7 @@ namespace ChatBot.Models
         public string openaiobject { get; set; } = string.Empty;
 
         public string status { get; set; } = string.Empty;
+        public ErrorDetails? error { get; set; }
         public IncompleteDetails? incomplete_details { get; set; }
 
         public string model { get; set; } = string.Empty;
@@ -431,6 +432,14 @@ namespace ChatBot.Models
         public class IncompleteDetails
         {
             public string reason { get; set; } = string.Empty;
+        }
+
+        public class ErrorDetails
+        {
+            public string type { get; set; } = string.Empty;
+            public string code { get; set; } = string.Empty;
+            public string message { get; set; } = string.Empty;
+            public string? param { get; set; }
         }
 
         public class OpenAioutput
@@ -547,6 +556,11 @@ namespace ChatBot.Models
         /// 完整响应对象 (用于 response.completed 等事件)
         /// </summary>
         public OpenAIResponsenew response { get; set; }
+
+        /// <summary>
+        /// 顶层错误对象 (用于 error 事件)
+        /// </summary>
+        public OpenAIResponsenew.ErrorDetails? error { get; set; }
 
         /// <summary>
         /// 内容部分类型

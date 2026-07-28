@@ -36,11 +36,10 @@ namespace ChatBot.Models
         public bool Stream { get; set; }
         public string Model { get; set; } = string.Empty;
         public ChatModelType ChatModelType { get; set; } = ChatModelType.OPenAi;
-        public bool Include_usage { get; set; }
-        public bool Isprompt { get; set; }
-        public string Promptid { get; set; } = string.Empty;
+        
+       
         public bool EnableImageUpload { get; set; }
-        public bool Incremental_output { get; set; }
+        
         public int ThinkingTokens { get; set; }
 
         public string File_search_store_names { get; set; } = string.Empty;

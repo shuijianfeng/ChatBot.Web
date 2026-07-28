@@ -919,7 +919,7 @@ body {
     --color-primer-shadow-focus: 0 0 0 3px rgba(9, 105, 218, 0.3);
     --color-primer-border-active: #FD8C73;
     --color-accent-fg-muted: rgba(9, 105, 218, 0.1);
-    --color-neutral-muted: rgba(175, 184, 193, 0.2);
+    --color-neutral-muted: rgba(175, 184, 193, 0.3);
     --color-ai-message-bg: #f6f8fa;
     --color-markdown-code-bg: #f6f8fa;
     --color-markdown-frame-bg: #f6f8fa;

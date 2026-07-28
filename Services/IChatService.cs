@@ -8,15 +8,16 @@ using iText.Html2pdf;
 using iText.Layout.Font;
 using iText.StyledXmlParser.Resolver.Resource;
 using Markdig;
+//using/* Microsoft.Extensions.AI;*/
 using Microsoft.Extensions.Options;
 using Npgsql;
 using OpenAI.Chat;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
-using System.ComponentModel;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
@@ -316,11 +317,11 @@ namespace ChatBot.Web.Services
                 Stream = source.Stream,
                 Model = source.Model,
                 ChatModelType = source.ChatModelType,
-                Include_usage = source.Include_usage,
-                Isprompt = source.Isprompt,
-                Promptid = source.Promptid,
+                
+               
+                
                 EnableImageUpload = source.EnableImageUpload,
-                Incremental_output = source.Incremental_output,
+                
                 ThinkingTokens = source.ThinkingTokens,
                 File_search_store_names = source.File_search_store_names,
                 ThinkingLevel = source.ThinkingLevel,
@@ -343,15 +344,7 @@ namespace ChatBot.Web.Services
             var effectiveSystemPrompt = BuildEffectiveSystemPrompt(baseConfig.Systemprompt, request.Skill, skillPrompt);
             var config = CreateRequestScopedConfig(baseConfig, effectiveSystemPrompt);
 
-            if (config.Isprompt)
-            {
-                await foreach (var item in GenerateStreamViaDashScopeAsync(config, request, cancellationToken))
-                {
-                    yield return item;
-                }
-
-                yield break;
-            }
+           
 
             switch (config.ChatModelType)
             {
@@ -408,75 +401,75 @@ namespace ChatBot.Web.Services
         }
 
 
-        /// <summary>
-        /// 调用阿里 DashScope 百练应用并返回流式输出。
-        /// </summary>
-        /// <param name="modelconfg">模型配置。</param>
-        /// <param name="request">聊天请求。</param>
-        /// <param name="cancellationToken">取消令牌。</param>
-        /// <returns>模型生成的文本片段。</returns>
-        public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // 验证配置
-            string baseUrl = modelconfg.ApiEndpoint;
-            string endpoint = "completion";
-            var apiEndpoint = $"{baseUrl}/{modelconfg.Promptid}/{endpoint}";
+        ///// <summary>
+        ///// 调用阿里 DashScope 百练应用并返回流式输出。
+        ///// </summary>
+        ///// <param name="modelconfg">模型配置。</param>
+        ///// <param name="request">聊天请求。</param>
+        ///// <param name="cancellationToken">取消令牌。</param>
+        ///// <returns>模型生成的文本片段。</returns>
+        //public async IAsyncEnumerable<string> GenerateStreamViaDashScopeAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+        //{
+        //    // 验证配置
+        //    string baseUrl = modelconfg.ApiEndpoint;
+        //    string endpoint = "completion";
+        //    var apiEndpoint = $"{baseUrl}/{modelconfg.Promptid}/{endpoint}";
 
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
+        //    var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
 
-            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
-            {
-                throw new InvalidOperationException("API配置缺失");
-            }
+        //    if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
+        //    {
+        //        throw new InvalidOperationException("API配置缺失");
+        //    }
 
-            // 创建HTTP客户端
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-            client.DefaultRequestHeaders.TryAddWithoutValidation("X-DashScope-SSE", "enable");
-            string s_id = SessionId;
+        //    // 创建HTTP客户端
+        //    var client = _httpClientFactory.CreateClient();
+        //    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        //    client.DefaultRequestHeaders.TryAddWithoutValidation("X-DashScope-SSE", "enable");
+        //    string s_id = SessionId;
 
 
-            // 准备请求内容
-            var requestContent = new
-            {
-                input = new { prompt = ToMessage(request), session_id = s_id },
-                parameters = new { enable_search = true, incremental_output = true }
+        //    // 准备请求内容
+        //    var requestContent = new
+        //    {
+        //        input = new { prompt = ToMessage(request), session_id = s_id },
+        //        parameters = new { enable_search = true, incremental_output = true }
 
-            };
+        //    };
 
-            var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
-            {
-                Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
-            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        //    var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, apiEndpoint)
+        //    {
+        //        Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
+        //    }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-            {
-                yield return "失败: StatusCode " + response.StatusCode.ToString();
-                yield break;
-            }
-            response.EnsureSuccessStatusCode();
+        //    if (response.StatusCode != System.Net.HttpStatusCode.OK)
+        //    {
+        //        yield return "失败: StatusCode " + response.StatusCode.ToString();
+        //        yield break;
+        //    }
+        //    response.EnsureSuccessStatusCode();
 
-            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
+        //    using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        //    using var reader = new StreamReader(stream);
 
-            string? line;
-            while ((line = await reader.ReadLineAsync(cancellationToken)) != null && !cancellationToken.IsCancellationRequested)
-            {
-                if (string.IsNullOrEmpty(line)) continue;
-                if (line.StartsWith("data:"))
-                {
-                    line = line[5..];
-                    if (line == "[DONE]") break;
+        //    string? line;
+        //    while ((line = await reader.ReadLineAsync(cancellationToken)) != null && !cancellationToken.IsCancellationRequested)
+        //    {
+        //        if (string.IsNullOrEmpty(line)) continue;
+        //        if (line.StartsWith("data:"))
+        //        {
+        //            line = line[5..];
+        //            if (line == "[DONE]") break;
 
-                    var chunk = JsonSerializer.Deserialize<DashScopeChunkResponse>(line);
-                    if (chunk?.output?.Text is string text && !string.IsNullOrEmpty(text))
-                    {
-                        SessionId = chunk.output.SessionId;
-                        yield return chunk.output.Text;
-                    }
-                }
-            }
-        }
+        //            var chunk = JsonSerializer.Deserialize<DashScopeChunkResponse>(line);
+        //            if (chunk?.output?.Text is string text && !string.IsNullOrEmpty(text))
+        //            {
+        //                SessionId = chunk.output.SessionId;
+        //                yield return chunk.output.Text;
+        //            }
+        //        }
+        //    }
+        //}
        
 
         /// <summary>
@@ -544,7 +537,7 @@ namespace ChatBot.Web.Services
                 max_output_tokens = modelconfg.MaxTokens > 0 ? (int?)modelconfg.MaxTokens : null,
             };
 
-            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
+            //var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
 
             if (usePreviousResponseId)
             {
@@ -774,7 +767,20 @@ namespace ChatBot.Web.Services
                                 case "response.failed":
                                     // 响应失败
                                     sawTerminalResponseEvent = true;
-                                    yield return "\n\n⚠️ **响应失败**";
+                                    currentResponseId = ResolveResponsesResponseId(chunk, currentResponseId);
+                                    currentResponseId = ResolveResponsesResponseId(rawResponseId, currentResponseId);
+                                    var failedMessage = FormatOpenAIResponsesErrorMessage(chunk.error, chunk.response?.error);
+                                    _logger.LogWarning("OpenAI Responses 响应失败。ResponseId: {ResponseId}, Error: {Error}", currentResponseId, failedMessage);
+                                    yield return failedMessage;
+                                    yield break;
+
+                                case "error":
+                                    sawTerminalResponseEvent = true;
+                                    currentResponseId = ResolveResponsesResponseId(chunk, currentResponseId);
+                                    currentResponseId = ResolveResponsesResponseId(rawResponseId, currentResponseId);
+                                    var errorMessage = FormatOpenAIResponsesErrorMessage(chunk.error, chunk.response?.error);
+                                    _logger.LogWarning("OpenAI Responses SSE 错误事件。ResponseId: {ResponseId}, Error: {Error}", currentResponseId, errorMessage);
+                                    yield return errorMessage;
                                     yield break;
 
                                 // ========== 推理摘要事件 (OpenAI o1等推理模型) ==========
@@ -1320,12 +1326,12 @@ namespace ChatBot.Web.Services
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 using var reader = new StreamReader(stream);
                 int index = 0;
+                Dictionary<int, string> claudeContentBlockTypes = new Dictionary<int, string>();
                 List<ClaudeChunkResponse.Delta> tool_calls = new List<ClaudeChunkResponse.Delta>();
                 string text = string.Empty;
                 string textthinking = string.Empty;
                 string textsignature = string.Empty;
-                bool beging = false;
-                bool end = false;
+                bool isClaudeThinkingTagOpen = false;
                 bool sawTerminalClaudeEvent = false;
                 bool shouldAttemptClaudeContinuationAfterStreamInterruption = false;
                 while (!cancellationToken.IsCancellationRequested)
@@ -1367,6 +1373,25 @@ namespace ChatBot.Web.Services
                             case "content_block_start":
                                 {
                                     index = chunk.index;
+                                    if (chunk.content_block != null)
+                                    {
+                                        claudeContentBlockTypes[index] = chunk.content_block.type;
+
+                                        if (chunk.content_block.type == "thinking")
+                                        {
+                                            if (!isClaudeThinkingTagOpen)
+                                            {
+                                                yield return "<think>\n\n~~~Thoughts\n\n";
+                                                isClaudeThinkingTagOpen = true;
+                                            }
+                                        }
+                                        else if (isClaudeThinkingTagOpen)
+                                        {
+                                            yield return "\n\n~~~\n\n</think>\n\n";
+                                            isClaudeThinkingTagOpen = false;
+                                        }
+                                    }
+
                                     if (chunk.content_block.type == "tool_use")
                                     {
                                         tool_calls.Add(chunk.content_block);
@@ -1391,29 +1416,18 @@ namespace ChatBot.Web.Services
                                     {
 
                                         text += Regex.Replace(chunk.delta.text, @"(\[\d+\])(?=\[\d+\])", "$1 ");
-                                        if (beging && !end)
-                                        {
-                                            yield return "\n" + "\n" + "~~~" + "\n" + "\n" + "</think>" + "\n" + "\n" + Regex.Replace(chunk.delta.text, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
-                                            end = true;
-                                        }
-                                        else
-                                        {
-                                            yield return Regex.Replace(chunk.delta.text, @"(\[\d+\])(?=\[\d+\])", "$1 ");
-                                        }
+                                        yield return Regex.Replace(chunk.delta.text, @"(\[\d+\])(?=\[\d+\])", "$1 ");
                                     }
                                     if (chunk.delta.type == "thinking_delta")
                                     {
                                         textthinking += chunk.delta.thinking;
-                                        if (!beging)
+                                        if (!isClaudeThinkingTagOpen)
                                         {
-                                            yield return "<think>" + "\n" + "\n" + "~~~Thoughts" + "\n" + "\n" + chunk.delta.thinking;
-                                            beging = true;
+                                            yield return "<think>\n\n~~~Thoughts\n\n";
+                                            isClaudeThinkingTagOpen = true;
                                         }
-                                        else
-                                        {
 
-                                            yield return chunk.delta.thinking;
-                                        }
+                                        yield return chunk.delta.thinking;
                                     }
                                     if (chunk.delta.type == "signature_delta")
                                     {
@@ -1430,6 +1444,16 @@ namespace ChatBot.Web.Services
                                 }
                             case "content_block_stop":
                                 {
+                                    if (claudeContentBlockTypes.TryGetValue(chunk.index, out var blockType))
+                                    {
+                                        if (blockType == "thinking" && isClaudeThinkingTagOpen)
+                                        {
+                                            yield return "\n\n~~~\n\n</think>\n\n";
+                                            isClaudeThinkingTagOpen = false;
+                                        }
+
+                                        claudeContentBlockTypes.Remove(chunk.index);
+                                    }
 
                                     break;
                                 }
@@ -1438,6 +1462,12 @@ namespace ChatBot.Web.Services
                                     if (chunk.delta.stop_reason == "tool_use")
                                     {
                                         sawTerminalClaudeEvent = true;
+
+                                        if (isClaudeThinkingTagOpen)
+                                        {
+                                            yield return "\n\n~~~\n\n</think>\n\n";
+                                            isClaudeThinkingTagOpen = false;
+                                        }
 
 
                                         //text = string.Empty;
@@ -1509,10 +1539,10 @@ namespace ChatBot.Web.Services
                                     if (chunk.delta.stop_reason == "max_tokens")
                                     {
                                         sawTerminalClaudeEvent = true;
-                                        if (beging && !end)
+                                        if (isClaudeThinkingTagOpen)
                                         {
                                             yield return "\n\n~~~\n\n</think>\n\n";
-                                            end = true;
+                                            isClaudeThinkingTagOpen = false;
                                         }
 
                                         response.Content.Dispose();
@@ -1537,6 +1567,12 @@ namespace ChatBot.Web.Services
                             case "message_stop":
                                 {
                                     sawTerminalClaudeEvent = true;
+
+                                    if (isClaudeThinkingTagOpen)
+                                    {
+                                        yield return "\n\n~~~\n\n</think>\n\n";
+                                        isClaudeThinkingTagOpen = false;
+                                    }
 
                                     break;
                                 }
@@ -1697,10 +1733,10 @@ namespace ChatBot.Web.Services
                         ? CancellationToken.None
                         : cancellationToken;
 
-                    if (beging && !end)
+                    if (isClaudeThinkingTagOpen)
                     {
                         yield return "\n\n~~~\n\n</think>\n\n";
-                        end = true;
+                        isClaudeThinkingTagOpen = false;
                     }
 
                     _logger.LogWarning("Claude 流已结束或中断但未收到终止事件，尝试自动续写。Model: {Model}, ContinuationDepth: {ContinuationDepth}", modelconfg.Model, continuationDepth);
@@ -2608,6 +2644,28 @@ namespace ChatBot.Web.Services
 
         }
 
+        private const int OpenAiStreamFlushCharThreshold = 384;
+        private static readonly TimeSpan OpenAiStreamFlushInterval = TimeSpan.FromMilliseconds(40);
+
+        private static bool ShouldFlushOpenAiStreamBuffer(StringBuilder outputBuffer, long lastFlushTimestamp)
+        {
+            return outputBuffer.Length >= OpenAiStreamFlushCharThreshold
+                || (outputBuffer.Length > 0 && Stopwatch.GetElapsedTime(lastFlushTimestamp) >= OpenAiStreamFlushInterval);
+        }
+
+        private static string? DrainOpenAiStreamBuffer(StringBuilder outputBuffer, ref long lastFlushTimestamp)
+        {
+            if (outputBuffer.Length == 0)
+            {
+                return null;
+            }
+
+            var output = outputBuffer.ToString();
+            outputBuffer.Clear();
+            lastFlushTimestamp = Stopwatch.GetTimestamp();
+            return output;
+        }
+
         /// <summary>
         /// 调用 OpenAI 兼容接口，并处理推理内容与工具调用续轮。
         /// </summary>
@@ -2648,10 +2706,11 @@ namespace ChatBot.Web.Services
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
                 reasoning = OpenAiThinkingLevel(modelconfg),
+                reasoning_effort = DeepSeekThinkingLevel(modelconfg),
                 tools = tools,
                 max_tokens = modelconfg.MaxTokens > 0 ? (int?)modelconfg.MaxTokens : null,
             };
-
+            var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)
             {
                 Content = new StringContent(JsonSerializer.Serialize(requestContent, _jsonOptions), Encoding.UTF8, "application/json")
@@ -2680,6 +2739,8 @@ namespace ChatBot.Web.Services
                 string citationsString = string.Empty;
                 bool sawTerminalOpenAiEvent = false;
                 bool shouldAttemptOpenAiContinuationAfterStreamInterruption = false;
+                var outputBuffer = new StringBuilder();
+                long lastOutputFlushTimestamp = Stopwatch.GetTimestamp();
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
@@ -2695,12 +2756,12 @@ namespace ChatBot.Web.Services
                             if ((contentBuilder.Length == 0 && reasoningContentBuilder.Length == 0)
                                 || continuationDepth >= 3)
                             {
-                                _logger.LogWarning(ex, "OpenAI 兼容接口流读取被中断，无法执行兜底续写。Model: {Model}", modelconfg.Model);
+                                //_logger.LogWarning(ex, "OpenAI 兼容接口流读取被中断，无法执行兜底续写。Model: {Model}", modelconfg.Model);
                                 throw;
                             }
 
                             shouldAttemptOpenAiContinuationAfterStreamInterruption = true;
-                            _logger.LogWarning(ex, "OpenAI 兼容接口流读取被中断，尝试自动续写。Model: {Model}", modelconfg.Model);
+                            //_logger.LogWarning(ex, "OpenAI 兼容接口流读取被中断，尝试自动续写。Model: {Model}", modelconfg.Model);
                             break;
                         }
 
@@ -2712,12 +2773,25 @@ namespace ChatBot.Web.Services
                             if (line == "[DONE]")
                             {
                                 sawTerminalOpenAiEvent = true;
+                                // 闭合未关闭的思考块
+                                if (thinkingStarted && !thinkingEnded)
+                                {
+                                    outputBuffer.Append("\n\n~~~\n\n</think>\n\n");
+                                    thinkingEnded = true;
+                                }
+                                if (inlineThinkingStarted && !inlineThinkingEnded)
+                                {
+                                    outputBuffer.Append("\n\n~~~\n\n</think>\n\n");
+                                    inlineThinkingEnded = true;
+                                }
                                 break;
                             }
 
                             var chunk = JsonSerializer.Deserialize<OpenAIChunkResponse>(line);
-                            var content = chunk?.choices?.FirstOrDefault()?.delta?.content;
-                            var reasoning_content = chunk?.choices?.FirstOrDefault()?.delta?.reasoning_content;
+                            var choice = chunk?.choices?.FirstOrDefault();
+                            var delta = choice?.delta;
+                            var content = delta?.content;
+                            var reasoning_content = delta?.reasoning_content;
 
                             if (!string.IsNullOrEmpty(content))
                             {
@@ -2729,7 +2803,7 @@ namespace ChatBot.Web.Services
                             }
 
                             // 处理工具调用
-                            var toolCallDelta = chunk?.choices?.FirstOrDefault()?.delta?.tool_calls?.FirstOrDefault();
+                            var toolCallDelta = delta?.tool_calls?.FirstOrDefault();
                             if (toolCallDelta != null)
                             {
                                 if (!string.IsNullOrEmpty(toolCallDelta.function?.name))
@@ -2754,17 +2828,19 @@ namespace ChatBot.Web.Services
                                     // 如果是工具调用后的继续，需要先闭合之前的内容块再开始新的思考块
                                     if (isToolCallContinuation)
                                     {
-                                        yield return "\n\n<think>\n\n~~~Thoughts\n\n" + reasoning_content;
+                                        outputBuffer.Append("\n\n<think>\n\n~~~Thoughts\n\n");
                                     }
                                     else
                                     {
-                                        yield return "<think>\n\n~~~Thoughts\n\n" + reasoning_content;
+                                        outputBuffer.Append("<think>\n\n~~~Thoughts\n\n");
                                     }
+
+                                    outputBuffer.Append(reasoning_content);
                                     thinkingStarted = true;
                                 }
                                 else
                                 {
-                                    yield return reasoning_content;
+                                    outputBuffer.Append(reasoning_content);
                                 }
                             }
 
@@ -2773,30 +2849,46 @@ namespace ChatBot.Web.Services
                             {
                                 if (thinkingStarted && !thinkingEnded)
                                 {
-                                    yield return "\n\n~~~\n\n</think>\n\n" + content;
+                                    outputBuffer.Append("\n\n~~~\n\n</think>\n\n");
+                                    outputBuffer.Append(content);
                                     thinkingEnded = true;
                                 }
                                 else if (content.Contains("<think>") && !inlineThinkingStarted && !inlineThinkingEnded)
                                 {
-                                    yield return content.Replace("<think>", "<think>\n\n~~~Thoughts\n\n");
+                                    outputBuffer.Append(content.Replace("<think>", "<think>\n\n~~~Thoughts\n\n"));
                                     inlineThinkingStarted = true;
                                 }
                                 else if (content.Contains("</think>") && inlineThinkingStarted && !inlineThinkingEnded)
                                 {
-                                    yield return content.Replace("</think>", "\n\n~~~\n\n</think>\n\n");
+                                    outputBuffer.Append(content.Replace("</think>", "\n\n~~~\n\n</think>\n\n"));
                                     inlineThinkingEnded = true;
                                 }
                                 else
                                 {
-                                    yield return content;
+                                    outputBuffer.Append(content);
+                                }
+                            }
+
+                            if (ShouldFlushOpenAiStreamBuffer(outputBuffer, lastOutputFlushTimestamp))
+                            {
+                                var bufferedOutput = DrainOpenAiStreamBuffer(outputBuffer, ref lastOutputFlushTimestamp);
+                                if (!string.IsNullOrEmpty(bufferedOutput))
+                                {
+                                    yield return bufferedOutput;
                                 }
                             }
 
                             // 处理工具调用完成
-                            var finishReason = chunk?.choices?.FirstOrDefault()?.finish_reason;
+                            var finishReason = choice?.finish_reason;
                             if (tool_calls.Count > 0 && (finishReason == "tool_calls" || finishReason == "stop"))
                             {
                                 sawTerminalOpenAiEvent = true;
+                                var bufferedOutput = DrainOpenAiStreamBuffer(outputBuffer, ref lastOutputFlushTimestamp);
+                                if (!string.IsNullOrEmpty(bufferedOutput))
+                                {
+                                    yield return bufferedOutput;
+                                }
+
                                 // 如果有未闭合的思考块，先闭合它
                                 if (thinkingStarted && !thinkingEnded)
                                 {
@@ -2816,6 +2908,12 @@ namespace ChatBot.Web.Services
                             if (string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase))
                             {
                                 sawTerminalOpenAiEvent = true;
+                                var bufferedOutput = DrainOpenAiStreamBuffer(outputBuffer, ref lastOutputFlushTimestamp);
+                                if (!string.IsNullOrEmpty(bufferedOutput))
+                                {
+                                    yield return bufferedOutput;
+                                }
+
                                 if (thinkingStarted && !thinkingEnded)
                                 {
                                     yield return "\n\n~~~\n\n</think>\n\n";
@@ -2841,11 +2939,28 @@ namespace ChatBot.Web.Services
                             if (string.Equals(finishReason, "stop", StringComparison.OrdinalIgnoreCase))
                             {
                                 sawTerminalOpenAiEvent = true;
+                                // 闭合未关闭的思考块
+                                if (thinkingStarted && !thinkingEnded)
+                                {
+                                    outputBuffer.Append("\n\n~~~\n\n</think>\n\n");
+                                    thinkingEnded = true;
+                                }
+                                if (inlineThinkingStarted && !inlineThinkingEnded)
+                                {
+                                    outputBuffer.Append("\n\n~~~\n\n</think>\n\n");
+                                    inlineThinkingEnded = true;
+                                }
                             }
                         }
                     }
                     else
                     {
+                        var bufferedOutput = DrainOpenAiStreamBuffer(outputBuffer, ref lastOutputFlushTimestamp);
+                        if (!string.IsNullOrEmpty(bufferedOutput))
+                        {
+                            yield return bufferedOutput;
+                        }
+
                         var line = await reader.ReadToEndAsync(cancellationToken);
                         if (string.IsNullOrEmpty(line)) continue;
 
@@ -2920,6 +3035,12 @@ namespace ChatBot.Web.Services
                     && (contentBuilder.Length > 0 || reasoningContentBuilder.Length > 0)
                     && (!cancellationToken.IsCancellationRequested || shouldAttemptOpenAiContinuationAfterStreamInterruption))
                 {
+                    var bufferedOutput = DrainOpenAiStreamBuffer(outputBuffer, ref lastOutputFlushTimestamp);
+                    if (!string.IsNullOrEmpty(bufferedOutput))
+                    {
+                        yield return bufferedOutput;
+                    }
+
                     var continuationCancellationToken = cancellationToken.IsCancellationRequested
                         ? CancellationToken.None
                         : cancellationToken;
@@ -2929,8 +3050,13 @@ namespace ChatBot.Web.Services
                         yield return "\n\n~~~\n\n</think>\n\n";
                         thinkingEnded = true;
                     }
+                    if (inlineThinkingStarted && !inlineThinkingEnded)
+                    {
+                        yield return "\n\n~~~\n\n</think>\n\n";
+                        inlineThinkingEnded = true;
+                    }
 
-                    _logger.LogWarning("OpenAI 兼容接口流已结束或中断但未收到终止事件，尝试自动续写。Model: {Model}, ContinuationDepth: {ContinuationDepth}", modelconfg.Model, continuationDepth);
+                    //_logger.LogWarning("OpenAI 兼容接口流已结束或中断但未收到终止事件，尝试自动续写。Model: {Model}, ContinuationDepth: {ContinuationDepth}", modelconfg.Model, continuationDepth);
 
                     response.Content.Dispose();
                     await foreach (var item in ContinueOpenAIAsync(
@@ -2946,6 +3072,24 @@ namespace ChatBot.Web.Services
                         yield return item;
                     }
                     yield break;
+                }
+
+                // 安全兜底：闭合任何未关闭的思考块
+                if (thinkingStarted && !thinkingEnded)
+                {
+                    outputBuffer.Append("\n\n~~~\n\n</think>\n\n");
+                    thinkingEnded = true;
+                }
+                if (inlineThinkingStarted && !inlineThinkingEnded)
+                {
+                    outputBuffer.Append("\n\n~~~\n\n</think>\n\n");
+                    inlineThinkingEnded = true;
+                }
+
+                var finalBufferedOutput = DrainOpenAiStreamBuffer(outputBuffer, ref lastOutputFlushTimestamp);
+                if (!string.IsNullOrEmpty(finalBufferedOutput))
+                {
+                    yield return finalBufferedOutput;
                 }
 
                 if (!string.IsNullOrEmpty(citationsString))
@@ -5733,6 +5877,29 @@ namespace ChatBot.Web.Services
                 : Regex.Replace(content, @"(\[\^?\d+\])(?=\[\^?\d+\])", "$1 ");
         }
 
+        private static string FormatOpenAIResponsesErrorMessage(params OpenAIResponsenew.ErrorDetails?[] errors)
+        {
+            foreach (var error in errors)
+            {
+                if (error == null)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(error.message))
+                {
+                    return $"\n\n⚠️ **响应失败**\n\n{error.message}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(error.code))
+                {
+                    return $"\n\n⚠️ **响应失败**\n\n错误代码: {error.code}";
+                }
+            }
+
+            return "\n\n⚠️ **响应失败**";
+        }
+
         private static List<object> CreateResponsesContinuationMessages()
         {
             return new List<object>
@@ -6038,10 +6205,29 @@ namespace ChatBot.Web.Services
             // 根据 ThinkingLevel 返回对应的 effort 配置
             return config.ThinkingLevel.ToUpperInvariant() switch
             {
+                
+                "XHIGH" => new { effort = "xhigh" },
                 "HIGH" => new { effort = "high" },
                 "MEDIUM" => new { effort = "medium" },
                 "LOW" => new { effort = "low" },
                 "OFF" => null,  // 关闭推理
+                _ => null       // 默认不设置
+            };
+        }
+
+        private object DeepSeekThinkingLevel(ChatModelConfig config)
+        {
+            // 如果没有设置 ThinkingLevel，返回 null（不启用推理）
+            if (string.IsNullOrEmpty(config.ThinkingLevel))
+            {
+                return null;
+            }
+
+            // 根据 ThinkingLevel 返回对应的 effort 配置
+            return config.ThinkingLevel.ToUpperInvariant() switch
+            {
+                "MAX" =>  "max" ,
+               
                 _ => null       // 默认不设置
             };
         }
@@ -6179,9 +6365,11 @@ namespace ChatBot.Web.Services
 
                     var contentlist = new List<object>();
 
-
-                    contentlist.Add(new { type = "text", text = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content) });
-
+                    var textContent = (msg.Role == "assistant" ? DelAllString(msg.Content, "<think>", "</think>") : msg.Content);
+                    if(!string.IsNullOrEmpty(textContent))
+                    {
+                        contentlist.Add(new { type = "text", text = textContent });
+                    }
 
                     foreach (var image in msg.Images)
                     {
@@ -8587,7 +8775,11 @@ namespace ChatBot.Web.Services
                         format = responseFormat,
                         bit_rate = 128000
 
-                    }
+                    },
+                    //additions = new
+                    //{
+                    //    explicit_language = "zh-cn"
+                    //}
                 }
 
             };
