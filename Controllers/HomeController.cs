@@ -1361,6 +1361,19 @@ namespace ChatBot.Controllers
                 return BadRequest(new { error = "会话ID和用户ID不能为空" });
             }
 
+            // 自动工程检索标签是网页与桌面桥之间的瞬时控制消息。
+            // 即使旧网页或页面关闭竞态把它提交到保存接口，也不能写入会话数据库。
+            request.Messages = request.Messages?
+                .Where(message =>
+                    !string.Equals(
+                        message.Role,
+                        "assistant",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !(message.Content?.Contains(
+                        "<hcsoft_search>",
+                        StringComparison.Ordinal) ?? false))
+                .ToList() ?? new List<SaveMessageRequest>();
+
             var success = await _sessionRepository.SaveSessionAsync(request);
             if (success)
             {

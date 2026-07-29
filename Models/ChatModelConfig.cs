@@ -160,6 +160,12 @@ namespace ChatBot.Models
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
+        /// 技能在界面中的显示名称（优先来自 agents/openai.yaml 的 display_name）。
+        /// 没有界面元数据时回退到 Name。
+        /// </summary>
+        public string DisplayName { get; set; } = string.Empty;
+
+        /// <summary>
         /// 技能文件夹名称
         /// </summary>
         public string FolderName { get; set; } = string.Empty;

@@ -29,6 +29,11 @@ public class SkillLoaderService
         @"^description:\s*(.+)$",
         RegexOptions.Multiline | RegexOptions.Compiled);
 
+    // 读取标准 Skills UI 元数据中的中文显示名称；技能调用仍使用 SKILL.md 的稳定 name。
+    private static readonly Regex DisplayNameRegex = new(
+        @"^[ \t]*display_name:[ \t]*(.+?)[ \t]*\r?$",
+        RegexOptions.Multiline | RegexOptions.Compiled);
+
     
 
     public string SkillsDirectory => _skillsDirectory;
@@ -111,6 +116,7 @@ public class SkillLoaderService
 
         var name = nameMatch.Success ? nameMatch.Groups[1].Value.Trim() : folderName;
         var description = descriptionMatch.Success ? descriptionMatch.Groups[1].Value.Trim() : string.Empty;
+        var displayName = ReadDisplayName(filePath, name);
 
         // 自动生成图标：取名称的前两个字符大写
         var icon = GenerateIcon(name);
@@ -118,12 +124,55 @@ public class SkillLoaderService
         return new SkillConfig
         {
             Name = name,
+            DisplayName = displayName,
             FolderName = folderName,
             FullPath = Path.Combine(_skillsDirectory, folderName),
             Description = description,
             Icon = icon,
             SystemPrompt = body
         };
+    }
+
+    /// <summary>
+    /// 从 agents/openai.yaml 读取界面显示名称。
+    /// 该文件是可选项，缺失、格式错误或名称过长时均安全回退到技能 name。
+    /// </summary>
+    private string ReadDisplayName(string skillMdPath, string fallbackName)
+    {
+        try
+        {
+            var skillDirectory = Path.GetDirectoryName(skillMdPath);
+            if (string.IsNullOrWhiteSpace(skillDirectory))
+            {
+                return fallbackName;
+            }
+
+            var metadataPath = Path.Combine(skillDirectory, "agents", "openai.yaml");
+            if (!File.Exists(metadataPath))
+            {
+                return fallbackName;
+            }
+
+            var metadata = File.ReadAllText(metadataPath);
+            var match = DisplayNameRegex.Match(metadata);
+            if (!match.Success)
+            {
+                return fallbackName;
+            }
+
+            var displayName = match.Groups[1].Value.Trim().Trim('"', '\'');
+            return string.IsNullOrWhiteSpace(displayName) || displayName.Length > 80
+                ? fallbackName
+                : displayName;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(
+                ex,
+                "读取 Skill 显示名称失败，回退到技能名称: {Path}",
+                skillMdPath);
+            return fallbackName;
+        }
     }
 
     /// <summary>
@@ -160,6 +209,7 @@ public class SkillLoaderService
         ["doc"] = "📄",
         ["search"] = "🔎",
         ["data"] = "📊",
+        ["cost"] = "📊",
         ["math"] = "🔢",
         ["chat"] = "💬",
         ["music"] = "🎵",

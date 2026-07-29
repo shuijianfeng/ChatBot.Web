@@ -175,6 +175,12 @@ namespace ChatBot.Models
         /// </summary>
         [JsonPropertyName("skill")]
         public string? Skill { get; set; }
+
+        /// <summary>
+        /// HCSoft desktop context for this request only. It is never persisted as a chat message.
+        /// </summary>
+        [JsonPropertyName("hcsoft_context")]
+        public JsonElement? HcsoftContext { get; set; }
     }
 
     /// <summary>

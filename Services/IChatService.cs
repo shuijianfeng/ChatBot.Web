@@ -342,6 +342,7 @@ namespace ChatBot.Web.Services
             var baseConfig = GetModelConfig(request.Model);
             var skillPrompt = GetSkillPrompt(request.Skill);
             var effectiveSystemPrompt = BuildEffectiveSystemPrompt(baseConfig.Systemprompt, request.Skill, skillPrompt);
+            (request, effectiveSystemPrompt) = HcsoftContextEnricher.Apply(request, effectiveSystemPrompt);
             var config = CreateRequestScopedConfig(baseConfig, effectiveSystemPrompt);
 
            

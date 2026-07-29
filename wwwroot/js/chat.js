@@ -47,6 +47,8 @@ class ChatUI {
         this.currentSessionId = this.generateSessionId();
         this.currentSessionTitle = null; // 当前会话标题，用于避免重复生成
         this.uid = this.getUidFromUrl();
+        this.hcsoftBridge = window.hcsoftBridge || null;
+        this.hcsoftContext = null;
         this.sidebarCollapsed = true; // 默认折叠
         this.sessionsLoaded = false;
 
@@ -205,11 +207,16 @@ class ChatUI {
 
         selectorArea.style.display = 'block';
 
-        dropdown.innerHTML = '<option value="">-- 未选择 --</option>' + this.skills.map(skill => `
-            <option value="${skill.name}" title="${skill.description || ''}">
-                ${skill.icon || '🔧'} ${skill.name}
-            </option>
-        `).join('');
+        dropdown.innerHTML = '<option value="">-- 未选择 --</option>' + this.skills.map(skill => {
+            const skillName = String(skill.name || '');
+            const displayName = String(skill.displayName || skillName);
+            const description = String(skill.description || '');
+            return `
+                <option value="${this.escapeHtml(skillName)}" title="${this.escapeHtml(description)}">
+                    ${skill.icon || '🔧'} ${this.escapeHtml(displayName)}
+                </option>
+            `;
+        }).join('');
 
         // 绑定改变事件
         dropdown.addEventListener('change', (e) => {
@@ -904,8 +911,10 @@ class ChatUI {
     display: block;
 `;
 
-                // 创建HTML内容blob
-                const htmlContent = `
+                // 完整 HTML 文档直接运行；只有片段才补齐基础页面壳。
+                // 交互式报告会自行携带 head、样式和脚本，重复包裹会导致布局和脚本异常。
+                const isCompleteHtmlDocument = /<!doctype\s+html|<html(?:\s|>)/i.test(code);
+                const htmlContent = isCompleteHtmlDocument ? code : `
     <!DOCTYPE html>
     <html>
     <head>
@@ -2522,7 +2531,15 @@ class ChatUI {
                 try {
 
                     // 预处理内容（移除 think 标签，转换 ~~~ 为 ```）
-                    const processedContent = this.preprocessMarkdown(this.messageBuffer);
+                    let displayBuffer = this.messageBuffer;
+                    const automaticSearchIndex =
+                        displayBuffer.indexOf('<hcsoft_search>');
+                    if (automaticSearchIndex >= 0) {
+                        displayBuffer =
+                            displayBuffer.slice(0, automaticSearchIndex).trimEnd() +
+                            '\n\n正在按模型需要补充检索工程数据…';
+                    }
+                    const processedContent = this.preprocessMarkdown(displayBuffer);
                     const renderContent = this.completeOpenMarkdownFences(processedContent);
 
                     // 流式阶段暂不挂载 waveform-player，避免组件在多次重渲染时反复中止流请求导致 TTS 音频无法缓存。
@@ -2701,6 +2718,10 @@ class ChatUI {
 
             // 优先使用 rawContent，否则使用 textContent
             const content = contentDiv.dataset.rawContent || contentDiv.textContent || '';
+            if (isAssistant && content.includes('<hcsoft_search>')) {
+                // 模型的自动检索控制消息只用于当前内存循环，不能恢复成会话正文。
+                return;
+            }
 
             syncedMessages.push({
                 role: isUser ? 'user' : 'assistant',
@@ -2711,6 +2732,148 @@ class ChatUI {
 
         // 用同步后的数组替换原数组
         this.messages = syncedMessages;
+    }
+
+    /**
+     * 执行一次模型流式请求。自动工程检索可能连续调用本方法多次，
+     * 但只有最后一次正常回答会保留在消息列表和界面中。
+     */
+    async streamChatRound(message, history, signal) {
+        this.currentStreamId = null;
+        this.receivedContentLength = 0;
+        this.savedStreamId = null;
+        this.savedContentLength = 0;
+        this.isStreaming = true;
+        this.currentMessageElement = null;
+
+        const response = await fetch(this.apiUrl('chat/stream'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: message,
+                history: history,
+                model: this.modelSelect.value,
+                timestamp: new Date().toISOString(),
+                EnableSearch: this.isNetworkEnabled,
+                skill: this.selectedSkill,
+                hcsoft_context: this.hcsoftContext
+            }),
+            signal: signal
+        });
+
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+
+        const reader = response.body.getReader();
+        this.currentReader = reader;
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let completed = false;
+
+        try {
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+
+                    const data = line.slice(6);
+                    if (data === '[DONE]') {
+                        completed = true;
+                        this.isStreaming = false;
+                        continue;
+                    }
+
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.streamId) {
+                            this.currentStreamId = parsed.streamId;
+                            this.savedStreamId = parsed.streamId;
+                            this.savedContentLength = 0;
+                            continue;
+                        }
+                        if (parsed.error) {
+                            throw new Error(parsed.error);
+                        }
+                        if (!parsed.content) continue;
+
+                        parsed.content = this.processMessage(parsed.content);
+                        this.receivedContentLength += parsed.content.length;
+                        this.savedContentLength = this.receivedContentLength;
+                        if (!this.currentMessageElement) {
+                            this.messageBuffer = '';
+                            this.appendMessage('assistant', '', true);
+                        }
+                        this.appendStreamContent(parsed.content);
+                    } catch (error) {
+                        console.error('SSE数据解析错误:', error);
+                    }
+                }
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                if (this.needsResume) {
+                    console.log('锁屏中止，保留状态以便恢复');
+                } else {
+                    console.log('用户取消');
+                    completed = true;
+                }
+            } else {
+                console.log('连接异常断开，保留状态以便恢复');
+                throw error;
+            }
+        } finally {
+            try {
+                if (this.currentReader === reader && !signal.aborted) {
+                    await reader.cancel();
+                }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('关闭响应流失败:', error);
+                }
+            } finally {
+                if (this.currentReader === reader) {
+                    this.currentReader = null;
+                }
+            }
+        }
+
+        return completed;
+    }
+
+    removeCurrentAssistantForSearchRetry() {
+        if (this.currentMessageElement) {
+            this.currentMessageElement.remove();
+        }
+        if (this.messages.length > 0 &&
+            this.messages[this.messages.length - 1].role === 'assistant') {
+            this.messages.pop();
+        }
+        this.currentMessageElement = null;
+        this.messageBuffer = '';
+    }
+
+    replaceCurrentAssistantContent(content) {
+        if (!this.currentMessageElement) return;
+        const finalContent = String(content || '');
+        const contentDiv = this.currentMessageElement.querySelector('.message-content');
+        if (contentDiv) {
+            contentDiv.dataset.rawContent = finalContent;
+            contentDiv.innerHTML = marked.parse(this.preprocessMarkdown(finalContent));
+        }
+        if (this.messages.length > 0 &&
+            this.messages[this.messages.length - 1].role === 'assistant') {
+            this.messages[this.messages.length - 1].content = finalContent;
+        }
+        this.messageBuffer = finalContent;
     }
 
     // 发送消息
@@ -2740,124 +2903,135 @@ class ChatUI {
         let streamCompleted = false;
 
         try {
-            const message = this.messageInput.value.trim();
-
-            const history = this.convertToApiMessages();
-            const response = await fetch(this.apiUrl('chat/stream'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: message,
-                    history: history,
-                    model: this.modelSelect.value,
-                    timestamp: new Date().toISOString(),
-                    EnableSearch: this.isNetworkEnabled,
-                    skill: this.selectedSkill
-                }),
-                signal: signal
-
-            });
-
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-
-            const reader = response.body.getReader();
-            this.currentReader = reader;
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            this.currentMessageElement = null;
-            try {
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-
-                    buffer = lines.pop() || '';
-
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const data = line.slice(6);
-                            if (data === '[DONE]') {
-                                streamCompleted = true; // 正常完成
-                                this.isStreaming = false;
-                                continue;
-                            }
-
-                            try {
-                                const parsed = JSON.parse(data);
-
-                                // 处理 streamId（首次响应）
-                                if (parsed.streamId) {
-                                    this.currentStreamId = parsed.streamId;
-                                    // 同时保存到 savedStreamId，方便锁屏恢复
-                                    this.savedStreamId = parsed.streamId;
-                                    this.savedContentLength = 0;
-                                    continue;
-                                }
-
-                                if (parsed.error) {
-                                    throw new Error(parsed.error);
-                                }
-                                if (parsed.content) {
-                                    parsed.content = this.processMessage(parsed.content);
-                                    this.receivedContentLength += parsed.content.length;
-                                    // 同步更新 savedContentLength
-                                    this.savedContentLength = this.receivedContentLength;
-
-                                    if (!this.currentMessageElement) {
-                                        this.messageBuffer = '';
-                                        this.appendMessage('assistant', '', true);
-                                    }
-
-                                    this.appendStreamContent(parsed.content);
-                                }
-                            } catch (e) {
-                                console.error('SSE数据解析错误:', e);
-                            }
-                        }
-                    }
-                }
-
-                if (this.stopRequested && !this.needsResume) {
-                    console.log('用户取消');
-                    streamCompleted = true;
-                }
-            }
-            catch (error) {
-                if (error.name === 'AbortError') {
-                    if (this.needsResume) {
-                        // 锁屏自动中止，不标记为完成，保留状态
-                        console.log('锁屏中止，保留状态以便恢复');
-                    } else {
-                        // 用户主动取消
-                        console.log('用户取消');
-                        streamCompleted = true;
-                    }
-                } else {
-                    // 连接异常断开，不标记为完成，保留状态以便恢复
-                    console.log('连接异常断开，保留状态以便恢复');
-                    throw error;
-                }
-            } finally {
+            this.hcsoftContext = null;
+            // 工程数据默认不附加。只有用户点击“工程数据：未附加”并授权成功后，
+            // shouldAttachContext 才为 true；普通浏览器和未启用状态保持原聊天行为。
+            if (this.hcsoftBridge &&
+                this.hcsoftBridge.isAvailable &&
+                this.hcsoftBridge.shouldAttachContext) {
                 try {
-                    if (this.currentReader === reader && !signal.aborted) {
-                        await reader.cancel();
+                    // 新客户端按“摘要 → 相关目录 → 少量完整详情”分段读取；
+                    // 旧客户端由桥接脚本自动降级到原 context.get 整包协议。
+                    const contextResult = await this.hcsoftBridge.prepareContext(message);
+                    if (contextResult && contextResult.status === 'ok') {
+                        this.hcsoftContext = contextResult.context;
                     }
-                } catch (error) {
-                    if (error.name !== 'AbortError') {
-                        console.error('关闭响应流失败:', error);
-                    }
-                } finally {
-                    if (this.currentReader === reader) {
-                        this.currentReader = null;
-                    }
+                } catch (bridgeError) {
+                    console.warn('HCSoft context unavailable; continuing without it:', bridgeError.message);
                 }
+            }
+
+            const executedSearches = [];
+            const maxSearchRounds =
+                (this.hcsoftBridge && this.hcsoftBridge.maxModelSearchRounds) || 10;
+            let searchRound = 0;
+            let forceFinalAnswer = false;
+            let continuationNote = '';
+
+            while (true) {
+                const history = this.convertToApiMessages();
+                if (continuationNote) {
+                    history.push({
+                        role: 'user',
+                        content:
+                            '[HCSoft自动检索续答控制消息，不要向用户复述]\n' +
+                            continuationNote +
+                            '\n请继续回答最初的用户问题。',
+                        images: []
+                    });
+                }
+
+                streamCompleted = await this.streamChatRound(
+                    message,
+                    history,
+                    signal);
+                if (!streamCompleted ||
+                    this.stopRequested ||
+                    !this.currentMessageElement ||
+                    !this.hcsoftBridge ||
+                    typeof this.hcsoftBridge.extractSearchRequests !== 'function' ||
+                    !this.hcsoftContext) {
+                    break;
+                }
+
+                const contentDiv =
+                    this.currentMessageElement.querySelector('.message-content');
+                const rawContent = contentDiv &&
+                    typeof contentDiv.dataset.rawContent === 'string'
+                    ? contentDiv.dataset.rawContent
+                    : this.messageBuffer;
+                const searchRequest =
+                    this.hcsoftBridge.extractSearchRequests(rawContent);
+                if (!searchRequest.foundTag) {
+                    break;
+                }
+
+                const newQueries = searchRequest.queries.filter(query =>
+                    !executedSearches.includes(query));
+                if (!forceFinalAnswer &&
+                    searchRound < maxSearchRounds &&
+                    newQueries.length > 0) {
+                    this.removeCurrentAssistantForSearchRetry();
+                    newQueries.forEach(query => executedSearches.push(query));
+                    searchRound++;
+
+                    let extensionResult;
+                    try {
+                        extensionResult = await this.hcsoftBridge.extendContext(
+                            newQueries,
+                            this.hcsoftContext);
+                    } catch (bridgeError) {
+                        console.warn(
+                            'HCSoft automatic search failed:',
+                            bridgeError.message);
+                        extensionResult = {
+                            status: bridgeError.code || 'error',
+                            context: this.hcsoftContext,
+                            addedRecords: 0
+                        };
+                    }
+
+                    if (extensionResult &&
+                        extensionResult.status === 'ok' &&
+                        this.hcsoftBridge.isValidContext(extensionResult.context)) {
+                        this.hcsoftContext = extensionResult.context;
+                    }
+                    const addedRecords = Number(
+                        extensionResult && extensionResult.addedRecords) || 0;
+                    continuationNote =
+                        `模型请求的工程检索已执行：${newQueries.join('；')}。` +
+                        `本轮新增 ${addedRecords} 条记录。` +
+                        (addedRecords > 0
+                            ? '请先使用新增事实；仍缺少不同的关键事实时才可再次检索。'
+                            : '没有获得新增记录，请基于现有数据回答并明确数据边界，不要重复检索。');
+                    forceFinalAnswer =
+                        addedRecords === 0 ||
+                        !extensionResult ||
+                        extensionResult.status !== 'ok';
+                    this.isStreaming = true;
+                    continue;
+                }
+
+                if (!forceFinalAnswer) {
+                    // 已达到次数上限、查询重复或桥不支持增量搜索时，
+                    // 再给模型一次不允许继续搜索的最终作答机会。
+                    this.removeCurrentAssistantForSearchRetry();
+                    forceFinalAnswer = true;
+                    continuationNote =
+                        `自动工程检索已达到${maxSearchRounds}轮上限、查询重复或当前客户端不支持继续检索。` +
+                        '现在必须基于已有工程上下文给出最终回答，并明确未返回数据的边界；不得再次输出hcsoft_search。';
+                    this.isStreaming = true;
+                    continue;
+                }
+
+                const fallbackContent = searchRequest.content.trim() ||
+                    '当前自动工程检索已达到安全上限，无法取得更多数据。请缩小查询范围或提供更具体的编号、名称。';
+                this.replaceCurrentAssistantContent(fallbackContent);
+                break;
+            }
+
+            if (this.stopRequested && !this.needsResume) {
+                streamCompleted = true;
             }
         } catch (error) {
             console.error('错误:', error);
@@ -2882,6 +3056,8 @@ class ChatUI {
                 this.isStreaming = false;
 
                 if (this.currentMessageElement) {
+                    this.applyHcsoftActions(this.currentMessageElement);
+
                     // 流式传输完成后，重新渲染包含 waveform-player 的内容
                     // 流式阶段使用了占位符避免组件反复重建，现在做最终渲染
                     const contentDiv = this.currentMessageElement.querySelector('.message-content');
@@ -2980,6 +3156,7 @@ class ChatUI {
     processMessage(message) {
         // 检查消息是否包含 JavaScript 命令
         const jsCommandRegex = /<js_command>(.*?)<\/js_command>/g;
+        const allowedCommands = Object.freeze({});
         const matches = [...message.matchAll(jsCommandRegex)];
 
         if (matches.length > 0) {
@@ -2990,9 +3167,10 @@ class ChatUI {
                 try {
                     const commandData = JSON.parse(match[1]);
                     if (commandData.type === "js_command" &&
-                        typeof this[commandData.function] === 'function') {
+                        typeof allowedCommands[commandData.function] === 'function') {
                         // 执行命令
-                        this[commandData.function].apply(this, commandData.arguments);
+                        allowedCommands[commandData.function](
+                            Array.isArray(commandData.arguments) ? commandData.arguments : []);
                     }
 
                     // 从消息中移除命令
@@ -3011,6 +3189,62 @@ class ChatUI {
     // ==================== 会话管理功能 ====================
 
     // 从 URL 获取 uid 参数
+    applyHcsoftActions(messageElement) {
+        if (!messageElement) return;
+
+        const contentDiv = messageElement.querySelector('.message-content');
+        if (!contentDiv || !contentDiv.dataset.rawContent) return;
+
+        if (!this.hcsoftBridge) return;
+        const parsedActions = this.hcsoftBridge.extractActions(contentDiv.dataset.rawContent);
+        if (!parsedActions.foundTag) return;
+
+        contentDiv.dataset.rawContent = parsedActions.content;
+        contentDiv.innerHTML = marked.parse(this.preprocessMarkdown(parsedActions.content));
+
+        for (let index = this.messages.length - 1; index >= 0; index--) {
+            if (this.messages[index].role === 'assistant') {
+                this.messages[index].content = parsedActions.content;
+                break;
+            }
+        }
+
+        const existingActions = messageElement.querySelector('.hcsoft-actions');
+        if (existingActions) existingActions.remove();
+        if (parsedActions.actions.length === 0) return;
+
+        const actionContainer = document.createElement('div');
+        actionContainer.className = 'hcsoft-actions';
+        actionContainer.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;';
+
+        parsedActions.actions.forEach(action => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-sm btn-outline-primary hcsoft-locate-button';
+            const label = typeof action.label === 'string' && action.label.trim()
+                ? action.label.trim().slice(0, 80)
+                : '在软件中定位';
+            button.textContent = label;
+            button.addEventListener('click', async () => {
+                button.disabled = true;
+                try {
+                    const result = await this.hcsoftBridge.navigate(action);
+                    button.textContent = result.message || '已定位';
+                } catch (error) {
+                    button.textContent = error.message || '定位失败';
+                } finally {
+                    window.setTimeout(() => {
+                        button.disabled = false;
+                        button.textContent = label;
+                    }, 2500);
+                }
+            });
+            actionContainer.appendChild(button);
+        });
+
+        contentDiv.insertAdjacentElement('afterend', actionContainer);
+    }
+
     getUidFromUrl() {
         const urlParams = new URLSearchParams(window.location.search);
         return urlParams.get('uid') || '';
@@ -3392,13 +3626,16 @@ class ChatUI {
         }
 
         const modelName = this.modelSelect.value;
+        const persistableMessages = this.messages.filter(message =>
+            !(message.role === 'assistant' &&
+              String(message.content || '').includes('<hcsoft_search>')));
 
         const saveRequest = {
             sessionId: this.currentSessionId,
             uid: this.uid,
             title: this.currentSessionTitle,
             modelName: modelName,
-            messages: this.messages.map(msg => ({
+            messages: persistableMessages.map(msg => ({
                 role: msg.role,
                 content: msg.content,
                 imageUrls: msg.images || []
@@ -3631,7 +3868,10 @@ class ChatUI {
                     }
 
                     // 更新 copyButton 的内容，确保导出数据完整
-                    this.updateMessageActionContent(this.currentMessageElement, this.messageBuffer);
+                    this.applyHcsoftActions(this.currentMessageElement);
+                    const finalRawContent = this.currentMessageElement.querySelector('.message-content')?.dataset.rawContent
+                        || this.messageBuffer;
+                    this.updateMessageActionContent(this.currentMessageElement, finalRawContent);
 
                     try {
                         await this.renderMath(this.currentMessageElement);
@@ -3752,7 +3992,10 @@ class ChatUI {
                     }
 
                     // 更新 copyButton 的内容，确保导出数据完整
-                    this.updateMessageActionContent(this.currentMessageElement, this.messageBuffer);
+                    this.applyHcsoftActions(this.currentMessageElement);
+                    const finalRawContent = this.currentMessageElement.querySelector('.message-content')?.dataset.rawContent
+                        || this.messageBuffer;
+                    this.updateMessageActionContent(this.currentMessageElement, finalRawContent);
 
                     try {
                         await this.renderMath(this.currentMessageElement);
