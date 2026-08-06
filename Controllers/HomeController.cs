@@ -645,8 +645,13 @@ namespace ChatBot.Controllers
 
                 var filePath = Path.Combine(dataFolder, fileName);
 
+                // 保存前为识别出的造价报告补充分页兼容运行时，
+                // 避免函数声明顺序错误阻断后续 Chart.js 初始化。
+                var normalizedHtml =
+                    HcsoftReportHtmlNormalizer.Normalize(request.HtmlContent);
+
                 // 保存 HTML 文件
-                await System.IO.File.WriteAllTextAsync(filePath, request.HtmlContent, Encoding.UTF8);
+                await System.IO.File.WriteAllTextAsync(filePath, normalizedHtml, Encoding.UTF8);
 
                 // 返回动态访问链接
                 var shareUrl = BuildAbsoluteUrl($"/share/view/{fileName}");
@@ -682,6 +687,8 @@ namespace ChatBot.Controllers
                 }
 
                 var content = await System.IO.File.ReadAllTextAsync(filePath, Encoding.UTF8);
+                // 读取时再次幂等处理，以便已经保存的历史分享页无需重新生成即可恢复。
+                content = HcsoftReportHtmlNormalizer.Normalize(content);
                 return Content(content, "text/html");
             }
             catch (Exception ex)

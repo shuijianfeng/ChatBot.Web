@@ -181,6 +181,13 @@ namespace ChatBot.Models
         /// </summary>
         [JsonPropertyName("hcsoft_context")]
         public JsonElement? HcsoftContext { get; set; }
+
+        /// <summary>
+        /// HCSoft 桌面端对全部工程数据执行分片扫描后形成的紧凑累计结果。
+        /// 该字段只参与当前模型请求，不作为聊天消息持久化。
+        /// </summary>
+        [JsonPropertyName("hcsoft_analysis")]
+        public JsonElement? HcsoftAnalysis { get; set; }
     }
 
     /// <summary>

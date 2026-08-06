@@ -34,6 +34,19 @@ namespace ChatBot.Models
         public int MaxTokens { get; set; }
         public bool EnableSearch { get; set; }
         public bool Stream { get; set; }
+
+        /// <summary>
+        /// 是否使用 Responses API 的 WebSocket 传输模式。
+        /// 仅在 <see cref="ChatModelType.OpenAiResponses"/> 且 <see cref="Stream"/> 为
+        /// <see langword="true"/> 时生效；连接失败时会自动回退到 HTTP/SSE。
+        /// </summary>
+        public bool UseWebSocket { get; set; }
+
+        /// <summary>
+        /// 是否为 Responses API 请求启用快速模式（service_tier: fast）。
+        /// </summary>
+        public bool UseFastMode { get; set; }
+
         public string Model { get; set; } = string.Empty;
         public ChatModelType ChatModelType { get; set; } = ChatModelType.OPenAi;
         

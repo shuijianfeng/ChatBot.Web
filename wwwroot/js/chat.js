@@ -48,7 +48,10 @@ class ChatUI {
         this.currentSessionTitle = null; // 当前会话标题，用于避免重复生成
         this.uid = this.getUidFromUrl();
         this.hcsoftBridge = window.hcsoftBridge || null;
+        this.hcsoftAnalysisController =
+            window.hcsoftAnalysisController || null;
         this.hcsoftContext = null;
+        this.hcsoftAnalysis = null;
         this.sidebarCollapsed = true; // 默认折叠
         this.sessionsLoaded = false;
 
@@ -264,11 +267,12 @@ class ChatUI {
         } else {
             this.uploadImageButton.style.display = 'none';
         }
-        if (model && model.enableSearch) {
-            this.networkButton.style.display = 'flex'; // 或 'block'，根据您的CSS布局
-        } else {
-            this.networkButton.style.display = 'none';
-        }
+        // if (model && model.enableSearch) {
+        //     this.networkButton.style.display = 'flex'; // 或 'block'，根据您的CSS布局
+        // } else {
+        //     this.networkButton.style.display = 'none';
+        // }
+        this.networkButton.style.display = 'none';
     }
 
     init() {
@@ -790,6 +794,45 @@ class ChatUI {
     createCodeHeader(language, code) {
         const header = document.createElement('div');
         header.className = 'code-header';
+        let executableCode = code;
+        if (language.toLowerCase() === 'html' &&
+            window.hcsoftReportRenderer &&
+            typeof window.hcsoftReportRenderer.prepareLegacyHtml === 'function') {
+            try {
+                // 分片扫描完成后，将权威累计统计绑定进模型生成的 HTML。
+                // 模型只负责报告版式与结论表达；金额、数量和图表序列由本地结果注入。
+                if (this.hcsoftAnalysis &&
+                    typeof window.hcsoftReportRenderer.prepareAnalysisHtml === 'function') {
+                    executableCode =
+                        window.hcsoftReportRenderer.prepareAnalysisHtml(
+                            executableCode,
+                            this.hcsoftAnalysis);
+                }
+
+                // 兼容旧报告中“先调用 paginateTable、后给 window.paginateTable 赋值”的顺序错误。
+                // 新报告也会先经过此处；正常报告保持不变，旧报告则获得兼容运行时。
+                executableCode =
+                    window.hcsoftReportRenderer.prepareLegacyHtml(executableCode);
+
+                // Chart.js CDN 可能被 WebView、浏览器扩展或网络策略拦截。
+                // 为预览、下载和分享使用的同一份 HTML 注入同步同源后备，
+                // 确保报告自己的初始化代码执行前 window.Chart 已可用。
+                if (typeof window.hcsoftReportRenderer.prepareChartJsHtml ===
+                    'function') {
+                    executableCode =
+                        window.hcsoftReportRenderer.prepareChartJsHtml(
+                            executableCode,
+                            this.buildUrl('js/chart.umd.min.js'));
+                }
+            } catch (error) {
+                // 事实注入和旧报告兼容处理均不得成为报告输出门禁。
+                // 处理异常时直接保留模型生成的原始 HTML。
+                console.warn(
+                    '工程造价报告增强处理失败，将使用原始 HTML:',
+                    error);
+                executableCode = code;
+            }
+        }
 
         // 添加语言标识
         const langLabel = document.createElement('span');
@@ -827,7 +870,7 @@ class ChatUI {
             const filename = `code${extension}`;
 
             // 创建 Blob
-            const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+            const blob = new Blob([executableCode], { type: 'text/plain;charset=utf-8' });
 
             // 创建下载链接
             const url = URL.createObjectURL(blob);
@@ -913,8 +956,8 @@ class ChatUI {
 
                 // 完整 HTML 文档直接运行；只有片段才补齐基础页面壳。
                 // 交互式报告会自行携带 head、样式和脚本，重复包裹会导致布局和脚本异常。
-                const isCompleteHtmlDocument = /<!doctype\s+html|<html(?:\s|>)/i.test(code);
-                const htmlContent = isCompleteHtmlDocument ? code : `
+                const isCompleteHtmlDocument = /<!doctype\s+html|<html(?:\s|>)/i.test(executableCode);
+                const htmlContent = isCompleteHtmlDocument ? executableCode : `
     <!DOCTYPE html>
     <html>
     <head>
@@ -943,7 +986,7 @@ class ChatUI {
             }
         </style>
     </head>
-    <body>${code}</body>
+    <body>${executableCode}</body>
     </html>
 `;
 
@@ -1047,7 +1090,7 @@ class ChatUI {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ htmlContent: code })
+                        body: JSON.stringify({ htmlContent: executableCode })
                     });
 
                     const result = await response.json();
@@ -1099,7 +1142,7 @@ class ChatUI {
         copyButton.className = 'copy-button';
         copyButton.innerHTML = '<i class="bi bi-clipboard"></i>';
         copyButton.setAttribute('aria-label', '复制代码');
-        copyButton.dataset.copyContent = code;
+        copyButton.dataset.copyContent = executableCode;
         // 添加复制功能
         this.addCopyButtonListener(copyButton);
 
@@ -1955,18 +1998,24 @@ class ChatUI {
 
         // 添加预处理函数，用于处理连续的引用链接和 think 标签
         this.preprocessMarkdown = (content) => {
+            if (window.hcsoftMarkdownNormalizer &&
+                typeof window.hcsoftMarkdownNormalizer.preprocess ===
+                    'function') {
+                return window.hcsoftMarkdownNormalizer.preprocess(content);
+            }
+
             // 1. 在连续的引用链接之间添加空格，如 [2][3][8] -> [2] [3] [8]
             let result = content.replace(/(\[\d+\])(?=\[\d+\])/g, '$1 ');
 
             // 2. 处理完整的 think 块 - 使用更宽松的匹配
             // 匹配 <think>...~~~Thoughts...内容...~~~...</think>
-            result = result.replace(/<think>[\s\S]*?~~~\s*Thoughts\s*([\s\S]*?)~~~[\s\S]*?<\/think>/gi, '\n```thoughts\n$1\n```\n');
+            result = result.replace(/<think>[\s\S]*?~~~\s*Thoughts\s*([\s\S]*?)~~~[\s\S]*?<\/think>/gi, '\n````thoughts\n$1\n````\n');
 
             // 3. 处理不完整的 think 块（流式传输中间状态）
             // 开始标记：<think>...~~~Thoughts
-            result = result.replace(/<think>[\s\S]*?~~~\s*Thoughts\s*/gi, '\n```thoughts\n');
-            // 结束标记：~~~...</think>
-            result = result.replace(/~~~[\s\S]*?<\/think>/gi, '\n```\n');
+            result = result.replace(/<think>[\s\S]*?~~~\s*Thoughts\s*/gi, '\n````thoughts\n');
+            // 没有可见起始围栏的结束标记必须删除，不能生成孤立的 ```。
+            result = result.replace(/~~~[\s\S]*?<\/think>/gi, '\n');
 
             // 4. 清理任何残留的 think 标签
             result = result.replace(/<\/?think>/gi, '');
@@ -2108,6 +2157,13 @@ class ChatUI {
         this.renderMath = renderMath;
 
         this.completeOpenMarkdownFences = (content) => {
+            if (window.hcsoftMarkdownNormalizer &&
+                typeof window.hcsoftMarkdownNormalizer.completeOpenFences ===
+                    'function') {
+                return window.hcsoftMarkdownNormalizer
+                    .completeOpenFences(content);
+            }
+
             if (!content) return content;
 
             const fenceCount = (content.match(/```/g) || []).length;
@@ -2532,8 +2588,13 @@ class ChatUI {
 
                     // 预处理内容（移除 think 标签，转换 ~~~ 为 ```）
                     let displayBuffer = this.messageBuffer;
-                    const automaticSearchIndex =
-                        displayBuffer.indexOf('<hcsoft_search>');
+                    const controlIndexes = [
+                        displayBuffer.indexOf('<hcsoft_query>'),
+                        displayBuffer.indexOf('<hcsoft_search>')
+                    ].filter(index => index >= 0);
+                    const automaticSearchIndex = controlIndexes.length > 0
+                        ? Math.min(...controlIndexes)
+                        : -1;
                     if (automaticSearchIndex >= 0) {
                         displayBuffer =
                             displayBuffer.slice(0, automaticSearchIndex).trimEnd() +
@@ -2718,7 +2779,9 @@ class ChatUI {
 
             // 优先使用 rawContent，否则使用 textContent
             const content = contentDiv.dataset.rawContent || contentDiv.textContent || '';
-            if (isAssistant && content.includes('<hcsoft_search>')) {
+            if (isAssistant &&
+                (content.includes('<hcsoft_search>') ||
+                 content.includes('<hcsoft_query>'))) {
                 // 模型的自动检索控制消息只用于当前内存循环，不能恢复成会话正文。
                 return;
             }
@@ -2758,7 +2821,8 @@ class ChatUI {
                 timestamp: new Date().toISOString(),
                 EnableSearch: this.isNetworkEnabled,
                 skill: this.selectedSkill,
-                hcsoft_context: this.hcsoftContext
+                hcsoft_context: this.hcsoftContext,
+                hcsoft_analysis: this.hcsoftAnalysis
             }),
             signal: signal
         });
@@ -2904,6 +2968,7 @@ class ChatUI {
 
         try {
             this.hcsoftContext = null;
+            this.hcsoftAnalysis = null;
             // 工程数据默认不附加。只有用户点击“工程数据：未附加”并授权成功后，
             // shouldAttachContext 才为 true；普通浏览器和未启用状态保持原聊天行为。
             if (this.hcsoftBridge &&
@@ -2922,9 +2987,14 @@ class ChatUI {
             }
 
             const executedSearches = [];
+            const executedStructuredQueries = [];
             const maxSearchRounds =
                 (this.hcsoftBridge && this.hcsoftBridge.maxModelSearchRounds) || 10;
+            const maxEmptySearchRefinements = 1;
+            const maxStructuredCorrections = 2;
             let searchRound = 0;
+            let emptySearchRefinements = 0;
+            let structuredCorrections = 0;
             let forceFinalAnswer = false;
             let continuationNote = '';
 
@@ -2950,6 +3020,7 @@ class ChatUI {
                     !this.currentMessageElement ||
                     !this.hcsoftBridge ||
                     typeof this.hcsoftBridge.extractSearchRequests !== 'function' ||
+                    typeof this.hcsoftBridge.extractStructuredQueryRequests !== 'function' ||
                     !this.hcsoftContext) {
                     break;
                 }
@@ -2960,26 +3031,173 @@ class ChatUI {
                     typeof contentDiv.dataset.rawContent === 'string'
                     ? contentDiv.dataset.rawContent
                     : this.messageBuffer;
+                const structuredRequest =
+                    this.hcsoftBridge.extractStructuredQueryRequests(rawContent);
+                if (structuredRequest.foundTag) {
+                    const newStructuredQueries = [];
+                    for (let index = 0;
+                         index < structuredRequest.queries.length;
+                         index++) {
+                        const key = structuredRequest.keys[index];
+                        if (!executedStructuredQueries.includes(key)) {
+                            newStructuredQueries.push(
+                                structuredRequest.queries[index]);
+                        }
+                    }
+                    if (!forceFinalAnswer &&
+                        searchRound < maxSearchRounds &&
+                        this.hcsoftBridge.supportsStructuredQuery &&
+                        newStructuredQueries.length > 0) {
+                        this.removeCurrentAssistantForSearchRetry();
+                        for (let index = 0;
+                             index < structuredRequest.queries.length;
+                             index++) {
+                            const key = structuredRequest.keys[index];
+                            if (!executedStructuredQueries.includes(key)) {
+                                executedStructuredQueries.push(key);
+                            }
+                        }
+                        searchRound++;
+
+                        let queryResult;
+                        try {
+                            queryResult =
+                                await this.hcsoftBridge.executeStructuredQueries(
+                                    newStructuredQueries,
+                                    this.hcsoftContext);
+                        } catch (bridgeError) {
+                            console.warn(
+                                'HCSoft structured query failed:',
+                                bridgeError.message);
+                            queryResult = {
+                                status: bridgeError.code || 'error',
+                                context: this.hcsoftContext,
+                                feedback: [bridgeError.message],
+                                outcomes: []
+                            };
+                        }
+
+                        if (queryResult &&
+                            queryResult.status === 'ok' &&
+                            this.hcsoftBridge.isValidContext(
+                                queryResult.context)) {
+                            this.hcsoftContext = queryResult.context;
+                        }
+                        const feedback = [
+                            ...(structuredRequest.errors || []),
+                            ...((queryResult && queryResult.feedback) || [])
+                        ].filter(Boolean);
+                        const querySucceeded = Boolean(
+                            queryResult && queryResult.status === 'ok');
+                        const queryCorrectable =
+                            structuredRequest.errors.length > 0 ||
+                            Boolean(queryResult &&
+                                Array.isArray(queryResult.outcomes) &&
+                                queryResult.outcomes.some(outcome =>
+                                    outcome.status === 'invalid_query'));
+                        const canCorrect =
+                            !querySucceeded &&
+                            queryCorrectable &&
+                            structuredCorrections < maxStructuredCorrections &&
+                            searchRound < maxSearchRounds;
+                        if (canCorrect) {
+                            structuredCorrections++;
+                        } else if (querySucceeded) {
+                            structuredCorrections = 0;
+                        }
+                        continuationNote =
+                            '模型请求的结构化工程查询已由桌面端确定性执行。\n' +
+                            (feedback.length > 0
+                                ? feedback.join('\n')
+                                : '没有返回可用结果。') +
+                            '\nqueryResults 中的 executionComplete 表示数据集扫描是否完整；' +
+                            'aggregates 基于完整命中集合，records 只是受限证据页。' +
+                            (querySucceeded
+                                ? '若原问题要求全部明细，只有 recordsComplete=true 才能回答；' +
+                                  'hasMore=true 时请按 nextOffset 继续相同查询并使用新的 queryId。' +
+                                  '若 ambiguities 非空，请按候选完整路径或 targetId 细化查询。'
+                                : (canCorrect
+                                    ? '请根据错误修正一次 hcsoft_query，不要重复相同 AST。'
+                                    : '请基于现有数据回答，不得继续查询。'));
+                        forceFinalAnswer = !querySucceeded && !canCorrect;
+                        this.isStreaming = true;
+                        continue;
+                    }
+
+                    const canCorrectInvalidTag =
+                        !forceFinalAnswer &&
+                        structuredRequest.errors.length > 0 &&
+                        structuredCorrections < maxStructuredCorrections &&
+                        searchRound < maxSearchRounds;
+                    if (canCorrectInvalidTag) {
+                        this.removeCurrentAssistantForSearchRetry();
+                        structuredCorrections++;
+                        searchRound++;
+                        continuationNote =
+                            `结构化查询未执行：${structuredRequest.errors.join('；')}。` +
+                            '请根据协议修正 hcsoft_query；不要重复相同内容，也不要向用户解释控制标签。';
+                        this.isStreaming = true;
+                        continue;
+                    }
+
+                    if (!forceFinalAnswer) {
+                        this.removeCurrentAssistantForSearchRetry();
+                        forceFinalAnswer = true;
+                        const validationErrors =
+                            (structuredRequest.errors || []).join('；');
+                        continuationNote =
+                            (validationErrors
+                                ? `结构化查询未执行：${validationErrors}。`
+                                : '结构化查询重复、超过轮次上限或当前客户端不支持。') +
+                            '现在必须基于已有工程上下文给出最终回答；' +
+                            '不得再次输出 hcsoft_query 或 hcsoft_search。';
+                        this.isStreaming = true;
+                        continue;
+                    }
+
+                    const fallbackContent = structuredRequest.content.trim() ||
+                        '结构化工程查询已达到安全上限，无法取得更多数据。';
+                    this.replaceCurrentAssistantContent(fallbackContent);
+                    break;
+                }
+
                 const searchRequest =
                     this.hcsoftBridge.extractSearchRequests(rawContent);
                 if (!searchRequest.foundTag) {
                     break;
                 }
 
+                const fullScanKey = '__hcsoft_full_scan__';
+                const shouldRunFullScan =
+                    searchRequest.scanAll === true &&
+                    !executedSearches.includes(fullScanKey);
                 const newQueries = searchRequest.queries.filter(query =>
                     !executedSearches.includes(query));
                 if (!forceFinalAnswer &&
                     searchRound < maxSearchRounds &&
-                    newQueries.length > 0) {
+                    (shouldRunFullScan || newQueries.length > 0)) {
                     this.removeCurrentAssistantForSearchRetry();
+                    if (shouldRunFullScan) {
+                        executedSearches.push(fullScanKey);
+                    }
                     newQueries.forEach(query => executedSearches.push(query));
                     searchRound++;
 
                     let extensionResult;
                     try {
-                        extensionResult = await this.hcsoftBridge.extendContext(
-                            newQueries,
-                            this.hcsoftContext);
+                        if (shouldRunFullScan &&
+                            this.hcsoftAnalysisController &&
+                            this.hcsoftAnalysisController.isSupported) {
+                            extensionResult =
+                                await this.hcsoftAnalysisController.scan(
+                                    this.selectedSkill);
+                        } else {
+                            extensionResult =
+                                await this.hcsoftBridge.extendContext(
+                                    newQueries,
+                                    this.hcsoftContext,
+                                    { scanAll: shouldRunFullScan });
+                        }
                     } catch (bridgeError) {
                         console.warn(
                             'HCSoft automatic search failed:',
@@ -2993,21 +3211,55 @@ class ChatUI {
 
                     if (extensionResult &&
                         extensionResult.status === 'ok' &&
+                        extensionResult.analysis) {
+                        this.hcsoftAnalysis = extensionResult.analysis;
+                    } else if (extensionResult &&
+                        extensionResult.status === 'ok' &&
                         this.hcsoftBridge.isValidContext(extensionResult.context)) {
                         this.hcsoftContext = extensionResult.context;
+                        if (this.hcsoftAnalysis &&
+                            typeof this.hcsoftBridge.addAnalysisTargets === 'function') {
+                            this.hcsoftBridge.addAnalysisTargets(
+                                this.hcsoftAnalysis);
+                        }
                     }
                     const addedRecords = Number(
                         extensionResult && extensionResult.addedRecords) || 0;
+                    const addedCatalogRecords = Number(
+                        extensionResult && extensionResult.addedCatalogRecords) || 0;
+                    const addedFacts = addedRecords + addedCatalogRecords;
+                    const extensionSucceeded = Boolean(
+                        extensionResult && extensionResult.status === 'ok');
+                    const canRefineEmptySearch =
+                        !shouldRunFullScan &&
+                        extensionSucceeded &&
+                        addedFacts === 0 &&
+                        emptySearchRefinements < maxEmptySearchRefinements &&
+                        searchRound < maxSearchRounds;
+                    if (canRefineEmptySearch) {
+                        emptySearchRefinements++;
+                    } else if (addedFacts > 0) {
+                        emptySearchRefinements = 0;
+                    }
+                    const executedDescription = shouldRunFullScan
+                        ? (this.hcsoftAnalysis
+                            ? '全部工程节点、材料、费用和配置已在桌面端分片扫描并精确累计'
+                            : '请求范围内全部工程节点及其详情')
+                        : newQueries.join('；');
                     continuationNote =
-                        `模型请求的工程检索已执行：${newQueries.join('；')}。` +
-                        `本轮新增 ${addedRecords} 条记录。` +
-                        (addedRecords > 0
+                        `模型请求的工程检索已执行：${executedDescription}。` +
+                        `本轮新增 ${addedRecords} 条完整详情、` +
+                        `${addedCatalogRecords} 条轻量目录。` +
+                        (addedFacts > 0
                             ? '请先使用新增事实；仍缺少不同的关键事实时才可再次检索。'
-                            : '没有获得新增记录，请基于现有数据回答并明确数据边界，不要重复检索。');
+                            : (canRefineEmptySearch
+                                ? '本轮没有新增记录，但还可以细化一次检索。若仍缺关键明细，' +
+                                  '请输出一个不同的hcsoft_search，并包含完整父路径、明确“下的全部清单”' +
+                                  '以及合价等所需字段；不要让用户手工展开，也不要重复刚才的查询。'
+                                : '没有获得新增记录，请基于现有数据回答并明确数据边界，不要重复检索。'));
                     forceFinalAnswer =
-                        addedRecords === 0 ||
-                        !extensionResult ||
-                        extensionResult.status !== 'ok';
+                        !extensionSucceeded ||
+                        (addedFacts === 0 && !canRefineEmptySearch);
                     this.isStreaming = true;
                     continue;
                 }
@@ -3019,7 +3271,8 @@ class ChatUI {
                     forceFinalAnswer = true;
                     continuationNote =
                         `自动工程检索已达到${maxSearchRounds}轮上限、查询重复或当前客户端不支持继续检索。` +
-                        '现在必须基于已有工程上下文给出最终回答，并明确未返回数据的边界；不得再次输出hcsoft_search。';
+                        '现在必须基于已有工程上下文给出最终回答，并明确未返回数据的边界；' +
+                        '不得再次输出 hcsoft_query 或 hcsoft_search。';
                     this.isStreaming = true;
                     continue;
                 }
@@ -3628,7 +3881,8 @@ class ChatUI {
         const modelName = this.modelSelect.value;
         const persistableMessages = this.messages.filter(message =>
             !(message.role === 'assistant' &&
-              String(message.content || '').includes('<hcsoft_search>')));
+              (String(message.content || '').includes('<hcsoft_search>') ||
+               String(message.content || '').includes('<hcsoft_query>'))));
 
         const saveRequest = {
             sessionId: this.currentSessionId,

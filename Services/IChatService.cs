@@ -22,10 +22,12 @@ using System.Data;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Pipelines;
+using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Web;
 using A = DocumentFormat.OpenXml.Drawing;
@@ -315,6 +317,8 @@ namespace ChatBot.Web.Services
                 MaxTokens = source.MaxTokens,
                 EnableSearch = source.EnableSearch,
                 Stream = source.Stream,
+                UseWebSocket = source.UseWebSocket,
+                UseFastMode = source.UseFastMode,
                 Model = source.Model,
                 ChatModelType = source.ChatModelType,
                 
@@ -343,6 +347,7 @@ namespace ChatBot.Web.Services
             var skillPrompt = GetSkillPrompt(request.Skill);
             var effectiveSystemPrompt = BuildEffectiveSystemPrompt(baseConfig.Systemprompt, request.Skill, skillPrompt);
             (request, effectiveSystemPrompt) = HcsoftContextEnricher.Apply(request, effectiveSystemPrompt);
+            (request, effectiveSystemPrompt) = HcsoftAnalysisEnricher.Apply(request, effectiveSystemPrompt);
             var config = CreateRequestScopedConfig(baseConfig, effectiveSystemPrompt);
 
            
@@ -384,9 +389,25 @@ namespace ChatBot.Web.Services
                     }
                 case ChatModelType.OpenAiResponses:
                     {
-                        await foreach (var item in OpenAIResponsesAsync(config, request, cancellationToken))
+                        if (config.UseWebSocket && config.Stream)
                         {
-                            yield return item;
+                            using var webSocketClient = CreateOpenAIResponsesWebSocketClient(config);
+                            await foreach (var item in OpenAIResponsesAsync(config, request, cancellationToken, webSocketClient))
+                            {
+                                yield return item;
+                            }
+                        }
+                        else
+                        {
+                            if (config.UseWebSocket)
+                            {
+                                _logger.LogWarning("OpenAI Responses WebSocket 模式要求 Stream=true，当前请求已回退到 HTTP。Model: {Model}", config.Model);
+                            }
+
+                            await foreach (var item in OpenAIResponsesAsync(config, request, cancellationToken))
+                            {
+                                yield return item;
+                            }
                         }
                         break;
                     }
@@ -474,6 +495,419 @@ namespace ChatBot.Web.Services
        
 
         /// <summary>
+        /// 将 Responses API 的 WebSocket 事件适配为现有 SSE 读取流程。
+        /// 每个处理器维护一个长连接，并严格串行执行响应。
+        /// </summary>
+        private sealed class OpenAIResponsesWebSocketHandler : HttpMessageHandler
+        {
+            private const int ReceiveBufferSize = 16 * 1024;
+            private const int MaxEventSize = 16 * 1024 * 1024;
+
+            private readonly string _apiKey;
+            private readonly ILogger<ChatService> _logger;
+            private readonly SemaphoreSlim _turnGate = new(1, 1);
+            private readonly CancellationTokenSource _disposeCancellation = new();
+            private readonly HttpMessageInvoker _httpFallback = new(new SocketsHttpHandler(), disposeHandler: true);
+            private ClientWebSocket? _webSocket;
+            private Uri? _webSocketUri;
+            private bool _useHttpFallback;
+            private bool _disposed;
+
+            public OpenAIResponsesWebSocketHandler(string apiKey, ILogger<ChatService> logger)
+            {
+                _apiKey = apiKey;
+                _logger = logger;
+            }
+
+            protected override async Task<HttpResponseMessage> SendAsync(
+                HttpRequestMessage request,
+                CancellationToken cancellationToken)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+
+                if (_useHttpFallback)
+                {
+                    return await _httpFallback.SendAsync(request, cancellationToken);
+                }
+
+                if (request.RequestUri == null)
+                {
+                    throw new InvalidOperationException("OpenAI Responses API 地址缺失。");
+                }
+
+                var requestJson = request.Content == null
+                    ? "{}"
+                    : await request.Content.ReadAsStringAsync(cancellationToken);
+                var webSocketPayload = CreateWebSocketPayload(requestJson);
+
+                await _turnGate.WaitAsync(cancellationToken);
+                var releaseTurnGate = true;
+
+                try
+                {
+                    if (_useHttpFallback)
+                    {
+                        return await _httpFallback.SendAsync(request, cancellationToken);
+                    }
+
+                    ClientWebSocket socket;
+                    try
+                    {
+                        socket = await EnsureConnectedAsync(request.RequestUri, cancellationToken);
+                    }
+                    catch (Exception ex) when (IsWebSocketConnectionFailure(ex, cancellationToken))
+                    {
+                        SwitchToHttpFallback(request.RequestUri, ex);
+                        return await _httpFallback.SendAsync(request, cancellationToken);
+                    }
+
+                    var payloadBytes = Encoding.UTF8.GetBytes(webSocketPayload);
+                    await socket.SendAsync(
+                        payloadBytes,
+                        WebSocketMessageType.Text,
+                        endOfMessage: true,
+                        cancellationToken);
+
+                    var pipe = new Pipe();
+                    var pumpCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken,
+                        _disposeCancellation.Token);
+
+                    _ = PumpResponseAsync(socket, pipe.Writer, pumpCancellation);
+                    releaseTurnGate = false;
+
+                    var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                    {
+                        RequestMessage = request,
+                        Content = new StreamContent(pipe.Reader.AsStream())
+                    };
+                    response.Content.Headers.TryAddWithoutValidation("Content-Type", "text/event-stream; charset=utf-8");
+                    return response;
+                }
+                finally
+                {
+                    if (releaseTurnGate)
+                    {
+                        _turnGate.Release();
+                    }
+                }
+            }
+
+            private async Task<ClientWebSocket> EnsureConnectedAsync(Uri httpUri, CancellationToken cancellationToken)
+            {
+                var webSocketUri = ToWebSocketUri(httpUri);
+                if (_webSocket is { State: WebSocketState.Open }
+                    && _webSocketUri == webSocketUri)
+                {
+                    return _webSocket;
+                }
+
+                ResetWebSocket();
+
+                var socket = new ClientWebSocket();
+                socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+                socket.Options.SetRequestHeader("Authorization", $"Bearer {_apiKey}");
+
+                try
+                {
+                    await socket.ConnectAsync(webSocketUri, cancellationToken);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+
+                _webSocket = socket;
+                _webSocketUri = webSocketUri;
+                _logger.LogInformation("OpenAI Responses WebSocket 已连接。Endpoint: {Endpoint}", webSocketUri);
+                return socket;
+            }
+
+            private async Task PumpResponseAsync(
+                ClientWebSocket socket,
+                PipeWriter writer,
+                CancellationTokenSource pumpCancellation)
+            {
+                Exception? completionError = null;
+                var forwardEvents = true;
+                var reachedTerminalEvent = false;
+                var requiresReconnect = false;
+
+                try
+                {
+                    while (!pumpCancellation.IsCancellationRequested)
+                    {
+                        var (json, connectionClosed) = await ReceiveTextMessageAsync(
+                            socket,
+                            pumpCancellation.Token);
+
+                        if (connectionClosed)
+                        {
+                            completionError = new IOException(
+                                "OpenAI Responses WebSocket 在终止事件之前关闭。");
+                            break;
+                        }
+
+                        if (json == null)
+                        {
+                            continue;
+                        }
+
+                        if (forwardEvents)
+                        {
+                            var sseFrame = Encoding.UTF8.GetBytes($"data: {json}\n\n");
+                            try
+                            {
+                                var flushResult = await writer.WriteAsync(sseFrame, pumpCancellation.Token);
+                                forwardEvents = !flushResult.IsCanceled && !flushResult.IsCompleted;
+                            }
+                            catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+                            {
+                                // 调用方可能在收到工具调用后提前结束本轮读取；仍需继续排空到终止事件。
+                                forwardEvents = false;
+                            }
+                        }
+
+                        if (IsTerminalResponseEvent(json))
+                        {
+                            reachedTerminalEvent = true;
+                            requiresReconnect = RequiresReconnect(json);
+                            break;
+                        }
+                    }
+                }
+                catch (OperationCanceledException) when (pumpCancellation.IsCancellationRequested)
+                {
+                }
+                catch (Exception ex)
+                {
+                    completionError = ex;
+                    _logger.LogWarning(ex, "OpenAI Responses WebSocket 接收中断。");
+                }
+                finally
+                {
+                    if (!reachedTerminalEvent || requiresReconnect)
+                    {
+                        ResetWebSocket(socket);
+                    }
+
+                    try
+                    {
+                        await writer.CompleteAsync(completionError);
+                    }
+                    finally
+                    {
+                        pumpCancellation.Dispose();
+                        _turnGate.Release();
+                    }
+                }
+            }
+
+            private static async Task<(string? Json, bool ConnectionClosed)> ReceiveTextMessageAsync(
+                ClientWebSocket socket,
+                CancellationToken cancellationToken)
+            {
+                var receiveBuffer = ArrayPool<byte>.Shared.Rent(ReceiveBufferSize);
+                try
+                {
+                    var messageBuffer = new ArrayBufferWriter<byte>();
+                    WebSocketMessageType? messageType = null;
+
+                    while (true)
+                    {
+                        var result = await socket.ReceiveAsync(receiveBuffer.AsMemory(), cancellationToken);
+                        if (result.MessageType == WebSocketMessageType.Close)
+                        {
+                            return (null, true);
+                        }
+
+                        messageType ??= result.MessageType;
+                        if (messageType != result.MessageType)
+                        {
+                            throw new InvalidDataException("OpenAI Responses WebSocket 消息类型在分片之间发生变化。");
+                        }
+
+                        if (result.MessageType != WebSocketMessageType.Text)
+                        {
+                            throw new InvalidDataException("OpenAI Responses WebSocket 返回了非文本消息。");
+                        }
+
+                        if (messageBuffer.WrittenCount + result.Count > MaxEventSize)
+                        {
+                            throw new InvalidDataException($"OpenAI Responses WebSocket 单个事件超过 {MaxEventSize} 字节限制。");
+                        }
+
+                        messageBuffer.Write(receiveBuffer.AsSpan(0, result.Count));
+                        if (result.EndOfMessage)
+                        {
+                            return (Encoding.UTF8.GetString(messageBuffer.WrittenSpan), false);
+                        }
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(receiveBuffer);
+                }
+            }
+
+            private static string CreateWebSocketPayload(string requestJson)
+            {
+                if (JsonNode.Parse(requestJson) is not JsonObject payload)
+                {
+                    throw new JsonException("OpenAI Responses 请求必须是 JSON 对象。");
+                }
+
+                payload.Remove("stream");
+                payload.Remove("background");
+                payload["type"] = "response.create";
+                return payload.ToJsonString(_jsonOptions);
+            }
+
+            private static bool IsTerminalResponseEvent(string json)
+            {
+                if (string.Equals(json, "[DONE]", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+
+                try
+                {
+                    using var document = JsonDocument.Parse(json);
+                    if (!document.RootElement.TryGetProperty("type", out var typeElement))
+                    {
+                        return false;
+                    }
+
+                    return typeElement.GetString() is
+                        "response.completed" or
+                        "response.incomplete" or
+                        "response.failed" or
+                        "response.cancelled" or
+                        "response.done" or
+                        "error";
+                }
+                catch (JsonException)
+                {
+                    return false;
+                }
+            }
+
+            private static bool RequiresReconnect(string json)
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(json);
+                    return document.RootElement.TryGetProperty("error", out var errorElement)
+                        && errorElement.ValueKind == JsonValueKind.Object
+                        && errorElement.TryGetProperty("code", out var codeElement)
+                        && string.Equals(
+                            codeElement.GetString(),
+                            "websocket_connection_limit_reached",
+                            StringComparison.OrdinalIgnoreCase);
+                }
+                catch (JsonException)
+                {
+                    return false;
+                }
+            }
+
+            private static Uri ToWebSocketUri(Uri endpoint)
+            {
+                var builder = new UriBuilder(endpoint)
+                {
+                    Scheme = endpoint.Scheme.ToLowerInvariant() switch
+                    {
+                        "https" => "wss",
+                        "http" => "ws",
+                        "wss" => "wss",
+                        "ws" => "ws",
+                        _ => throw new InvalidOperationException($"Responses WebSocket 不支持 URI 协议: {endpoint.Scheme}")
+                    }
+                };
+
+                return builder.Uri;
+            }
+
+            private static bool IsWebSocketConnectionFailure(Exception exception, CancellationToken cancellationToken)
+            {
+                return !cancellationToken.IsCancellationRequested
+                    && exception is WebSocketException or HttpRequestException or IOException;
+            }
+
+            private void SwitchToHttpFallback(Uri endpoint, Exception exception)
+            {
+                _useHttpFallback = true;
+                ResetWebSocket();
+                _logger.LogWarning(
+                    exception,
+                    "OpenAI Responses WebSocket 建连失败，当前请求链回退到 HTTP/SSE。Endpoint: {Endpoint}",
+                    endpoint);
+            }
+
+            private void ResetWebSocket(ClientWebSocket? expectedSocket = null)
+            {
+                if (expectedSocket != null && !ReferenceEquals(expectedSocket, _webSocket))
+                {
+                    return;
+                }
+
+                var socket = _webSocket;
+                _webSocket = null;
+                _webSocketUri = null;
+
+                if (socket == null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    socket.Abort();
+                }
+                finally
+                {
+                    socket.Dispose();
+                }
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing && !_disposed)
+                {
+                    _disposed = true;
+                    _disposeCancellation.Cancel();
+                    ResetWebSocket();
+                    _httpFallback.Dispose();
+                    _disposeCancellation.Dispose();
+                }
+
+                base.Dispose(disposing);
+            }
+        }
+
+        /// <summary>
+        /// 创建将现有 Responses SSE 处理流程复用于 WebSocket 的客户端。
+        /// </summary>
+        private HttpClient CreateOpenAIResponsesWebSocketClient(ChatModelConfig modelConfig)
+        {
+            var apiKey = Environment.GetEnvironmentVariable(modelConfig.EnvironmentApikeyName);
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                throw new InvalidOperationException("API配置缺失");
+            }
+
+            var client = new HttpClient(
+                new OpenAIResponsesWebSocketHandler(apiKey, _logger),
+                disposeHandler: true)
+            {
+                Timeout = TimeSpan.FromMinutes(30)
+            };
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {apiKey}");
+            return client;
+        }
+
+        /// <summary>
         /// 调用 OpenAI Responses API，并统一处理文本、推理、搜索状态和工具调用事件。
         /// </summary>
         /// <param name="modelconfg">模型配置。</param>
@@ -481,6 +915,9 @@ namespace ChatBot.Web.Services
         /// <param name="cancellationToken">取消令牌。</param>
         /// <param name="inputclient">可选的复用 HTTP 客户端。</param>
         /// <param name="toolsmessages">上一轮工具调用产生的附加消息。</param>
+        /// <param name="previousResponseId">用于继续响应链的上一个响应 ID。</param>
+        /// <param name="continuationDepth">自动续写深度。</param>
+        /// <param name="incrementalInput">WebSocket 响应链中仅需追加的新输入项。</param>
         /// <returns>按顺序返回的回复文本片段。</returns>
         public async IAsyncEnumerable<string> OpenAIResponsesAsync(
             ChatModelConfig modelconfg,
@@ -489,11 +926,13 @@ namespace ChatBot.Web.Services
             HttpClient? inputclient = null,
             List<object>? toolsmessages = null,
             string? previousResponseId = null,
-            int continuationDepth = 0)
+            int continuationDepth = 0,
+            List<object>? incrementalInput = null)
         {
             // 验证API配置
             var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
             var apiEndpoint = modelconfg.ApiEndpoint;
+            var useWebSocketTransport = modelconfg.UseWebSocket && modelconfg.Stream;
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiEndpoint))
             {
@@ -514,7 +953,9 @@ namespace ChatBot.Web.Services
                 && !_responsesUnsupportedPreviousResponseIdEndpoints.ContainsKey(apiEndpoint);
 
             var messages = usePreviousResponseId
-                ? CreateResponsesContinuationMessages()
+                ? incrementalInput is { Count: > 0 }
+                    ? new List<object>(incrementalInput)
+                    : CreateResponsesContinuationMessages()
                 : ToMessagesResponsesOpenAi(request, modelconfg);
 
             if (!usePreviousResponseId)
@@ -522,8 +963,8 @@ namespace ChatBot.Web.Services
                 messages.AddRange(toolsmessages);
             }
 
-            // 准备工具列表 (如果启用搜索)
-            List<object>? tools = await PrepareOpenAiResponsesToolsAsync(request.EnableSearch, cancellationToken);
+            // Responses 搜索工具由模型配置控制，避免依赖客户端请求中的临时开关。
+            List<object>? tools = await PrepareOpenAiResponsesToolsAsync(modelconfg.EnableSearch, cancellationToken);
 
             // 构建请求内容
             var requestContent = new
@@ -533,9 +974,10 @@ namespace ChatBot.Web.Services
                 previous_response_id = usePreviousResponseId ? previousResponseId : null,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-                reasoning = OpenAiThinkingLevel(modelconfg),
+                reasoning = OpenAiResponsesThinkingLevel(modelconfg),
                 tools = tools,
                 max_output_tokens = modelconfg.MaxTokens > 0 ? (int?)modelconfg.MaxTokens : null,
+                service_tier = modelconfg.UseFastMode ? "fast" : null,
             };
 
             //var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
@@ -605,6 +1047,7 @@ namespace ChatBot.Web.Services
 
                 List<tool_callnew> tool_calls = new();      // 工具调用列表
                 List<object> reasoning_items = new();        // 推理项列表 (用于关联 function_call)
+                var reasoningItemIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
                 var contentBuilder = new StringBuilder();    // 内容构建器
                 var reasoningTextBuilder = new StringBuilder();
                 string? currentResponseId = previousResponseId;
@@ -619,7 +1062,7 @@ namespace ChatBot.Web.Services
                         {
                             line = await reader.ReadLineAsync(cancellationToken);
                         }
-                        catch (TaskCanceledException ex)
+                        catch (Exception ex) when (ex is OperationCanceledException or IOException or WebSocketException or HttpRequestException)
                         {
                             if (string.IsNullOrWhiteSpace(currentResponseId)
                                 || (contentBuilder.Length == 0 && reasoningTextBuilder.Length == 0)
@@ -779,6 +1222,60 @@ namespace ChatBot.Web.Services
                                     sawTerminalResponseEvent = true;
                                     currentResponseId = ResolveResponsesResponseId(chunk, currentResponseId);
                                     currentResponseId = ResolveResponsesResponseId(rawResponseId, currentResponseId);
+                                    var responseErrorCode = chunk.error?.code ?? chunk.response?.error?.code;
+
+                                    if (useWebSocketTransport
+                                        && continuationDepth < 3
+                                        && string.Equals(
+                                            responseErrorCode,
+                                            "websocket_connection_limit_reached",
+                                            StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        _logger.LogWarning(
+                                            "OpenAI Responses WebSocket 已达到连接时限，重新建连后重试当前请求。ContinuationDepth: {ContinuationDepth}",
+                                            continuationDepth);
+                                        response.Content.Dispose();
+                                        await foreach (var item in OpenAIResponsesAsync(
+                                            modelconfg,
+                                            request,
+                                            cancellationToken,
+                                            client,
+                                            toolsmessages,
+                                            previousResponseId,
+                                            continuationDepth + 1,
+                                            incrementalInput))
+                                        {
+                                            yield return item;
+                                        }
+                                        yield break;
+                                    }
+
+                                    if (useWebSocketTransport
+                                        && continuationDepth < 3
+                                        && !string.IsNullOrWhiteSpace(previousResponseId)
+                                        && string.Equals(
+                                            responseErrorCode,
+                                            "previous_response_not_found",
+                                            StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        _logger.LogWarning(
+                                            "OpenAI Responses WebSocket 无法恢复 PreviousResponseId，改用完整上下文创建新响应链。PreviousResponseId: {PreviousResponseId}",
+                                            previousResponseId);
+                                        response.Content.Dispose();
+                                        await foreach (var item in OpenAIResponsesAsync(
+                                            modelconfg,
+                                            request,
+                                            cancellationToken,
+                                            client,
+                                            toolsmessages,
+                                            null,
+                                            continuationDepth + 1))
+                                        {
+                                            yield return item;
+                                        }
+                                        yield break;
+                                    }
+
                                     var errorMessage = FormatOpenAIResponsesErrorMessage(chunk.error, chunk.response?.error);
                                     _logger.LogWarning("OpenAI Responses SSE 错误事件。ResponseId: {ResponseId}, Error: {Error}", currentResponseId, errorMessage);
                                     yield return errorMessage;
@@ -855,10 +1352,9 @@ namespace ChatBot.Web.Services
                                             }
                                             else if (itemType == "reasoning")
                                             {
-                                                // 保存原始 JsonElement 以保留完整结构
-                                                // OpenAI 推理模型 (o1/o3等) 要求 function_call 必须包含其关联的 reasoning 项
-                                                // 需要使用 Clone() 因为原始 JsonElement 是 stream 的一部分，可能会被释放
-                                                reasoning_items.Add(JsonSerializer.Deserialize<object>(itemElement.GetRawText(), _jsonOptions)!);
+                                                // 保存原始 JsonElement 以保留完整结构。工具续写时，部分上游要求把
+                                                // reasoning item 原样带回；不能只保留展示给用户的 reasoning 文本。
+                                                UpsertResponsesReasoningItem(reasoning_items, reasoningItemIndexes, itemElement);
 
                                                 if (reasoningTextBuilder.Length == 0)
                                                 {
@@ -938,6 +1434,7 @@ namespace ChatBot.Web.Services
                                     break;
 
                                 // ========== Web搜索事件 ==========
+                                case "response.web_search_call.in_progress":
                                 case "response.web_search_call.searching":
                                     // Web搜索开始
                                     if (!isWebSearching)
@@ -984,6 +1481,15 @@ namespace ChatBot.Web.Services
                                 // ========== 输出项完成事件 ==========
                                 case "response.output_item.done":
                                     {
+                                        if (chunk?.item?.ValueKind == JsonValueKind.Object
+                                            && chunk.item.Value.TryGetProperty("type", out var completedItemType)
+                                            && string.Equals(completedItemType.GetString(), "reasoning", StringComparison.Ordinal))
+                                        {
+                                            // output_item.added 通常只包含未完成的摘要；以 done 事件中的完整项替换它，
+                                            // 以便 Jina/MCP function call 的下一轮请求携带完整 reasoning 数据。
+                                            UpsertResponsesReasoningItem(reasoning_items, reasoningItemIndexes, chunk.item.Value);
+                                        }
+
                                         if (reasoningTextBuilder.Length == 0 && chunk?.item?.ValueKind == JsonValueKind.Object)
                                         {
                                             var reasoningText = ExtractResponsesReasoningText(chunk.item.Value);
@@ -1020,19 +1526,30 @@ namespace ChatBot.Web.Services
                                             {
                                                 string toolResult = await ExecuteOpenAIToolCallAsync(pair.name, pair.arguments, cancellationToken);
                                                 toolsmessages.Add(pair);
-                                                toolsmessages.Add(new
+                                                var toolOutput = new
                                                 {
                                                     type = "function_call_output",
                                                     call_id = pair.call_id,
                                                     output = toolResult
-                                                });
+                                                };
+                                                toolsmessages.Add(toolOutput);
                                             }
 
                                             // 清理状态，递归调用以继续对话
                                             contentBuilder.Clear();
                                             tool_calls.Clear();
                                             response.Content.Dispose();
-                                            await foreach (var item in OpenAIResponsesAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                                            // Jina/MCP 是客户端执行的 function call。当前上游在 thinking 模式下，
+                                            // 通过 previous_response_id 只追加 tool output 会丢失 reasoning_text，
+                                            // 因此必须把完整 reasoning/tool 上下文重新提交。
+                                            await foreach (var item in OpenAIResponsesAsync(
+                                                modelconfg,
+                                                request,
+                                                cancellationToken,
+                                                client,
+                                                toolsmessages,
+                                                null,
+                                                continuationDepth))
                                             {
                                                 yield return item;
                                             }
@@ -1061,7 +1578,6 @@ namespace ChatBot.Web.Services
                         if (output == null || output.Length == 0) continue;
 
                         bool hasFunctionCall = false;
-
                         foreach (var item in output)
                         {
                             if (item.type == "reasoning")
@@ -1094,12 +1610,13 @@ namespace ChatBot.Web.Services
                                     call_id = item.call_id,
                                     id = item.id
                                 });
-                                toolsmessages.Add(new
+                                var toolOutput = new
                                 {
                                     type = "function_call_output",
                                     call_id = item.call_id,
                                     output = toolResult
-                                });
+                                };
+                                toolsmessages.Add(toolOutput);
                             }
                             else
                             {
@@ -1131,7 +1648,15 @@ namespace ChatBot.Web.Services
                         // 如果有工具调用，递归处理
                         if (hasFunctionCall)
                         {
-                            await foreach (var item in OpenAIResponsesAsync(modelconfg, request, cancellationToken, client, toolsmessages))
+                            // 与流式路径一致，function call 续写必须提交完整工具上下文。
+                            await foreach (var item in OpenAIResponsesAsync(
+                                modelconfg,
+                                request,
+                                cancellationToken,
+                                client,
+                                toolsmessages,
+                                null,
+                                continuationDepth))
                             {
                                 yield return item;
                             }
@@ -2706,8 +3231,8 @@ namespace ChatBot.Web.Services
                 messages = messages,
                 stream = modelconfg.Stream,
                 temperature = modelconfg.Temperature >= 0 ? (float?)modelconfg.Temperature : null,
-                reasoning = OpenAiThinkingLevel(modelconfg),
-                reasoning_effort = DeepSeekThinkingLevel(modelconfg),
+        
+                reasoning_effort = OpenAiThinkingLevel(modelconfg),
                 tools = tools,
                 max_tokens = modelconfg.MaxTokens > 0 ? (int?)modelconfg.MaxTokens : null,
             };
@@ -3239,30 +3764,12 @@ namespace ChatBot.Web.Services
             var tools = new List<object>();
             if (search)
             {
-                tools.Add
-                    (
-                    new
-                    {
-                        type = "function",
+                tools.Add(new
+                {
+                    type = "web_search"
 
-                        name = nameof(JinaAiSearch),
-                        description = "执行网页搜索并返回结果",
-                        parameters = new
-                        {
-                            type = "object",
-                            properties = new
-                            {
-                                query = new
-                                {
-                                    type = "string",
-                                    description = "搜索词"
-                                }
-                            },
-                            required = new[] { "query" }
-                        }
-
-                    });
-            }
+                });
+              }
 
             tools.Add(
                  new
@@ -6172,6 +6679,28 @@ namespace ChatBot.Web.Services
             return builder.ToString();
         }
 
+        private static void UpsertResponsesReasoningItem(
+            List<object> reasoningItems,
+            Dictionary<string, int> reasoningItemIndexes,
+            JsonElement itemElement)
+        {
+            var item = itemElement.Clone();
+            if (item.TryGetProperty("id", out var idElement)
+                && !string.IsNullOrWhiteSpace(idElement.GetString()))
+            {
+                var id = idElement.GetString()!;
+                if (reasoningItemIndexes.TryGetValue(id, out var index))
+                {
+                    reasoningItems[index] = item;
+                    return;
+                }
+
+                reasoningItemIndexes[id] = reasoningItems.Count;
+            }
+
+            reasoningItems.Add(item);
+        }
+
         private static object CreateResponsesReasoningMessage(OpenAIResponsenew.OpenAioutput item)
         {
             return new
@@ -6195,6 +6724,27 @@ namespace ChatBot.Web.Services
         /// <summary>
         /// 根据配置生成 OpenAI Responses API 的推理参数。
         /// </summary>
+        private object OpenAiResponsesThinkingLevel(ChatModelConfig config)
+        {
+            // 如果没有设置 ThinkingLevel，返回 null（不启用推理）
+            if (string.IsNullOrEmpty(config.ThinkingLevel))
+            {
+                return null;
+            }
+
+            // 根据 ThinkingLevel 返回对应的 effort 配置
+            return config.ThinkingLevel.ToUpperInvariant() switch
+            {
+                "MAX" => new { effort = "max" },
+                "XHIGH" => new { effort = "xhigh" },
+                "HIGH" => new { effort = "high" },
+                "MEDIUM" => new { effort = "medium" },
+                "LOW" => new { effort = "low" },
+                
+                _ => null       // 默认不设置
+            };
+        }
+
         private object OpenAiThinkingLevel(ChatModelConfig config)
         {
             // 如果没有设置 ThinkingLevel，返回 null（不启用推理）
@@ -6206,28 +6756,11 @@ namespace ChatBot.Web.Services
             // 根据 ThinkingLevel 返回对应的 effort 配置
             return config.ThinkingLevel.ToUpperInvariant() switch
             {
-                
-                "XHIGH" => new { effort = "xhigh" },
-                "HIGH" => new { effort = "high" },
-                "MEDIUM" => new { effort = "medium" },
-                "LOW" => new { effort = "low" },
-                "OFF" => null,  // 关闭推理
-                _ => null       // 默认不设置
-            };
-        }
-
-        private object DeepSeekThinkingLevel(ChatModelConfig config)
-        {
-            // 如果没有设置 ThinkingLevel，返回 null（不启用推理）
-            if (string.IsNullOrEmpty(config.ThinkingLevel))
-            {
-                return null;
-            }
-
-            // 根据 ThinkingLevel 返回对应的 effort 配置
-            return config.ThinkingLevel.ToUpperInvariant() switch
-            {
                 "MAX" =>  "max" ,
+                "XHIGH" =>  "xhigh" ,
+                "HIGH" =>  "high" ,
+                "MEDIUM" =>  "medium" ,
+                "LOW" =>  "low" ,
                
                 _ => null       // 默认不设置
             };
