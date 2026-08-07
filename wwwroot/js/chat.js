@@ -61,6 +61,7 @@ class ChatUI {
 
         // 搜索相关
         this.sessionSearchQuery = '';
+        this.previousResponseId = null;
         this.allSessions = []; // 保存完整会话列表用于搜索过滤
 
         // 断线重连相关
@@ -77,6 +78,7 @@ class ChatUI {
 
         // 设置模型选择事件监听
         this.modelSelect.addEventListener('change', () => {
+            this.previousResponseId = null;
             this.toggleImageUploadButton();
             // 检查模型是否与原始模型不同
             if (this.originalSessionData && this.originalSessionData.modelName !== this.modelSelect.value) {
@@ -2821,6 +2823,7 @@ class ChatUI {
                 timestamp: new Date().toISOString(),
                 EnableSearch: this.isNetworkEnabled,
                 skill: this.selectedSkill,
+                previous_response_id: this.previousResponseId || null,
                 hcsoft_context: this.hcsoftContext,
                 hcsoft_analysis: this.hcsoftAnalysis
             }),
@@ -2858,6 +2861,10 @@ class ChatUI {
 
                     try {
                         const parsed = JSON.parse(data);
+                        const responseId = parsed.responseId || parsed.response_id;
+                        if (responseId) {
+                            this.previousResponseId = responseId;
+                        }
                         if (parsed.streamId) {
                             this.currentStreamId = parsed.streamId;
                             this.savedStreamId = parsed.streamId;
@@ -3767,6 +3774,7 @@ class ChatUI {
 
             // 清空当前消息
             this.clearMessages();
+            this.previousResponseId = null;
 
             // 加载会话消息
             this.currentSessionId = sessionId;
@@ -3855,6 +3863,7 @@ class ChatUI {
 
         // 清空并创建新会话
         this.clearMessages();
+        this.previousResponseId = null;
         this.currentSessionId = this.generateSessionId();
         this.currentSessionTitle = null; // 重置标题，等待首次保存时生成
 
@@ -3981,6 +3990,7 @@ class ChatUI {
             // 如果删除的是当前会话，创建新会话
             if (sessionId === this.currentSessionId) {
                 this.clearMessages();
+                this.previousResponseId = null;
                 this.currentSessionId = this.generateSessionId();
             }
 

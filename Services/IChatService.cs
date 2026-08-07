@@ -343,6 +343,7 @@ namespace ChatBot.Web.Services
         /// <returns>回复文本流。</returns>
         public async IAsyncEnumerable<string> GenerateStreamAsync(ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
+            var callerRequest = request;
             var baseConfig = GetModelConfig(request.Model);
             var skillPrompt = GetSkillPrompt(request.Skill);
             var effectiveSystemPrompt = BuildEffectiveSystemPrompt(baseConfig.Systemprompt, request.Skill, skillPrompt);
@@ -392,10 +393,17 @@ namespace ChatBot.Web.Services
                         if (config.UseWebSocket && config.Stream)
                         {
                             using var webSocketClient = CreateOpenAIResponsesWebSocketClient(config);
-                            await foreach (var item in OpenAIResponsesAsync(config, request, cancellationToken, webSocketClient))
+                            await foreach (var item in OpenAIResponsesAsync(
+                                config,
+                                request,
+                                cancellationToken,
+                                webSocketClient,
+                                previousResponseId: request.PreviousResponseId))
                             {
+                                callerRequest.ResponseId = request.ResponseId;
                                 yield return item;
                             }
+                            callerRequest.ResponseId = request.ResponseId;
                         }
                         else
                         {
@@ -404,10 +412,16 @@ namespace ChatBot.Web.Services
                                 _logger.LogWarning("OpenAI Responses WebSocket 模式要求 Stream=true，当前请求已回退到 HTTP。Model: {Model}", config.Model);
                             }
 
-                            await foreach (var item in OpenAIResponsesAsync(config, request, cancellationToken))
+                            await foreach (var item in OpenAIResponsesAsync(
+                                config,
+                                request,
+                                cancellationToken,
+                                previousResponseId: request.PreviousResponseId))
                             {
+                                callerRequest.ResponseId = request.ResponseId;
                                 yield return item;
                             }
+                            callerRequest.ResponseId = request.ResponseId;
                         }
                         break;
                     }
@@ -949,13 +963,16 @@ namespace ChatBot.Web.Services
 
             // 准备消息列表
             toolsmessages ??= new List<object>();
+            request.ResponseId = null;
             var usePreviousResponseId = !string.IsNullOrWhiteSpace(previousResponseId)
                 && !_responsesUnsupportedPreviousResponseIdEndpoints.ContainsKey(apiEndpoint);
 
             var messages = usePreviousResponseId
                 ? incrementalInput is { Count: > 0 }
                     ? new List<object>(incrementalInput)
-                    : CreateResponsesContinuationMessages()
+                    : continuationDepth > 0
+                        ? CreateResponsesContinuationMessages()
+                        : CreateResponsesFollowUpMessages(request, modelconfg)
                 : ToMessagesResponsesOpenAi(request, modelconfg);
 
             if (!usePreviousResponseId)
@@ -1159,6 +1176,7 @@ namespace ChatBot.Web.Services
                                 case "response.created":
                                     // 响应创建，可用于初始化
                                     currentResponseId = ResolveResponsesResponseId(chunk, currentResponseId);
+                                    request.ResponseId = currentResponseId;
                                     break;
 
                                 case "response.in_progress":
@@ -1171,6 +1189,7 @@ namespace ChatBot.Web.Services
                                     sawTerminalResponseEvent = true;
                                     currentResponseId = ResolveResponsesResponseId(chunk, currentResponseId);
                                     currentResponseId = ResolveResponsesResponseId(rawResponseId, currentResponseId);
+                                    request.ResponseId = currentResponseId;
                                     var shouldContinueResponses = IsResponsesMaxOutputTokenIncomplete(chunk.response)
                                         || (string.Equals(rawEventType ?? chunk.type, "response.incomplete", StringComparison.OrdinalIgnoreCase)
                                             && (string.IsNullOrWhiteSpace(rawIncompleteReason)
@@ -1213,6 +1232,7 @@ namespace ChatBot.Web.Services
                                     sawTerminalResponseEvent = true;
                                     currentResponseId = ResolveResponsesResponseId(chunk, currentResponseId);
                                     currentResponseId = ResolveResponsesResponseId(rawResponseId, currentResponseId);
+                                    request.ResponseId = currentResponseId;
                                     var failedMessage = FormatOpenAIResponsesErrorMessage(chunk.error, chunk.response?.error);
                                     _logger.LogWarning("OpenAI Responses 响应失败。ResponseId: {ResponseId}, Error: {Error}", currentResponseId, failedMessage);
                                     yield return failedMessage;
@@ -1222,6 +1242,7 @@ namespace ChatBot.Web.Services
                                     sawTerminalResponseEvent = true;
                                     currentResponseId = ResolveResponsesResponseId(chunk, currentResponseId);
                                     currentResponseId = ResolveResponsesResponseId(rawResponseId, currentResponseId);
+                                    request.ResponseId = currentResponseId;
                                     var responseErrorCode = chunk.error?.code ?? chunk.response?.error?.code;
 
                                     if (useWebSocketTransport
@@ -1573,6 +1594,7 @@ namespace ChatBot.Web.Services
 
                         var chunk = JsonSerializer.Deserialize<OpenAIResponsenew>(line);
                         currentResponseId = ResolveResponsesResponseId(chunk?.id, currentResponseId);
+                        request.ResponseId = currentResponseId;
 
                         var output = chunk?.output;
                         if (output == null || output.Length == 0) continue;
@@ -6417,6 +6439,89 @@ namespace ChatBot.Web.Services
                     role = "user",
                     content = "Continue exactly where you stopped. Do not repeat any text already produced."
                 }
+            };
+        }
+
+        private static List<object> CreateResponsesFollowUpMessages(
+            ChatRequest request,
+            ChatModelConfig modelConfig)
+        {
+            var messages = new List<object>();
+
+            // Responses API does not carry instructions forward with previous_response_id.
+            if (!string.IsNullOrWhiteSpace(modelConfig.Systemprompt))
+            {
+                messages.Add(new
+                {
+                    role = "developer",
+                    content = new[]
+                    {
+                        new { type = "input_text", text = modelConfig.Systemprompt }
+                    }
+                });
+            }
+
+            var latestUserMessage = request.History.LastOrDefault(message =>
+                string.Equals(message.Role, "user", StringComparison.OrdinalIgnoreCase));
+
+            if (latestUserMessage != null)
+            {
+                messages.Add(CreateResponsesInputMessage(latestUserMessage, modelConfig));
+            }
+            else if (!string.IsNullOrWhiteSpace(request.Message) || request.Image?.Length > 0)
+            {
+                messages.Add(CreateResponsesInputMessage(
+                    new HistoryMessage
+                    {
+                        Role = "user",
+                        Content = request.Message,
+                        Images = request.Image?.ToArray() ?? []
+                    },
+                    modelConfig));
+            }
+
+            return messages;
+        }
+
+        private static object CreateResponsesInputMessage(
+            HistoryMessage message,
+            ChatModelConfig modelConfig)
+        {
+            if (message.Images?.Any() == true && modelConfig.EnableImageUpload)
+            {
+                var content = new List<object>
+                {
+                    new
+                    {
+                        type = "input_text",
+                        text = message.Role == "assistant"
+                            ? DelAllString(message.Content, "<think>", "</think>")
+                            : message.Content
+                    }
+                };
+
+                foreach (var image in message.Images)
+                {
+                    content.Add(new
+                    {
+                        type = "input_image",
+                        image_url = $"data:image/jpeg;base64,{ConvertUrlToBase64(image)}"
+                    });
+                }
+
+                return new
+                {
+                    role = message.Role,
+                    content
+                };
+            }
+
+            return new
+            {
+                role = message.Role,
+                content = message.Role == "assistant"
+                    ? DelAllString(message.Content, "<think>", "</think>")
+                    : message.Content
             };
         }
 

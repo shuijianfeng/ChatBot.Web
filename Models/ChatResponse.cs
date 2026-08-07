@@ -158,6 +158,19 @@ namespace ChatBot.Models
         /// </summary>
         [JsonPropertyName("session_id")]
         public string SessionId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The previous Responses API response ID used to continue a conversation.
+        /// </summary>
+        [JsonPropertyName("previous_response_id")]
+        public string? PreviousResponseId { get; set; }
+
+        /// <summary>
+        /// The response ID produced for the current request. It is returned through SSE
+        /// metadata and is not part of the incoming request JSON contract.
+        /// </summary>
+        [JsonIgnore]
+        public string? ResponseId { get; set; }
         /// <summary>
         /// 图片链接
         /// </summary>

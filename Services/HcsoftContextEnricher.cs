@@ -174,6 +174,8 @@ namespace ChatBot.Web.Services
                 N = source.N,
                 Stop = source.Stop?.ToList(),
                 SessionId = source.SessionId,
+                PreviousResponseId = source.PreviousResponseId,
+                ResponseId = source.ResponseId,
                 Image = source.Image?.ToArray() ?? [],
                 EnableSearch = source.EnableSearch,
                 Skill = source.Skill,

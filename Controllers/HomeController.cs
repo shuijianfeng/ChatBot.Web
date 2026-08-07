@@ -1054,7 +1054,7 @@ namespace ChatBot.Controllers
                     {
                         try
                         {
-                            var data = new { content = str };
+                            var data = new { content = str, responseId = request.ResponseId };
                             await Response.WriteAsync($"data: {JsonSerializer.Serialize(data)}\n\n", requestToken);
                             await Response.Body.FlushAsync(requestToken);
                         }
@@ -1066,6 +1066,13 @@ namespace ChatBot.Controllers
                 }
 
                 // 只有在生成循环完整结束后，才标记完成
+                if (!string.IsNullOrWhiteSpace(request.ResponseId) && !requestToken.IsCancellationRequested)
+                {
+                    var responseMetadata = new { responseId = request.ResponseId };
+                    await Response.WriteAsync($"data: {JsonSerializer.Serialize(responseMetadata)}\n\n", requestToken);
+                    await Response.Body.FlushAsync(requestToken);
+                }
+
                 _streamCache.MarkCompleted(streamId);
             }
             catch (Exception)
