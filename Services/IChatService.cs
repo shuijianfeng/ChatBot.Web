@@ -1156,13 +1156,13 @@ namespace ChatBot.Web.Services
                             if (chunk == null) continue;
 
                             var eventType = rawEventType ?? chunk.type;
-                            _logger.LogInformation("OpenAI Responses SSE event. EventType: {EventType}, RawEventType: {RawEventType}, ChunkType: {ChunkType}, ResponseId: {ResponseId}, Reason: {Reason}, Line: {Line}",
+                            _logger.LogTrace("OpenAI Responses SSE event. EventType: {EventType}, RawEventType: {RawEventType}, ChunkType: {ChunkType}, ResponseId: {ResponseId}, Reason: {Reason}, LineLength: {LineLength}",
                                 eventType,
                                 rawEventType,
                                 chunk.type,
                                 rawResponseId ?? currentResponseId,
                                 rawIncompleteReason ?? chunk.response?.incomplete_details?.reason,
-                                line);
+                                line.Length);
 
                             if (string.IsNullOrWhiteSpace(eventType))
                             {
@@ -2322,8 +2322,8 @@ namespace ChatBot.Web.Services
         public async IAsyncEnumerable<string> GeminiAsync(ChatModelConfig modelconfg, ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken, HttpClient? inputclient = null, List<object>? toolsmessages = null, int continuationDepth = 0)
         {
            
-            var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
-            
+           var apiKey = Environment.GetEnvironmentVariable(modelconfg.EnvironmentApikeyName);
+           
             var apiEndpoint = modelconfg.ApiEndpoint;
             apiEndpoint = apiEndpoint + @"/models/" + modelconfg.Model;
 

@@ -27,6 +27,7 @@ namespace ChatBot.Web.Services
             {
                 Content = new System.Text.StringBuilder(),
                 CreatedAt = DateTime.UtcNow,
+                LastUpdatedAt = DateTime.UtcNow,
                 IsCompleted = false
             };
             return streamId;
@@ -37,6 +38,11 @@ namespace ChatBot.Web.Services
         /// </summary>
         public void AppendContent(string streamId, string content)
         {
+            if (string.IsNullOrEmpty(content))
+            {
+                return;
+            }
+
             if (_cache.TryGetValue(streamId, out var item))
             {
                 lock (item.SyncLock)
@@ -48,13 +54,35 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
+        /// 保存当前 Responses 响应 ID，供断线恢复后继续 previous_response_id 链路。
+        /// </summary>
+        public void SetResponseId(string streamId, string? responseId)
+        {
+            if (string.IsNullOrWhiteSpace(responseId) ||
+                !_cache.TryGetValue(streamId, out var item))
+            {
+                return;
+            }
+
+            lock (item.SyncLock)
+            {
+                item.ResponseId = responseId;
+                item.LastUpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        /// <summary>
         /// 标记流式传输完成
         /// </summary>
         public void MarkCompleted(string streamId)
         {
             if (_cache.TryGetValue(streamId, out var item))
             {
-                item.IsCompleted = true;
+                lock (item.SyncLock)
+                {
+                    item.IsCompleted = true;
+                    item.LastUpdatedAt = DateTime.UtcNow;
+                }
             }
         }
 
@@ -68,6 +96,8 @@ namespace ChatBot.Web.Services
                 return null;
             }
 
+            offset = Math.Max(0, offset);
+
             lock (item.SyncLock)
             {
                 var fullContent = item.Content.ToString();
@@ -77,7 +107,8 @@ namespace ChatBot.Web.Services
                     {
                         Content = string.Empty,
                         TotalLength = fullContent.Length,
-                        IsCompleted = item.IsCompleted
+                        IsCompleted = item.IsCompleted,
+                        ResponseId = item.ResponseId
                     };
                 }
 
@@ -85,7 +116,8 @@ namespace ChatBot.Web.Services
                 {
                     Content = fullContent[offset..],
                     TotalLength = fullContent.Length,
-                    IsCompleted = item.IsCompleted
+                    IsCompleted = item.IsCompleted,
+                    ResponseId = item.ResponseId
                 };
             }
         }
@@ -134,6 +166,7 @@ namespace ChatBot.Web.Services
         public DateTime CreatedAt { get; set; }
         public DateTime LastUpdatedAt { get; set; }
         public bool IsCompleted { get; set; }
+        public string? ResponseId { get; set; }
     }
 
     /// <summary>
@@ -144,5 +177,6 @@ namespace ChatBot.Web.Services
         public string Content { get; set; } = string.Empty;
         public int TotalLength { get; set; }
         public bool IsCompleted { get; set; }
+        public string? ResponseId { get; set; }
     }
 }

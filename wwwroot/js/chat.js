@@ -69,6 +69,12 @@ class ChatUI {
         this.receivedContentLength = 0; // 已接收的内容长度
         this.isStreaming = false; // 是否正在流式传输
         this.mathRenderDebounceTimer = null; // 公式渲染防抖计时器
+        this.streamRenderTimer = null;
+        this.streamRenderFrame = null;
+        this.streamRenderVersion = 0;
+        this.streamRenderedVersion = 0;
+        this.streamLastRenderAt = 0;
+        this.streamLastRenderDuration = 0;
         this.setupVisibilityHandler(); // 设置页面可见性监听
 
         // 设置图片上传事件监听
@@ -527,10 +533,11 @@ class ChatUI {
                 console.error('停止生成时发生错误:', error);
             }
         } finally {
+            this.isStreaming = false;
+            this.flushStreamRender(true);
             this.controller = null;
             this.toggleStopButton(false);
             // 清理流式传输状态，防止轮询继续
-            this.isStreaming = false;
             this.currentStreamId = null;
             this.setLoadingState(false);
         }
@@ -560,9 +567,30 @@ class ChatUI {
     }
 
     processAllCodeBlocks() {
-        document.querySelectorAll('pre').forEach(pre => {
+        this.enhanceAndHighlightCodeBlocks(document);
+    }
+
+    enhanceAndHighlightCodeBlocks(container) {
+        if (!container) return;
+
+        container.querySelectorAll('pre').forEach(pre => {
             if (!pre.closest('.code-block-wrapper')) {
                 this.enhanceCodeBlock(pre);
+            }
+        });
+
+        container.querySelectorAll('pre code').forEach(block => {
+            if (block.classList.contains('language-thoughts') ||
+                block.dataset.highlighted === 'yes') {
+                return;
+            }
+
+            if (typeof hljs !== 'undefined') {
+                try {
+                    hljs.highlightElement(block);
+                } catch (error) {
+                    console.warn('代码高亮失败:', error);
+                }
             }
         });
     }
@@ -2112,6 +2140,11 @@ class ChatUI {
                 return `<pre><code class="language-thoughts">${code}</code></pre>`;
             }
 
+            // 流式阶段只保留 Markdown 结构，避免每次增量解析都重新执行代码高亮。
+            if (this.isStreaming) {
+                return originalCode(code, language);
+            }
+
             // 处理其他语言
             if (language && hljs.getLanguage(language)) {
                 try {
@@ -2569,133 +2602,215 @@ class ChatUI {
         this.scrollToBottom();
     }
 
-    appendStreamContent(content) {
-        if (this.currentMessageElement) {
-            const contentDiv = this.currentMessageElement.querySelector('.message-content');
+    cancelStreamRenderSchedule() {
+        if (this.streamRenderTimer !== null) {
+            clearTimeout(this.streamRenderTimer);
+            this.streamRenderTimer = null;
+        }
 
-            if (contentDiv) {
-                this.messageBuffer += content;
+        if (this.streamRenderFrame !== null) {
+            cancelAnimationFrame(this.streamRenderFrame);
+            this.streamRenderFrame = null;
+        }
 
-                // 同步更新内存中最后一条消息的内容（修复锁屏恢复后内容无法保存的问题）
-                if (this.messages.length > 0 && this.messages[this.messages.length - 1].role === 'assistant') {
-                    this.messages[this.messages.length - 1].content = this.messageBuffer;
-                }
-                // full-message类似乎不存在，直接忽略
-                // const fullMessageDiv = this.currentMessageElement.querySelector('.full-message');
-                // if (fullMessageDiv) fullMessageDiv.textContent = this.messageBuffer;
+        if (this.mathRenderDebounceTimer) {
+            clearTimeout(this.mathRenderDebounceTimer);
+            this.mathRenderDebounceTimer = null;
+        }
+    }
 
+    resetStreamRenderState() {
+        this.cancelStreamRenderSchedule();
+        this.streamRenderVersion = 0;
+        this.streamRenderedVersion = 0;
+        this.streamLastRenderAt = 0;
+        this.streamLastRenderDuration = 0;
+    }
 
+    getStreamRenderDelay() {
+        const lastDuration = Number(this.streamLastRenderDuration) || 0;
+        const policy = typeof window !== 'undefined'
+            ? window.hcsoftStreamRenderPolicy
+            : null;
 
-                try {
+        if (policy && typeof policy.getDelay === 'function') {
+            return policy.getDelay(lastDuration);
+        }
 
-                    // 预处理内容（移除 think 标签，转换 ~~~ 为 ```）
-                    let displayBuffer = this.messageBuffer;
-                    const controlIndexes = [
-                        displayBuffer.indexOf('<hcsoft_query>'),
-                        displayBuffer.indexOf('<hcsoft_search>')
-                    ].filter(index => index >= 0);
-                    const automaticSearchIndex = controlIndexes.length > 0
-                        ? Math.min(...controlIndexes)
-                        : -1;
-                    if (automaticSearchIndex >= 0) {
-                        displayBuffer =
-                            displayBuffer.slice(0, automaticSearchIndex).trimEnd() +
-                            '\n\n正在按模型需要补充检索工程数据…';
-                    }
-                    const processedContent = this.preprocessMarkdown(displayBuffer);
-                    const renderContent = this.completeOpenMarkdownFences(processedContent);
+        if (lastDuration <= 0) return 80;
+        return Math.min(750, Math.max(80, Math.ceil(lastDuration * 4)));
+    }
 
-                    // 流式阶段暂不挂载 waveform-player，避免组件在多次重渲染时反复中止流请求导致 TTS 音频无法缓存。
-                    // 流完成后在 finally 块中做最终渲染，此时组件只创建一次。
-                    if (processedContent.includes('<waveform-player')) {
-                        const placeholderContent = renderContent.replace(/<waveform-player[\s\S]*/i, '\n\n🎵 音频播放器加载中...');
-                        contentDiv.innerHTML = marked.parse(placeholderContent);
-                        contentDiv.dataset.rawContent = this.messageBuffer;
-                        this.scrollToBottom();
-                        return;
-                    }
+    isStreamPinnedToBottom() {
+        if (!this.messagesContainer) return true;
 
-                    // 渲染 markdown 内容
-                    contentDiv.innerHTML = marked.parse(renderContent);
-                    this.normalizeMessageImages(contentDiv);
+        const distanceFromBottom = this.messagesContainer.scrollHeight -
+            this.messagesContainer.scrollTop -
+            this.messagesContainer.clientHeight;
+        return distanceFromBottom <= 96;
+    }
 
-                    // 更新 rawContent 数据属性，以便于复制等功能
-                    contentDiv.dataset.rawContent = this.messageBuffer;
-                    this.updateMessageActionContent(this.currentMessageElement, this.messageBuffer);
+    getStreamDisplayBuffer() {
+        let displayBuffer = this.messageBuffer;
+        const controlIndexes = [
+            displayBuffer.indexOf('<hcsoft_query>'),
+            displayBuffer.indexOf('<hcsoft_search>')
+        ].filter(index => index >= 0);
+        const automaticSearchIndex = controlIndexes.length > 0
+            ? Math.min(...controlIndexes)
+            : -1;
 
-                    this.enhanceStreamingThoughtsBlocks(contentDiv);
+        if (automaticSearchIndex >= 0) {
+            displayBuffer =
+                displayBuffer.slice(0, automaticSearchIndex).trimEnd() +
+                '\n\n正在按模型需要补充检索工程数据…';
+        }
 
-                    // 处理所有代码块
-                    contentDiv.querySelectorAll('pre code').forEach((block) => {
-                        // 添加语言类标识
-                        const language = block.getAttribute('class') || '';
-                        if (language) {
-                            block.parentElement.classList.add('language-' + language.replace('language-', ''));
-                        }
+        return displayBuffer;
+    }
 
-                        if (language.indexOf('language-thoughts') !== -1) {
-                            const pre = block.parentElement;
-                            if (pre && pre.closest('.thoughts-details')) {
-                                return;
-                            }
-                            pre.style.maxWidth = '700px';
-                            pre.style.width = '100%';
-                            pre.style.height = 'auto';
-                            pre.style.overflow = 'hidden';
-                            pre.style.whiteSpace = 'pre-wrap';
-                            pre.style.overflowWrap = 'break-word';
-                            pre.style.wordWrap = 'break-word';
+    scheduleStreamRender() {
+        if (!this.currentMessageElement ||
+            this.streamRenderTimer !== null ||
+            this.streamRenderFrame !== null) {
+            return;
+        }
 
-                            block.style.width = '100%';
-                            block.style.height = 'auto';
-                            block.style.overflow = 'hidden';
-                            block.style.whiteSpace = 'pre-wrap';
-                            block.style.overflowWrap = 'break-word';
-                        }
+        const now = performance.now();
+        const elapsed = this.streamLastRenderAt > 0
+            ? now - this.streamLastRenderAt
+            : Number.POSITIVE_INFINITY;
+        const delay = Math.max(0, this.getStreamRenderDelay() - elapsed);
 
-                        // 注意：流式传输期间不调用 enhanceCodeBlock，
-                        // 因为代码块可能不完整，会导致 DOM 问题
-                        // enhanceCodeBlock 会在流式传输完成后由其他逻辑调用
+        const queueFrame = () => {
+            this.streamRenderFrame = requestAnimationFrame(() => {
+                this.streamRenderFrame = null;
+                this.flushStreamRender(false);
+            });
+        };
 
-                        // 应用高亮
-                        hljs.highlightElement(block);
-                    });
-
-                    // 公式实时渲染 - 使用防抖机制避免频繁调用
-                    if (this.hasMathContent(renderContent)) {
-                        // 清除之前的防抖计时器
-                        if (this.mathRenderDebounceTimer) {
-                            clearTimeout(this.mathRenderDebounceTimer);
-                        }
-                        // 设置防抖延迟（300ms）
-                        this.mathRenderDebounceTimer = setTimeout(() => {
-                            this.renderMathIfReady(contentDiv, renderContent);
-                        }, 300);
-                    }
-                } catch (e) {
-                    console.error('Markdown 渲染错误:', e);
-                    contentDiv.textContent = this.messageBuffer;
-                }
-
-                this.scrollToBottom();
-            } else {
-
-                // 尝试自愈：如果在当前消息元素里找不到 contentDiv，可能是引用错乱，尝试重新获取最后一条消息
-                const lastMsg = this.messagesContainer.querySelector('.message.assistant-message:last-child');
-                if (lastMsg && lastMsg !== this.currentMessageElement) {
-                    this.currentMessageElement = lastMsg;
-                    this.appendStreamContent(content); // 递归重试一次
-                }
-            }
+        if (delay === 0) {
+            queueFrame();
         } else {
+            this.streamRenderTimer = setTimeout(() => {
+                this.streamRenderTimer = null;
+                queueFrame();
+            }, delay);
+        }
+    }
 
-            // 自愈：如果没有当前消息元素，尝试获取最后一条
-            const lastMsg = this.messagesContainer.querySelector('.message.assistant-message:last-child');
-            if (lastMsg) {
-                this.currentMessageElement = lastMsg;
-                this.appendStreamContent(content); // 递归重试一次
+    renderStreamMessage(forceComplete = false) {
+        const messageElement = this.currentMessageElement;
+        const contentDiv = messageElement?.querySelector('.message-content');
+        if (!contentDiv) return;
+
+        const processedContent = this.preprocessMarkdown(this.getStreamDisplayBuffer());
+        const renderContent = forceComplete
+            ? processedContent
+            : this.completeOpenMarkdownFences(processedContent);
+
+        // 流式阶段不反复创建 waveform-player，避免组件重建导致音频请求被中止。
+        if (!forceComplete && processedContent.includes('<waveform-player')) {
+            const placeholderContent = renderContent.replace(
+                /<waveform-player[\s\S]*/i,
+                '\n\n🎵 音频播放器加载中...');
+            contentDiv.innerHTML = marked.parse(placeholderContent);
+        } else {
+            contentDiv.innerHTML = marked.parse(renderContent);
+        }
+
+        contentDiv.dataset.rawContent = this.messageBuffer;
+
+        // Thoughts 折叠需要随着流式 Markdown 更新，其余增强在流暂停或完成时执行。
+        if (!forceComplete) {
+            this.enhanceStreamingThoughtsBlocks(contentDiv);
+
+            if (this.hasMathContent(renderContent)) {
+                if (this.mathRenderDebounceTimer) {
+                    clearTimeout(this.mathRenderDebounceTimer);
+                }
+
+                this.mathRenderDebounceTimer = setTimeout(() => {
+                    this.mathRenderDebounceTimer = null;
+                    if (!this.currentMessageElement) return;
+
+                    const latestContent = this.preprocessMarkdown(this.getStreamDisplayBuffer());
+                    const latestDiv = this.currentMessageElement.querySelector('.message-content');
+                    if (latestDiv) {
+                        this.renderMathIfReady(latestDiv, latestContent);
+                    }
+                }, 300);
             }
         }
+        if (forceComplete) {
+            this.enhanceAndHighlightCodeBlocks(contentDiv);
+        }
+    }
+
+    flushStreamRender(force = false) {
+        if (!force && this.streamRenderedVersion >= this.streamRenderVersion) {
+            return;
+        }
+
+        if (force) {
+            this.cancelStreamRenderSchedule();
+        }
+
+        const messageElement = this.currentMessageElement;
+        if (!messageElement) return;
+
+        const followMessage = this.isStreamPinnedToBottom();
+        const startedAt = performance.now();
+
+        try {
+            this.renderStreamMessage(force);
+        } catch (error) {
+            console.error('Markdown 渲染错误:', error);
+            const contentDiv = messageElement.querySelector('.message-content');
+            if (contentDiv) {
+                contentDiv.textContent = this.messageBuffer;
+                contentDiv.dataset.rawContent = this.messageBuffer;
+            }
+        }
+
+        const finishedAt = performance.now();
+        this.streamLastRenderDuration = Math.max(0, finishedAt - startedAt);
+        this.streamLastRenderAt = finishedAt;
+        this.streamRenderedVersion = this.streamRenderVersion;
+
+        if (followMessage) {
+            requestAnimationFrame(() => {
+                this.scrollCurrentMessageBottomIntoView(messageElement);
+            });
+        }
+
+        if (!force && this.streamRenderedVersion < this.streamRenderVersion) {
+            this.scheduleStreamRender();
+        }
+    }
+
+    appendStreamContent(content) {
+        if (!content) return;
+
+        if (!this.currentMessageElement && this.messagesContainer) {
+            this.currentMessageElement = this.messagesContainer.querySelector(
+                '.message.assistant-message:last-child');
+        }
+
+        const messageElement = this.currentMessageElement;
+        const contentDiv = messageElement?.querySelector('.message-content');
+        if (!contentDiv) return;
+
+        this.messageBuffer += content;
+
+        // 同步内存内容，但把昂贵的 DOM 更新交给调度器。
+        if (this.messages.length > 0 &&
+            this.messages[this.messages.length - 1].role === 'assistant') {
+            this.messages[this.messages.length - 1].content = this.messageBuffer;
+        }
+
+        this.streamRenderVersion++;
+        this.scheduleStreamRender();
     }
 
     // 转换聊天记录为API格式
@@ -2804,6 +2919,7 @@ class ChatUI {
      * 但只有最后一次正常回答会保留在消息列表和界面中。
      */
     async streamChatRound(message, history, signal) {
+        this.resetStreamRenderState();
         this.currentStreamId = null;
         this.receivedContentLength = 0;
         this.savedStreamId = null;
@@ -2876,14 +2992,16 @@ class ChatUI {
                         }
                         if (!parsed.content) continue;
 
-                        parsed.content = this.processMessage(parsed.content);
-                        this.receivedContentLength += parsed.content.length;
+                        // Resume 的 offset 必须使用服务端缓存的原始内容长度；
+                        // processMessage 可能移除控制命令，不能用处理后的长度计数。
+                        const rawContent = parsed.content;
+                        this.receivedContentLength += rawContent.length;
                         this.savedContentLength = this.receivedContentLength;
                         if (!this.currentMessageElement) {
                             this.messageBuffer = '';
                             this.appendMessage('assistant', '', true);
                         }
-                        this.appendStreamContent(parsed.content);
+                        this.appendStreamContent(this.processMessage(rawContent));
                     } catch (error) {
                         console.error('SSE数据解析错误:', error);
                     }
@@ -2917,10 +3035,16 @@ class ChatUI {
             }
         }
 
+        if (completed) {
+            this.isStreaming = false;
+            this.flushStreamRender(true);
+        }
+
         return completed;
     }
 
     removeCurrentAssistantForSearchRetry() {
+        this.cancelStreamRenderSchedule();
         if (this.currentMessageElement) {
             this.currentMessageElement.remove();
         }
@@ -2934,6 +3058,7 @@ class ChatUI {
 
     replaceCurrentAssistantContent(content) {
         if (!this.currentMessageElement) return;
+        this.cancelStreamRenderSchedule();
         const finalContent = String(content || '');
         const contentDiv = this.currentMessageElement.querySelector('.message-content');
         if (contentDiv) {
@@ -3393,6 +3518,7 @@ class ChatUI {
 
                     // 流式传输完成后，初始化 WaveSurfer 播放器
                     this.initWaveSurferPlayers(this.currentMessageElement);
+                    this.enhanceAndHighlightCodeBlocks(this.currentMessageElement);
                 }
                 this.currentMessageElement = null;
                 this.stopRequested = false;
@@ -4095,6 +4221,10 @@ class ChatUI {
 
             const result = await response.json();
 
+            if (result.responseId) {
+                this.previousResponseId = result.responseId;
+            }
+
             // 重要：总是同步后端返回的总长度，防止offset偏差
             if (typeof result.totalLength === 'number') {
                 this.receivedContentLength = result.totalLength;
@@ -4111,12 +4241,13 @@ class ChatUI {
                     }
                 }
 
-                this.appendStreamContent(result.content);
+                this.appendStreamContent(this.processMessage(result.content));
             }
 
             // 如果流已完成
             if (result.isCompleted) {
                 this.isStreaming = false;
+                this.flushStreamRender(true);
                 this.setLoadingState(false);
                 this.toggleStopButton(false);
 
@@ -4124,10 +4255,6 @@ class ChatUI {
                 if (this.currentMessageElement) {
                     const contentDiv = this.currentMessageElement.querySelector('.message-content');
                     if (contentDiv) {
-                        // 重新渲染整个内容，确保预处理正确应用
-                        const processedContent = this.preprocessMarkdown(this.messageBuffer);
-                        contentDiv.innerHTML = marked.parse(processedContent);
-                        contentDiv.dataset.rawContent = this.messageBuffer;
                         this.normalizeMessageImages(contentDiv);
                     }
 
@@ -4153,6 +4280,7 @@ class ChatUI {
 
                     // 初始化 WaveSurfer 播放器
                     this.initWaveSurferPlayers(this.currentMessageElement);
+                    this.enhanceAndHighlightCodeBlocks(this.currentMessageElement);
                 }
 
                 this.currentMessageElement = null;
@@ -4177,6 +4305,7 @@ class ChatUI {
     // 使用指定的 streamId 恢复流式传输（用于锁屏恢复）
     async tryResumeStreamWithId(streamId, offset) {
         // 恢复流式状态：禁用输入，显示停止按钮
+        this.resetStreamRenderState();
         this.isStreaming = true;
         this.setLoadingState(true);
         this.toggleStopButton(true);
@@ -4219,6 +4348,10 @@ class ChatUI {
 
             const result = await response.json();
 
+            if (result.responseId) {
+                this.previousResponseId = result.responseId;
+            }
+
             // 重要：总是同步后端返回的总长度
             if (typeof result.totalLength === 'number') {
                 this.receivedContentLength = result.totalLength;
@@ -4234,7 +4367,7 @@ class ChatUI {
                     }
                 }
 
-                this.appendStreamContent(result.content);
+                this.appendStreamContent(this.processMessage(result.content));
             }
 
 
@@ -4242,16 +4375,13 @@ class ChatUI {
             if (result.isCompleted) {
                 if (this.updateDebug) this.updateDebug('completed');
                 this.isStreaming = false;
+                this.flushStreamRender(true);
                 this.setLoadingState(false);
                 this.toggleStopButton(false);
 
                 if (this.currentMessageElement) {
                     const contentDiv = this.currentMessageElement.querySelector('.message-content');
                     if (contentDiv) {
-                        // 重新渲染整个内容，确保预处理正确应用
-                        const processedContent = this.preprocessMarkdown(this.messageBuffer);
-                        contentDiv.innerHTML = marked.parse(processedContent);
-                        contentDiv.dataset.rawContent = this.messageBuffer;
                         this.normalizeMessageImages(contentDiv);
                     }
 
@@ -4277,6 +4407,7 @@ class ChatUI {
 
                     // 初始化 WaveSurfer 播放器
                     this.initWaveSurferPlayers(this.currentMessageElement);
+                    this.enhanceAndHighlightCodeBlocks(this.currentMessageElement);
                 }
 
                 this.currentMessageElement = null;

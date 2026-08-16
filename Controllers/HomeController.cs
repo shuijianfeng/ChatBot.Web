@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
 using System.Text;
 using ChatBot.Models;
 using System.Text.Json;
@@ -1019,6 +1020,13 @@ namespace ChatBot.Controllers
             using var generationCts = new CancellationTokenSource(TimeSpan.FromMinutes(40));
             var requestToken = HttpContext.RequestAborted;
 
+            Response.StatusCode = StatusCodes.Status200OK;
+            Response.ContentType = "text/event-stream; charset=utf-8";
+            Response.Headers.CacheControl = "no-cache, no-transform";
+            Response.Headers["X-Accel-Buffering"] = "no";
+            HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>()
+                ?.DisableBuffering();
+
             try
             {
                 // 先尽力发送 streamId 给前端
@@ -1039,14 +1047,11 @@ namespace ChatBot.Controllers
                 // 这样即使 requestToken 取消（客户端断开），生成也会继续
                 IAsyncEnumerable<string> stream = _chatService.GenerateStreamAsync(request, generationCts.Token);
 
-                int count = 0;
-                await foreach (var chunk in stream)
+                await foreach (var str in BatchStreamAsync(stream, generationCts.Token))
                 {
-                    string str = chunk;
-                   
-
                     // 写入缓存 (这是最重要的，供 Resume 使用)
                     _streamCache.AppendContent(streamId, str);
+                    _streamCache.SetResponseId(streamId, request.ResponseId);
 
                     // 尝试推送到当前连接
                     // 如果客户端还在连接，就推送；如果断开了，catch 住错误但继续循环
@@ -1072,6 +1077,8 @@ namespace ChatBot.Controllers
                     await Response.WriteAsync($"data: {JsonSerializer.Serialize(responseMetadata)}\n\n", requestToken);
                     await Response.Body.FlushAsync(requestToken);
                 }
+
+                _streamCache.SetResponseId(streamId, request.ResponseId);
 
                 _streamCache.MarkCompleted(streamId);
             }
@@ -1103,6 +1110,60 @@ namespace ChatBot.Controllers
             }
         }
 
+        private static async IAsyncEnumerable<string> BatchStreamAsync(
+            IAsyncEnumerable<string> source,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            const int maxBatchLength = 2048;
+            var batch = new StringBuilder(maxBatchLength);
+            await using var enumerator = source.GetAsyncEnumerator(cancellationToken);
+            var moveNextTask = enumerator.MoveNextAsync().AsTask();
+            var flushTask = Task.Delay(50, cancellationToken);
+
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var completedTask = await Task.WhenAny(moveNextTask, flushTask);
+
+                if (completedTask == flushTask)
+                {
+                    if (batch.Length > 0)
+                    {
+                        yield return batch.ToString();
+                        batch.Clear();
+                    }
+
+                    flushTask = Task.Delay(50, cancellationToken);
+                    continue;
+                }
+
+                if (!await moveNextTask)
+                {
+                    if (batch.Length > 0)
+                    {
+                        yield return batch.ToString();
+                    }
+
+                    yield break;
+                }
+
+                var chunk = enumerator.Current;
+                if (!string.IsNullOrEmpty(chunk))
+                {
+                    batch.Append(chunk);
+                }
+
+                if (batch.Length >= maxBatchLength)
+                {
+                    yield return batch.ToString();
+                    batch.Clear();
+                    flushTask = Task.Delay(50, cancellationToken);
+                }
+
+                moveNextTask = enumerator.MoveNextAsync().AsTask();
+            }
+        }
+
         /// <summary>
         /// 恢复断线的流式传输，获取从指定偏移量开始的缓存内容
         /// </summary>
@@ -1125,7 +1186,8 @@ namespace ChatBot.Controllers
             {
                 content = result.Content,
                 totalLength = result.TotalLength,
-                isCompleted = result.IsCompleted
+                isCompleted = result.IsCompleted,
+                responseId = result.ResponseId
             });
         }
 
