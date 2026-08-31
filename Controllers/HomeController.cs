@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using ChatBot.Models;
 using System.Text.Json;
@@ -19,11 +20,19 @@ namespace ChatBot.Controllers
     /// </summary>
     public class HomeController : Controller
     {
+        private const string UserIsolationCookieName = "ChatBot.UserIsolationId";
+        private const string UserIsolationKeyConfigurationName = "ChatBotUserIsolationKey";
+        private const string UserIsolationCookieVersion = "v1";
+        private const int MinimumUserIsolationKeyBytes = 32;
+        private const int UserIsolationIdSourceBytes = 12;
+        private const int UserIsolationIdLength = 16;
 
+        private readonly ILogger<HomeController> _logger;
         private readonly IChatService _chatService;
         private readonly IWebHostEnvironment _env;
         private readonly ChatSessionRepository _sessionRepository;
         private readonly StreamCacheService _streamCache;
+        private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
 
         /// <summary>
         /// 文件扩展名 → Content-Type 映射（不可变冻结字典，O(1) 查找）。
@@ -75,6 +84,162 @@ namespace ChatBot.Controllers
             return $"{Request.Scheme}://{Request.Host}{pathBase}{relativePath}";
         }
 
+        private bool TryGetUserIsolationKey(out byte[] key)
+        {
+            key = [];
+            var encodedKey = _configuration[UserIsolationKeyConfigurationName];
+            if (string.IsNullOrWhiteSpace(encodedKey))
+            {
+                return false;
+            }
+
+            try
+            {
+                key = Convert.FromBase64String(encodedKey);
+                if (key.Length >= MinimumUserIsolationKeyBytes)
+                {
+                    return true;
+                }
+
+                CryptographicOperations.ZeroMemory(key);
+                key = [];
+                return false;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private static string CreateUserIsolationId(string uid, byte[] key)
+        {
+            var uidBytes = Encoding.UTF8.GetBytes(uid);
+            var hash = HMACSHA256.HashData(key, uidBytes);
+            try
+            {
+                return Base64UrlEncode(hash.AsSpan(0, UserIsolationIdSourceBytes));
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(uidBytes);
+                CryptographicOperations.ZeroMemory(hash);
+            }
+        }
+
+        private static string CreateSignedUserIsolationCookieValue(string userIsolationId, byte[] key)
+        {
+            var signedValue = $"{UserIsolationCookieVersion}.{userIsolationId}";
+            var signedValueBytes = Encoding.ASCII.GetBytes(signedValue);
+            var signature = HMACSHA256.HashData(key, signedValueBytes);
+            try
+            {
+                return $"{signedValue}.{Base64UrlEncode(signature)}";
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(signedValueBytes);
+                CryptographicOperations.ZeroMemory(signature);
+            }
+        }
+
+        private static bool TryValidateUserIsolationCookieValue(
+            string? cookieValue,
+            byte[] key,
+            out string? userIsolationId)
+        {
+            userIsolationId = null;
+            if (string.IsNullOrWhiteSpace(cookieValue))
+            {
+                return false;
+            }
+
+            var parts = cookieValue.Split('.');
+            if (parts.Length != 3 ||
+                !string.Equals(parts[0], UserIsolationCookieVersion, StringComparison.Ordinal) ||
+                !IsValidUserIsolationId(parts[1]) ||
+                !TryBase64UrlDecode(parts[2], out var suppliedSignature))
+            {
+                return false;
+            }
+
+            var signedValueBytes = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
+            var expectedSignature = HMACSHA256.HashData(key, signedValueBytes);
+            try
+            {
+                if (!CryptographicOperations.FixedTimeEquals(expectedSignature, suppliedSignature))
+                {
+                    return false;
+                }
+
+                userIsolationId = parts[1];
+                return true;
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(signedValueBytes);
+                CryptographicOperations.ZeroMemory(expectedSignature);
+                CryptographicOperations.ZeroMemory(suppliedSignature);
+            }
+        }
+
+        private static bool IsValidUserIsolationId(string? value)
+        {
+            return value is { Length: UserIsolationIdLength } &&
+                   value.All(character =>
+                       char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+        }
+
+        private static string Base64UrlEncode(ReadOnlySpan<byte> value)
+        {
+            return Convert.ToBase64String(value)
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
+        }
+
+        private static bool TryBase64UrlDecode(string value, out byte[] bytes)
+        {
+            bytes = [];
+            if (string.IsNullOrEmpty(value))
+            {
+                return false;
+            }
+
+            var base64 = value.Replace('-', '+').Replace('_', '/');
+            var remainder = base64.Length % 4;
+            if (remainder != 0)
+            {
+                base64 = base64.PadRight(base64.Length + 4 - remainder, '=');
+            }
+
+            try
+            {
+                bytes = Convert.FromBase64String(base64);
+                return true;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private void AppendUserIsolationCookie(string cookieValue)
+        {
+            var cookiePath = Request.PathBase.HasValue &&
+                             !string.IsNullOrWhiteSpace(Request.PathBase.Value)
+                ? Request.PathBase.Value
+                : "/";
+
+            Response.Cookies.Append(UserIsolationCookieName, cookieValue, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Strict,
+                IsEssential = true,
+                Path = cookiePath
+            });
+        }
+
         public HomeController(
             ILogger<HomeController> logger,
             IChatService chatService,
@@ -83,11 +248,12 @@ namespace ChatBot.Controllers
             StreamCacheService streamCache,
             Microsoft.Extensions.Configuration.IConfiguration configuration)
         {
-
+            _logger = logger;
             _chatService = chatService;
             _env = webHostEnvironment;
             _sessionRepository = sessionRepository;
             _streamCache = streamCache;
+            _configuration = configuration;
         }
 
         /// <summary>
@@ -112,8 +278,29 @@ namespace ChatBot.Controllers
                     });
                 }
 
-                // 用户有效，可以在会话中保存用户ID
-                //HttpContext.Session.SetString("UserId", uid);
+                if (_chatService.GetModels().Any(model => model.EnableUserIsolation))
+                {
+                    if (!TryGetUserIsolationKey(out var key))
+                    {
+                        _logger.LogError(
+                            "用户隔离已启用，但配置 {ConfigurationName} 不是至少 32 字节的有效 Base64 密钥。",
+                            UserIsolationKeyConfigurationName);
+                        return StatusCode(
+                            StatusCodes.Status500InternalServerError,
+                            "用户隔离服务配置不可用。");
+                    }
+
+                    try
+                    {
+                        var userIsolationId = CreateUserIsolationId(uid, key);
+                        var cookieValue = CreateSignedUserIsolationCookieValue(userIsolationId, key);
+                        AppendUserIsolationCookie(cookieValue);
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(key);
+                    }
+                }
             }
             // 如果没有提供UID但系统配置要求UID验证，检查会话中是否已存在验证过的UID
             else
@@ -1012,6 +1199,44 @@ namespace ChatBot.Controllers
         [Route("/api/chat/stream")]
         public async Task StreamChat([FromBody] ChatRequest request)
         {
+            ChatModelConfig modelConfig;
+            try
+            {
+                modelConfig = _chatService.GetModelConfig(request.Model);
+            }
+            catch (ArgumentException)
+            {
+                Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
+
+            string? userIsolationId = null;
+            if (modelConfig.EnableUserIsolation)
+            {
+                if (!TryGetUserIsolationKey(out var key))
+                {
+                    _logger.LogError(
+                        "用户隔离已启用，但配置 {ConfigurationName} 不是至少 32 字节的有效 Base64 密钥。",
+                        UserIsolationKeyConfigurationName);
+                    Response.StatusCode = StatusCodes.Status500InternalServerError;
+                    return;
+                }
+
+                try
+                {
+                    Request.Cookies.TryGetValue(UserIsolationCookieName, out var cookieValue);
+                    if (!TryValidateUserIsolationCookieValue(cookieValue, key, out userIsolationId))
+                    {
+                        Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        return;
+                    }
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(key);
+                }
+            }
+
             // 创建 streamId 用于断线重连
             var streamId = _streamCache.CreateStream();
 
@@ -1045,7 +1270,10 @@ namespace ChatBot.Controllers
 
                 // 关键点：传递 generationCts.Token 而不是 requestToken 给生成服务
                 // 这样即使 requestToken 取消（客户端断开），生成也会继续
-                IAsyncEnumerable<string> stream = _chatService.GenerateStreamAsync(request, generationCts.Token);
+                IAsyncEnumerable<string> stream = _chatService.GenerateStreamAsync(
+                    request,
+                    userIsolationId,
+                    generationCts.Token);
 
                 await foreach (var str in BatchStreamAsync(stream, generationCts.Token))
                 {

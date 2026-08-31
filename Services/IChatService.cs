@@ -60,9 +60,13 @@ namespace ChatBot.Web.Services
         /// 根据聊天请求生成流式回复内容。
         /// </summary>
         /// <param name="request">聊天请求</param>
+        /// <param name="userIsolationId">当前用户的 16 位隔离标识；未启用时为 <see langword="null"/>。</param>
         /// <param name="cancellationToken">取消令牌</param>
         /// <returns>按顺序返回的回复文本片段。</returns>
-        IAsyncEnumerable<string> GenerateStreamAsync(ChatRequest request, CancellationToken cancellationToken);
+        IAsyncEnumerable<string> GenerateStreamAsync(
+            ChatRequest request,
+            string? userIsolationId,
+            CancellationToken cancellationToken);
 
         /// <summary>
         /// 获取当前已启用的模型名称列表。
@@ -305,8 +309,16 @@ namespace ChatBot.Web.Services
         /// <summary>
         /// 为单次请求创建独立的模型配置副本，避免并发请求之间共享提示词状态。
         /// </summary>
-        private static ChatModelConfig CreateRequestScopedConfig(ChatModelConfig source, string systemPrompt)
+        private static ChatModelConfig CreateRequestScopedConfig(
+            ChatModelConfig source,
+            string systemPrompt,
+            string? userIsolationId)
         {
+            if (source.EnableUserIsolation && !IsValidUserIsolationId(userIsolationId))
+            {
+                throw new InvalidOperationException("用户隔离已启用，但请求缺少有效的用户隔离标识。");
+            }
+
             return new ChatModelConfig
             {
                 Name = source.Name,
@@ -316,6 +328,7 @@ namespace ChatBot.Web.Services
                 Temperature = source.Temperature,
                 MaxTokens = source.MaxTokens,
                 EnableSearch = source.EnableSearch,
+                EnableUserIsolation = source.EnableUserIsolation,
                 Stream = source.Stream,
                 UseWebSocket = source.UseWebSocket,
                 UseFastMode = source.UseFastMode,
@@ -329,8 +342,31 @@ namespace ChatBot.Web.Services
                 ThinkingTokens = source.ThinkingTokens,
                 File_search_store_names = source.File_search_store_names,
                 ThinkingLevel = source.ThinkingLevel,
+                UserIsolationId = source.EnableUserIsolation ? userIsolationId : null,
                 Skills = source.Skills == null ? null : new List<string>(source.Skills)
             };
+        }
+
+        private static bool IsValidUserIsolationId(string? value)
+        {
+            return value is { Length: 16 } &&
+                   value.All(character =>
+                       char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+        }
+
+        private static string? GetUserIsolationIdForRequest(ChatModelConfig modelConfig)
+        {
+            if (!modelConfig.EnableUserIsolation)
+            {
+                return null;
+            }
+
+            if (!IsValidUserIsolationId(modelConfig.UserIsolationId))
+            {
+                throw new InvalidOperationException("用户隔离已启用，但请求缺少有效的用户隔离标识。");
+            }
+
+            return modelConfig.UserIsolationId;
         }
         #endregion
 
@@ -339,9 +375,13 @@ namespace ChatBot.Web.Services
         /// 根据模型配置路由请求，并持续返回流式回复内容。
         /// </summary>
         /// <param name="request">聊天请求。</param>
+        /// <param name="userIsolationId">当前用户的 16 位隔离标识；未启用时为 <see langword="null"/>。</param>
         /// <param name="cancellationToken">取消令牌。</param>
         /// <returns>回复文本流。</returns>
-        public async IAsyncEnumerable<string> GenerateStreamAsync(ChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+        public async IAsyncEnumerable<string> GenerateStreamAsync(
+            ChatRequest request,
+            string? userIsolationId,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             var callerRequest = request;
             var baseConfig = GetModelConfig(request.Model);
@@ -349,7 +389,7 @@ namespace ChatBot.Web.Services
             var effectiveSystemPrompt = BuildEffectiveSystemPrompt(baseConfig.Systemprompt, request.Skill, skillPrompt);
             (request, effectiveSystemPrompt) = HcsoftContextEnricher.Apply(request, effectiveSystemPrompt);
             (request, effectiveSystemPrompt) = HcsoftAnalysisEnricher.Apply(request, effectiveSystemPrompt);
-            var config = CreateRequestScopedConfig(baseConfig, effectiveSystemPrompt);
+            var config = CreateRequestScopedConfig(baseConfig, effectiveSystemPrompt, userIsolationId);
 
            
 
@@ -995,6 +1035,7 @@ namespace ChatBot.Web.Services
                 tools = tools,
                 max_output_tokens = modelconfg.MaxTokens > 0 ? (int?)modelconfg.MaxTokens : null,
                 service_tier = modelconfg.UseFastMode ? "fast" : null,
+                user = GetUserIsolationIdForRequest(modelconfg),
             };
 
             //var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
@@ -2333,16 +2374,20 @@ namespace ChatBot.Web.Services
             }
             if (modelconfg.Stream)
             {
-                apiEndpoint = apiEndpoint + $":streamGenerateContent?alt=sse&key={apiKey}";
+                apiEndpoint = apiEndpoint + $":streamGenerateContent?alt=sse";
             }
             else
             {
-                apiEndpoint = apiEndpoint + $":generateContent?key={apiKey}";
+                apiEndpoint = apiEndpoint + $":generateContent";
             }
 
             // 创建HTTP客户端
             HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
-
+            if (client != null)
+            {
+                
+                client.DefaultRequestHeaders.Add("x-goog-api-key", $"{apiKey}");
+            }
             var messages = ToMessagesGemini(request, modelconfg);
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
@@ -2718,16 +2763,19 @@ namespace ChatBot.Web.Services
             }
             if (modelconfg.Stream)
             {
-                apiEndpoint = apiEndpoint + $":streamGenerateContent?alt=sse&key={apiKey}";
+                apiEndpoint = apiEndpoint + $":streamGenerateContent?alt=sse";
             }
             else
             {
-                apiEndpoint = apiEndpoint + $":generateContent?key={apiKey}";
+                apiEndpoint = apiEndpoint + $":generateContent";
             }
 
             // 创建HTTP客户端
             HttpClient client = inputclient ?? _httpClientFactory.CreateClient();
-
+            if (client != null)
+            {
+                client.DefaultRequestHeaders.Add("x-goog-api-key", $"{apiKey}");
+            }
             var messages = ToMessagesGemini(request, modelconfg);
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
@@ -3257,6 +3305,7 @@ namespace ChatBot.Web.Services
                 reasoning_effort = OpenAiThinkingLevel(modelconfg),
                 tools = tools,
                 max_tokens = modelconfg.MaxTokens > 0 ? (int?)modelconfg.MaxTokens : null,
+                user_id = GetUserIsolationIdForRequest(modelconfg),
             };
             var str = JsonSerializer.Serialize(requestContent, _jsonOptions);
             using (var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, modelconfg.ApiEndpoint)

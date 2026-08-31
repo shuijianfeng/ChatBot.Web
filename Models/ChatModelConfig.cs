@@ -13,12 +13,7 @@ namespace ChatBot.Models
         OPenAi,
         Claude,
         Gemini,
-        DeepSeek,
-        Qwen,
-        QwenVl,
-        Llama,
-        Deepbricks,
-        OpenAiDeepResearch,
+       
         GeminiFileSearch,
         Dify,  // 新增的 Dify 类型
         OpenAiResponses
@@ -33,6 +28,12 @@ namespace ChatBot.Models
         public float Temperature { get; set; }
         public int MaxTokens { get; set; }
         public bool EnableSearch { get; set; }
+
+        /// <summary>
+        /// 是否向兼容接口发送用户隔离标识。
+        /// </summary>
+        public bool EnableUserIsolation { get; set; }
+
         public bool Stream { get; set; }
 
         /// <summary>
@@ -58,6 +59,12 @@ namespace ChatBot.Models
         public string File_search_store_names { get; set; } = string.Empty;
 
         public string ThinkingLevel { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 当前请求使用的用户隔离标识，不属于模型配置或前端 JSON 契约。
+        /// </summary>
+        [JsonIgnore]
+        internal string? UserIsolationId { get; set; }
 
         /// <summary>
         /// 该模型关联的技能名称列表（为空或 null 表示不加载任何技能）
