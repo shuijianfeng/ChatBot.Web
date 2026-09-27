@@ -19,6 +19,15 @@ namespace ChatBot.Web.Services
         private const int MaxTextLength = 5120;
         private static readonly IReadOnlyDictionary<string, HashSet<string>>
             StructuredQueryFields = CreateStructuredQueryFields();
+        private static readonly HashSet<string> IncludedDatasetNames =
+            new(StringComparer.Ordinal)
+            {
+                "project",
+                "sections",
+                "materials",
+                "fees",
+                "laborMaterialMachinery"
+            };
 
         public static (ChatRequest Request, string SystemPrompt) Apply(
             ChatRequest source,
@@ -71,6 +80,9 @@ namespace ChatBot.Web.Services
   绝不能把这些数组称为“全部”。counts 是对应数据集的真实可见总数；例如 counts.fees>fees.length
   明确表示费用样本不完整。即使两者相等，用户要求某个 TREE 的“全部/完整/所有/逐项”费用时，
   也必须通过 fees 结构化查询确认匹配范围和 recordsComplete，不能凭样本序号连续就推断完整。
+- includedDatasets 只列出本次已按问题实际读取的公共数据集；某个根级数组为空且名称不在
+  includedDatasets 中表示“尚未加载”，绝不表示工程中不存在。需要该类事实时使用相应结构化查询，
+  其中 laborMaterialMachinery 首次查询才会在桌面端计算完整工料机汇总。
 - queryResults 是桌面端在当前授权快照上执行结构化只读查询得到的确定性结果：
   executionComplete=true 表示该查询数据集已完整扫描；matchedCount 是完整命中数；
   aggregates 和每个 groups[].aggregates 都基于完整命中集合计算，不受 records 分页影响；
@@ -145,7 +157,9 @@ namespace ChatBot.Web.Services
   不得请求修改、计算回写、执行命令或读取工程范围外的数据。
 - 收到“已执行补充检索”的续答消息后，先使用新增数据回答；只有仍缺少不同的关键事实时才能再次检索，
   不得重复已经执行过的查询。收到“没有新增但还可以细化一次”时，应改用包含完整父路径和明确行类型的不同查询；
-  收到明确的最终控制消息、达到限制或检索不可用时，才基于现有数据作答并说明边界。
+  收到明确的最终控制消息、达到限制或检索不可用时，基于已有真实数据完成回答，不补零或编造结论。
+  工程造价分析、审核、对比报告遵循所选报告技能：保留已有明细，缺失内容直接省略，只输出唯一 html 围栏；
+  成品不显示数据口径、边界、完整性、扫描或映射说明，内部仍须校验。其他问答按实际需要说明数据限制。
 - 需要帮助用户定位时，只能使用本次上下文 items 或 queryResults 中真实存在的 targetId，并在回答末尾输出：
   <hcsoft_action>{"type":"locate","unitProjectKey":"{{{unitProjectKey}}}","targetId":"本次上下文中的targetId","label":"定位到..."}</hcsoft_action>
 - 不得编造 unitProjectKey 或 targetId；不需要定位时不要输出 hcsoft_action。
@@ -205,6 +219,11 @@ namespace ChatBot.Web.Services
                     context,
                     "laborMaterialMachinery",
                     out JsonElement laborMaterialMachinery) ||
+                !TryGetOptionalArray(
+                    context,
+                    "includedDatasets",
+                    out JsonElement includedDatasets) ||
+                !ValidateIncludedDatasets(includedDatasets) ||
                 !TryGetOptionalArray(
                     context,
                     "catalogItems",
@@ -366,6 +385,33 @@ namespace ChatBot.Web.Services
                 return true;
             }
             return value.ValueKind == JsonValueKind.Array;
+        }
+
+        private static bool ValidateIncludedDatasets(JsonElement datasets)
+        {
+            if (datasets.ValueKind == JsonValueKind.Undefined)
+            {
+                return true;
+            }
+            if (datasets.GetArrayLength() > IncludedDatasetNames.Count)
+            {
+                return false;
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonElement dataset in datasets.EnumerateArray())
+            {
+                if (dataset.ValueKind != JsonValueKind.String)
+                {
+                    return false;
+                }
+                string name = dataset.GetString() ?? string.Empty;
+                if (!IncludedDatasetNames.Contains(name) || !seen.Add(name))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static bool ValidateCatalogItems(JsonElement catalogItems)

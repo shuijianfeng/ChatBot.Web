@@ -114,6 +114,9 @@
             }
 
             output += source.slice(cursor, opening.index);
+            // 自动续写的推理可能插在 <td> 或脚本中间。它不是 HTML 正文，
+            // 不能转成新的 Markdown 围栏，否则会提前关闭正在生成的报告。
+            const insideHtmlDocument = hasOpenHtmlDocument(output);
             const bodyStart = opening.index + opening[0].length;
             const closing = findTag(
                 source,
@@ -131,22 +134,33 @@
              */
             if (nestedOpening &&
                 (!closing || nestedOpening.index < closing.index)) {
-                output += wrapThoughts(unwrapThoughtsEnvelope(
-                    source.slice(bodyStart, nestedOpening.index)));
+                if (!insideHtmlDocument) {
+                    output += wrapThoughts(unwrapThoughtsEnvelope(
+                        source.slice(bodyStart, nestedOpening.index)));
+                }
                 cursor = nestedOpening.index;
                 continue;
             }
 
             if (closing) {
-                output += wrapThoughts(unwrapThoughtsEnvelope(
-                    source.slice(bodyStart, closing.index)));
+                if (!insideHtmlDocument) {
+                    output += wrapThoughts(unwrapThoughtsEnvelope(
+                        source.slice(bodyStart, closing.index)));
+                }
                 cursor = closing.index + closing[0].length;
+                if (insideHtmlDocument) {
+                    // 后端思考块结束标记自带两个换行；移除封装才能在脚本字符串内续接。
+                    const envelopeEnd = /^(?:\r?\n){2}/.exec(source.slice(cursor));
+                    if (envelopeEnd) cursor += envelopeEnd[0].length;
+                }
                 continue;
             }
 
             // 流式回复尚未收到结束标签：把当前已有内容临时包成完整围栏。
-            output += wrapThoughts(unwrapThoughtsEnvelope(
-                source.slice(bodyStart)));
+            if (!insideHtmlDocument) {
+                output += wrapThoughts(unwrapThoughtsEnvelope(
+                    source.slice(bodyStart)));
+            }
             cursor = source.length;
         }
 
@@ -193,6 +207,137 @@
     }
 
     /**
+     * 返回 Markdown 围栏覆盖的字符区间，同时保留最后一个未闭合围栏。
+     * 这里只按 CommonMark 的行首围栏判断，避免把 HTML/JavaScript 字符串中的
+     * 反引号误当成代码块边界。
+     */
+    function collectFenceRanges(content) {
+        const source = String(content == null ? '' : content);
+        const ranges = [];
+        const lineExpression = /[^\r\n]*(?:\r\n|\n|$)/g;
+        let opening = null;
+        let line;
+
+        while ((line = lineExpression.exec(source))) {
+            if (!line[0]) break;
+            const markerMatch =
+                /^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)/.exec(line[0]);
+            if (!markerMatch) continue;
+
+            const marker = markerMatch[1];
+            const tail = markerMatch[2] || '';
+            if (!opening) {
+                opening = {
+                    start: line.index,
+                    markerChar: marker.charAt(0),
+                    markerLength: marker.length,
+                    language: tail.trim().split(/\s+/, 1)[0].toLowerCase()
+                };
+                continue;
+            }
+
+            const isClosing =
+                marker.charAt(0) === opening.markerChar &&
+                marker.length >= opening.markerLength &&
+                tail.trim() === '';
+            if (!isClosing) continue;
+
+            ranges.push({
+                ...opening,
+                end: line.index + line[0].length,
+                open: false
+            });
+            opening = null;
+        }
+
+        if (opening) {
+            ranges.push({
+                ...opening,
+                end: source.length,
+                open: true
+            });
+        }
+        return ranges;
+    }
+
+    function hasOpenHtmlDocument(content) {
+        const ranges = collectFenceRanges(content);
+        const candidateExpression =
+            /^[ \t]{0,3}(?:<!doctype\s+html\b|<html(?:\s|>))/gim;
+        let candidate;
+        while ((candidate = candidateExpression.exec(content))) {
+            const fence = ranges.find(range =>
+                candidate.index >= range.start && candidate.index < range.end);
+            if (fence && (fence.language !== 'html' || !fence.open)) continue;
+            if (!/<\/html\s*>/i.test(content.slice(candidate.index))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 模型偶尔会漏掉最终输出要求中的 ```html 围栏。若把完整文档直接交给
+     * marked，它会作为真实 DOM 插入聊天消息；innerHTML 插入的 script 不执行，
+     * 因而既没有代码框/“运行”按钮，Chart.js 图表也会全部空白。
+     *
+     * 这里仅包装围栏之外、从行首开始的完整 HTML 文档。普通内联 HTML 和已经
+     * 正确围住的代码块保持不变；流式文档未结束时先补开围栏，收到 </html> 后
+     * 再闭合，因此重复调用也是幂等的。
+     */
+    function wrapStandaloneHtmlDocument(content) {
+        const source = String(content == null ? '' : content);
+        if (!source) return source;
+
+        const ranges = collectFenceRanges(source);
+        const openHtmlFence = ranges.find(range =>
+            range.open && range.language === 'html');
+        if (openHtmlFence) {
+            const htmlClosingIndex = source
+                .toLowerCase()
+                .lastIndexOf('</html>');
+            return htmlClosingIndex > openHtmlFence.start
+                ? source.replace(/[ \t\r\n]*$/, '') + '\n```'
+                : source;
+        }
+
+        const candidateExpression =
+            /^[ \t]{0,3}(?:<!doctype\s+html\b|<html(?:\s|>))/gim;
+        let candidate;
+        let start = -1;
+        while ((candidate = candidateExpression.exec(source))) {
+            const insideFence = ranges.some(range =>
+                candidate.index >= range.start &&
+                candidate.index < range.end);
+            if (!insideFence) {
+                start = candidate.index;
+                break;
+            }
+        }
+        if (start < 0) return source;
+
+        const lowerSource = source.toLowerCase();
+        const closingIndex = lowerSource.lastIndexOf('</html>');
+        const hasClosing = closingIndex >= start;
+        const closingEnd = hasClosing
+            ? closingIndex + '</html>'.length
+            : source.length;
+        const prefix = source.slice(0, start);
+        const documentSource = source.slice(start, closingEnd);
+        const suffix = source.slice(closingEnd);
+        const beforeFence = prefix && !/\r?\n$/.test(prefix)
+            ? prefix + '\n'
+            : prefix;
+        const afterDocument = /\r?\n$/.test(documentSource)
+            ? ''
+            : '\n';
+
+        return beforeFence +
+            '```html\n' +
+            documentSource +
+            (hasClosing ? afterDocument + '```' : '') +
+            suffix;
+    }
+
+    /**
      * 清理模型流式回复中的思考标签，并把波浪线围栏统一为反引号围栏。
      *
      * 部分模型只返回思考块的结尾：
@@ -228,7 +373,7 @@
             /(^|\r?\n)[ \t]*```[ \t]*(?:\r?\n[ \t]*)+(?=```[ \t]*[A-Za-z0-9_+#.-]+\b)/g,
             '$1');
 
-        return result;
+        return wrapStandaloneHtmlDocument(result);
     }
 
     /**

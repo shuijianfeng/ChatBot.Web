@@ -1,5 +1,6 @@
 using ChatBot.Models;
 using System.Collections.Frozen;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace ChatBot.Web.Services;
@@ -13,6 +14,10 @@ public class SkillLoaderService
     private readonly ILogger<SkillLoaderService> _logger;
     private readonly string _skillsDirectory;
     private readonly List<SkillConfig> _skills = new();
+    private readonly Dictionary<string, CachedSkillPrompt> _promptCache =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _skillsLock = new();
+    private const int MaxFrontmatterCharacters = 64 * 1024;
 
     // 匹配 YAML frontmatter 的正则：--- 开头，--- 结尾（兼容 \r\n 和 \n）
     private static readonly Regex FrontmatterRegex = new(
@@ -58,15 +63,21 @@ public class SkillLoaderService
     /// </summary>
     private void LoadSkills()
     {
-        _skills.Clear();
+        var loadedSkills = new List<SkillConfig>();
 
         if (!Directory.Exists(_skillsDirectory))
         {
             _logger.LogWarning("Skills 目录不存在: {Directory}", _skillsDirectory);
+            lock (_skillsLock)
+            {
+                _skills.Clear();
+                _promptCache.Clear();
+            }
             return;
         }
 
-        var skillFolders = Directory.GetDirectories(_skillsDirectory);
+        var skillFolders = Directory.GetDirectories(_skillsDirectory)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
         foreach (var folder in skillFolders)
         {
             var skillMdPath = Path.Combine(folder, "SKILL.md");
@@ -78,10 +89,12 @@ public class SkillLoaderService
 
             try
             {
-                var skill = ParseSkillMd(skillMdPath, Path.GetFileName(folder));
+                var skill = ParseSkillMetadata(
+                    skillMdPath,
+                    Path.GetFileName(folder));
                 if (skill != null)
                 {
-                    _skills.Add(skill);
+                    loadedSkills.Add(skill);
                     _logger.LogInformation("已加载 Skill: {Name} ({FolderName})", skill.Name, skill.FolderName);
                 }
             }
@@ -91,25 +104,26 @@ public class SkillLoaderService
             }
         }
 
-        _logger.LogInformation("共加载 {Count} 个 Skills", _skills.Count);
+        lock (_skillsLock)
+        {
+            _skills.Clear();
+            _skills.AddRange(loadedSkills);
+            _promptCache.Clear();
+        }
+        _logger.LogInformation("共发现 {Count} 个 Skills；正文将在选中时加载", loadedSkills.Count);
     }
 
     /// <summary>
-    /// 解析 SKILL.md 文件，提取 YAML frontmatter 和 markdown 正文
+    /// 只读取 SKILL.md 开头的 YAML frontmatter。技能正文可能很长，
+    /// 启动和技能列表接口都不读取它，直到某次请求真正选中该技能。
     /// </summary>
-    private SkillConfig? ParseSkillMd(string filePath, string folderName)
+    private SkillConfig? ParseSkillMetadata(string filePath, string folderName)
     {
-        var content = File.ReadAllText(filePath);
-        var frontmatterMatch = FrontmatterRegex.Match(content);
-
-        if (!frontmatterMatch.Success)
+        if (!TryReadFrontmatter(filePath, out string yaml))
         {
             _logger.LogWarning("SKILL.md 缺少 YAML frontmatter: {Path}", filePath);
             return null;
         }
-
-        var yaml = frontmatterMatch.Groups[1].Value;
-        var body = content[frontmatterMatch.Length..].Trim();
 
         var nameMatch = NameRegex.Match(yaml);
         var descriptionMatch = DescriptionRegex.Match(yaml);
@@ -129,8 +143,42 @@ public class SkillLoaderService
             FullPath = Path.Combine(_skillsDirectory, folderName),
             Description = description,
             Icon = icon,
-            SystemPrompt = body
+            SystemPrompt = string.Empty
         };
+    }
+
+    private static bool TryReadFrontmatter(string filePath, out string yaml)
+    {
+        yaml = string.Empty;
+        using var reader = new StreamReader(
+            filePath,
+            Encoding.UTF8,
+            detectEncodingFromByteOrderMarks: true);
+        if (!string.Equals(
+                reader.ReadLine()?.Trim(),
+                "---",
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var builder = new StringBuilder();
+        string? line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (string.Equals(line.Trim(), "---", StringComparison.Ordinal))
+            {
+                yaml = builder.ToString();
+                return true;
+            }
+            if (builder.Length + line.Length + Environment.NewLine.Length >
+                MaxFrontmatterCharacters)
+            {
+                return false;
+            }
+            builder.AppendLine(line);
+        }
+        return false;
     }
 
     /// <summary>
@@ -242,7 +290,13 @@ public class SkillLoaderService
     /// <summary>
     /// 获取所有已加载的 Skills
     /// </summary>
-    public List<SkillConfig> GetSkills() => _skills.ToList();
+    public List<SkillConfig> GetSkills()
+    {
+        lock (_skillsLock)
+        {
+            return _skills.Select(CloneMetadata).ToList();
+        }
+    }
 
     /// <summary>
     /// 根据技能名称获取系统提示词
@@ -252,11 +306,66 @@ public class SkillLoaderService
         if (string.IsNullOrWhiteSpace(skillName))
             return string.Empty;
 
-        var skill = _skills.FirstOrDefault(s =>
-            s.Name.Equals(skillName, StringComparison.OrdinalIgnoreCase) ||
-            s.FolderName.Equals(skillName, StringComparison.OrdinalIgnoreCase));
+        SkillConfig? skill;
+        lock (_skillsLock)
+        {
+            skill = _skills.FirstOrDefault(s =>
+                s.Name.Equals(skillName, StringComparison.OrdinalIgnoreCase) ||
+                s.FolderName.Equals(skillName, StringComparison.OrdinalIgnoreCase));
+            skill = skill == null ? null : CloneMetadata(skill);
+        }
+        if (skill == null)
+        {
+            return string.Empty;
+        }
 
-        return skill?.SystemPrompt ?? string.Empty;
+        string skillFilePath = Path.Combine(skill.FullPath, "SKILL.md");
+        try
+        {
+            var file = new FileInfo(skillFilePath);
+            if (!file.Exists)
+            {
+                return string.Empty;
+            }
+
+            lock (_skillsLock)
+            {
+                if (_promptCache.TryGetValue(
+                        skillFilePath,
+                        out CachedSkillPrompt? cached) &&
+                    cached.Length == file.Length &&
+                    cached.LastWriteTimeUtc == file.LastWriteTimeUtc)
+                {
+                    return cached.Prompt;
+                }
+            }
+
+            string content = File.ReadAllText(skillFilePath);
+            Match frontmatter = FrontmatterRegex.Match(content);
+            if (!frontmatter.Success)
+            {
+                _logger.LogWarning(
+                    "选中的 SKILL.md 缺少 YAML frontmatter: {Path}",
+                    skillFilePath);
+                return string.Empty;
+            }
+
+            string prompt = content[frontmatter.Length..].Trim();
+            file.Refresh();
+            lock (_skillsLock)
+            {
+                _promptCache[skillFilePath] = new CachedSkillPrompt(
+                    file.LastWriteTimeUtc,
+                    file.Length,
+                    prompt);
+            }
+            return prompt;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "按需加载 Skill 正文失败: {Path}", skillFilePath);
+            return string.Empty;
+        }
     }
 
     /// <summary>
@@ -266,5 +375,36 @@ public class SkillLoaderService
     {
         _logger.LogInformation("重新加载 Skills...");
         LoadSkills();
+    }
+
+    private static SkillConfig CloneMetadata(SkillConfig skill)
+    {
+        return new SkillConfig
+        {
+            Name = skill.Name,
+            DisplayName = skill.DisplayName,
+            FolderName = skill.FolderName,
+            FullPath = skill.FullPath,
+            Description = skill.Description,
+            Icon = skill.Icon,
+            SystemPrompt = string.Empty
+        };
+    }
+
+    private sealed class CachedSkillPrompt
+    {
+        public CachedSkillPrompt(
+            DateTime lastWriteTimeUtc,
+            long length,
+            string prompt)
+        {
+            LastWriteTimeUtc = lastWriteTimeUtc;
+            Length = length;
+            Prompt = prompt;
+        }
+
+        public DateTime LastWriteTimeUtc { get; }
+        public long Length { get; }
+        public string Prompt { get; }
     }
 }

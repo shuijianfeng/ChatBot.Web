@@ -27,6 +27,9 @@ builder.Services.AddCors(options =>
 builder.Services.Configure<ChatModelSettings>(builder.Configuration.GetSection("ChatModels"));
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient(EmbeddingService.HttpClientName)
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton<EmbeddingService>();
 builder.Services.AddScoped<ChatModelConfig>();
 
 builder.Services.AddScoped<IChatService, ChatService>();

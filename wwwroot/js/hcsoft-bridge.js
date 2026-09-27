@@ -36,6 +36,18 @@
         'sections',
         'project'
     ]);
+    const CONTEXT_SUPPLEMENTARY_DATASETS = new Set([
+        'project',
+        'sections',
+        'materials',
+        'fees',
+        'laborMaterialMachinery'
+    ]);
+    const FULL_REPORT_SKILLS = new Set([
+        'engineering-cost-analysis-report',
+        'engineering-cost-audit-report',
+        'engineering-cost-comparison-report'
+    ]);
     const STRUCTURED_QUERY_FIELDS = new Set([
         'targetId', 'parentTargetId', 'sectionName', 'rowType', 'sequence',
         'code', 'name', 'parentName', 'path', 'specification', 'unit',
@@ -78,6 +90,7 @@
             this.currentSnapshotId = '';
             this.currentSummary = null;
             this.lastQuery = '';
+            this.lastSkillName = '';
             this.connected = false;
             this.capabilities = [];
             // 完整计价详情最多暂存500个工程节点；轻量名称目录独立分页读取，
@@ -224,6 +237,8 @@
                     'context.get',
                     {
                         query: this.lastQuery.slice(0, 4000),
+                        requestedDatasets:
+                            this.inferSupplementaryDatasets(this.lastQuery),
                         forcePrompt: Boolean(forcePrompt)
                     },
                     CONTEXT_REQUEST_TIMEOUT_MS);
@@ -281,8 +296,12 @@
          * 为一次提问按顺序读取“最新摘要 → 相关目录 → 少量完整详情”。
          * 任一步拒绝、超时或校验失败都返回空上下文，由聊天逻辑继续普通问答。
          */
-        async prepareContext(query) {
+        async prepareContext(query, options) {
             this.lastQuery = typeof query === 'string' ? query : '';
+            this.lastSkillName = options &&
+                typeof options.skillName === 'string'
+                ? options.skillName.trim()
+                : '';
             if (!this.isAvailable) {
                 return { status: 'unavailable', context: null };
             }
@@ -361,10 +380,14 @@
                     appendTarget(item.targetId);
                 }
 
+                const requestedDatasets =
+                    this.inferSupplementaryDatasets(this.lastQuery);
                 const detailsResult = await this.request('context.details.get', {
                     snapshotId: summaryResult.snapshotId,
                     query: this.lastQuery.slice(0, 4000),
-                    targetIds
+                    targetIds,
+                    includeSupplementaryData: requestedDatasets.length > 0,
+                    requestedDatasets
                 });
                 if (!detailsResult ||
                     detailsResult.status !== 'ok' ||
@@ -601,6 +624,14 @@
             // 最新检索的摘要、轻量目录和检索元数据优先；完整详情仍按“最新在前”
             // 合并旧上下文，确保目录不会被上一轮有限取样覆盖。
             const merged = JSON.parse(JSON.stringify(latestContext));
+            merged.includedDatasets = Array.from(new Set([
+                ...(Array.isArray(latestContext.includedDatasets)
+                    ? latestContext.includedDatasets
+                    : []),
+                ...(Array.isArray(existingContext.includedDatasets)
+                    ? existingContext.includedDatasets
+                    : [])
+            ])).filter(name => CONTEXT_SUPPLEMENTARY_DATASETS.has(name));
             if (!merged.laborMaterialMachineryTotals &&
                 existingContext.laborMaterialMachineryTotals) {
                 merged.laborMaterialMachineryTotals =
@@ -1117,6 +1148,8 @@
 
         async readDetailBatches(summaryResult, query, searchState) {
             const targetIds = searchState.targetIds;
+            const requestedDatasets =
+                this.inferSupplementaryDatasets(query);
             const batches = [];
             for (let index = 0; index < targetIds.length; index += MAX_DETAIL_TARGETS) {
                 batches.push(targetIds.slice(index, index + MAX_DETAIL_TARGETS));
@@ -1133,7 +1166,10 @@
                     snapshotId: summaryResult.snapshotId,
                     query: String(query || '').slice(0, 4000),
                     targetIds: batches[batchIndex],
-                    includeSupplementaryData: batchIndex === 0,
+                    includeSupplementaryData:
+                        batchIndex === 0 && requestedDatasets.length > 0,
+                    requestedDatasets:
+                        batchIndex === 0 ? requestedDatasets : [],
                     deferTargetActivation: true
                 });
                 if (!this.isValidStagedDetailsResult(
@@ -1187,6 +1223,53 @@
                 return { status: 'error', context: null };
             }
             return { status: 'ok', context: mergedContext };
+        }
+
+        /**
+         * 只为当前问题请求确实相关的公共数据集。工程树详情始终独立读取；
+         * 没有命中时保持空数组，让材料、费用和完整工料机继续留在桌面端。
+         */
+        isFullReportRequest(query, skillName) {
+            const text = String(query || '').trim();
+            const normalizedSkill = String(
+                skillName || this.lastSkillName || '')
+                .trim()
+                .toLowerCase();
+            return Boolean(
+                FULL_REPORT_SKILLS.has(normalizedSkill) ||
+                /(?:生成|编制|制作|输出|导出|查看|分析|审核|对比).{0,16}(?:报告|报表)|(?:报告|报表).{0,16}(?:生成|编制|制作|输出|工程|造价|费用|审核|对比)/.test(text));
+        }
+
+        inferSupplementaryDatasets(query, skillName) {
+            const text = String(query || '').trim();
+            if (this.isFullReportRequest(text, skillName)) {
+                return Array.from(CONTEXT_SUPPLEMENTARY_DATASETS);
+            }
+
+            const datasets = [];
+            const add = name => {
+                if (CONTEXT_SUPPLEMENTARY_DATASETS.has(name) &&
+                    !datasets.includes(name)) {
+                    datasets.push(name);
+                }
+            };
+
+            if (/工程概况|工程说明|总说明|表单说明|施工设施|施工条件|定额体系|模板|计价模式|编制类型|单价取费|取费系数|费率系数/.test(text)) {
+                add('project');
+            }
+            if (/标段|分标|工程配置|扩展配置|单价取费|取费系数|费率系数/.test(text)) {
+                add('sections');
+            }
+            if (/材料|主材|装材|设备|基价|预算价|市场价|调整价|材料价|材料单价/.test(text)) {
+                add('materials');
+            }
+            if (/费用|费率|取费|税金|利润|间接费|直接费|措施费|价差|费项/.test(text)) {
+                add('fees');
+            }
+            if (/工料机|人工|机械|消耗量|实际用量|预算合价|市场合价|调整合价|施工用电|施工用水|施工用风|主要材料/.test(text)) {
+                add('laborMaterialMachinery');
+            }
+            return datasets;
         }
 
         /**
@@ -1321,12 +1404,12 @@
             }
         }
 
-        async getContext(query, forcePrompt) {
+        async getContext(query, forcePrompt, options) {
             this.lastQuery = typeof query === 'string' ? query : '';
             if (forcePrompt) {
                 return this.requestAuthorization();
             }
-            return this.prepareContext(this.lastQuery);
+            return this.prepareContext(this.lastQuery, options);
         }
 
         async requestAuthorization() {
@@ -2561,6 +2644,17 @@
 
             if (context.laborMaterialMachinery !== undefined &&
                 !Array.isArray(context.laborMaterialMachinery)) {
+                return false;
+            }
+            if (context.includedDatasets !== undefined &&
+                (!Array.isArray(context.includedDatasets) ||
+                 context.includedDatasets.length >
+                    CONTEXT_SUPPLEMENTARY_DATASETS.size ||
+                 new Set(context.includedDatasets).size !==
+                    context.includedDatasets.length ||
+                 !context.includedDatasets.every(name =>
+                    typeof name === 'string' &&
+                    CONTEXT_SUPPLEMENTARY_DATASETS.has(name)))) {
                 return false;
             }
             if (context.catalogItems !== undefined &&

@@ -13,7 +13,7 @@ namespace ChatBot.Models
         OPenAi,
         Claude,
         Gemini,
-       
+
         GeminiFileSearch,
         Dify,  // 新增的 Dify 类型
         OpenAiResponses
@@ -193,6 +193,7 @@ namespace ChatBot.Models
         /// <summary>
         /// 技能文件夹全路径（绝对路径，方便后续读取 SKILL.md 和相关资源）
         /// </summary>
+        [JsonIgnore]
         public string FullPath { get; set; } = string.Empty;
         
         /// <summary>
@@ -208,6 +209,7 @@ namespace ChatBot.Models
         /// <summary>
         /// 技能的系统提示词（SKILL.md 的 markdown 正文）
         /// </summary>
+        [JsonIgnore]
         public string SystemPrompt { get; set; } = string.Empty;
     }
 

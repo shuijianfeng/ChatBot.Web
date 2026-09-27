@@ -845,8 +845,8 @@ class ChatUI {
                     window.hcsoftReportRenderer.prepareLegacyHtml(executableCode);
 
                 // Chart.js CDN 可能被 WebView、浏览器扩展或网络策略拦截。
-                // 为预览、下载和分享使用的同一份 HTML 注入同步同源后备，
-                // 确保报告自己的初始化代码执行前 window.Chart 已可用。
+                // 预览、下载和分享统一改用按需加载的同源脚本，并修复已知
+                // 的旧报告图表配置闭合错误，确保初始化前 window.Chart 可用。
                 if (typeof window.hcsoftReportRenderer.prepareChartJsHtml ===
                     'function') {
                     executableCode =
@@ -1459,6 +1459,7 @@ class ChatUI {
                     this.showFullSizeImage(img.src);
                 });
             });
+            this.enhanceAndHighlightCodeBlocks(contentDiv);
             const copyButton = this.createCopyButton(content);
             copyButton.classList.add('message-copy-button');
             exportPdfBtn.onclick = () => this.exportMessageToPdf(this.getMessageActionContent(messageDiv));
@@ -1482,25 +1483,10 @@ class ChatUI {
                     });
                 });
 
-                contentDiv.querySelectorAll('pre code').forEach((block) => {
-                    hljs.highlightElement(block);
-                });
-
-                // 添加复制按钮到每个代码块
-                contentDiv.querySelectorAll('pre').forEach((pre) => {
-                    const codeBlock = pre.querySelector('code');
-                    if (codeBlock) {
-                        const wrapper = document.createElement('div');
-                        wrapper.className = 'code-block-wrapper';
-
-                        const copyButton = this.createCopyButton(codeBlock.textContent);
-                        copyButton.className = 'code-copy-button';
-
-                        pre.parentNode.insertBefore(wrapper, pre);
-                        wrapper.appendChild(pre);
-                        wrapper.appendChild(copyButton);
-                    }
-                });
+                // 统一创建语言标题栏、运行/下载/分享按钮并执行代码高亮。
+                // 不能先套一个只有复制按钮的 wrapper，否则后续增强会误判
+                // 为“已经处理”，HTML 报告便不会出现运行入口。
+                this.enhanceAndHighlightCodeBlocks(contentDiv);
 
                 // 添加消息复制按钮
                 const copyButton = this.createCopyButton(content);
@@ -2127,39 +2113,10 @@ class ChatUI {
 
 
 
-        renderer.code = (code, language) => {
-            // 处理 mermaid 图表
-            if (language === 'mermaid') {
-                const chartId = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
-                return `<div class="mermaid-chart" id="${chartId}">${code}</div>`;
-            }
-
-            // 处理 thoughts 代码块 - 确保生成正确的 class
-            if (language && language.toLowerCase() === 'thoughts') {
-                // 返回带有正确 class 的 pre/code 结构，后续由 enhanceCodeBlock 处理
-                return `<pre><code class="language-thoughts">${code}</code></pre>`;
-            }
-
-            // 流式阶段只保留 Markdown 结构，避免每次增量解析都重新执行代码高亮。
-            if (this.isStreaming) {
-                return originalCode(code, language);
-            }
-
-            // 处理其他语言
-            if (language && hljs.getLanguage(language)) {
-                try {
-                    return hljs.highlight(code, {
-                        language: language,
-                        ignoreIllegals: true
-                    }).value;
-                } catch (e) {
-                    console.error('代码高亮错误:', e);
-                }
-            }
-
-            // 默认处理
-            return originalCode(code, language);
-        };
+        // marked 18 的代码渲染器接收 token 对象。始终保留标准
+        // <pre><code class="language-*"> 结构，标题栏和高亮统一在 DOM 阶段处理；
+        // 直接返回高亮后的片段会丢失 HTML 报告的代码框和“运行”按钮。
+        renderer.code = (token) => originalCode(token);
         // 初始化链接预览功能
         this.setupLinkPreviews();
 
@@ -3072,6 +3029,15 @@ class ChatUI {
         this.messageBuffer = finalContent;
     }
 
+    getHcsoftFinalAnswerInstruction() {
+        const reportSkill = /^engineering-cost-(?:analysis|audit|comparison)-report$/.test(
+            String(this.selectedSkill || '').trim().toLowerCase());
+        return reportSkill
+            ? '请基于已有真实数据完成报告，保留已有明细，缺失字段直接省略且不补零；' +
+              '成品不显示数据口径、边界、完整性、扫描或映射说明，只输出唯一 html 围栏。'
+            : '请基于现有数据回答并明确数据边界。';
+    }
+
     // 发送消息
     async sendMessage() {
         this.toggleStopButton(true); // 显示停止按钮
@@ -3109,12 +3075,41 @@ class ChatUI {
                 try {
                     // 新客户端按“摘要 → 相关目录 → 少量完整详情”分段读取；
                     // 旧客户端由桥接脚本自动降级到原 context.get 整包协议。
-                    const contextResult = await this.hcsoftBridge.prepareContext(message);
+                    const contextResult = await this.hcsoftBridge.prepareContext(
+                        message,
+                        { skillName: this.selectedSkill });
                     if (contextResult && contextResult.status === 'ok') {
                         this.hcsoftContext = contextResult.context;
                     }
                 } catch (bridgeError) {
                     console.warn('HCSoft context unavailable; continuing without it:', bridgeError.message);
+                }
+            }
+
+            // 完整造价报告直接在首轮回答前完成确定性全量扫描。
+            // 这样即使模型漏发 hcsoft_search 控制标签，报告仍能取得完整节点覆盖、
+            // 精确累计值以及材料/费用证据；普通问答不会进入这条高成本路径。
+            if (this.hcsoftContext &&
+                this.hcsoftBridge &&
+                typeof this.hcsoftBridge.isFullReportRequest === 'function' &&
+                this.hcsoftBridge.isFullReportRequest(
+                    message,
+                    this.selectedSkill) &&
+                this.hcsoftAnalysisController &&
+                this.hcsoftAnalysisController.isSupported) {
+                try {
+                    const analysisResult =
+                        await this.hcsoftAnalysisController.scan(
+                            this.selectedSkill);
+                    if (analysisResult &&
+                        analysisResult.status === 'ok' &&
+                        analysisResult.analysis) {
+                        this.hcsoftAnalysis = analysisResult.analysis;
+                    }
+                } catch (bridgeError) {
+                    console.warn(
+                        'HCSoft report pre-scan unavailable; continuing with staged context:',
+                        bridgeError.message);
                 }
             }
 
@@ -3388,7 +3383,9 @@ class ChatUI {
                                 ? '本轮没有新增记录，但还可以细化一次检索。若仍缺关键明细，' +
                                   '请输出一个不同的hcsoft_search，并包含完整父路径、明确“下的全部清单”' +
                                   '以及合价等所需字段；不要让用户手工展开，也不要重复刚才的查询。'
-                                : '没有获得新增记录，请基于现有数据回答并明确数据边界，不要重复检索。'));
+                                : '没有获得新增记录。' +
+                                  this.getHcsoftFinalAnswerInstruction() +
+                                  '不要重复检索。'));
                     forceFinalAnswer =
                         !extensionSucceeded ||
                         (addedFacts === 0 && !canRefineEmptySearch);
@@ -3403,7 +3400,7 @@ class ChatUI {
                     forceFinalAnswer = true;
                     continuationNote =
                         `自动工程检索已达到${maxSearchRounds}轮上限、查询重复或当前客户端不支持继续检索。` +
-                        '现在必须基于已有工程上下文给出最终回答，并明确未返回数据的边界；' +
+                        this.getHcsoftFinalAnswerInstruction() +
                         '不得再次输出 hcsoft_query 或 hcsoft_search。';
                     this.isStreaming = true;
                     continue;

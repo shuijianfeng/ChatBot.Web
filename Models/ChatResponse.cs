@@ -105,6 +105,8 @@ namespace ChatBot.Models
     /// </summary>
     public class ChatRequest
     {
+        [JsonIgnore]
+        internal string? KnowledgeSystemPrompt { get; set; }
         /// <summary>
         /// 用户输入的消息
         /// </summary>

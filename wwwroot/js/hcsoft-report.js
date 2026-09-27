@@ -17,11 +17,17 @@
     const ANALYSIS_RUNTIME_MARKER =
         'data-hcsoft-report-runtime="analysis-facts-v1"';
     const CHART_RUNTIME_MARKER =
-        'data-hcsoft-chart-runtime="local-fallback-v1"';
+        'data-hcsoft-chart-runtime="local-primary-v2"';
+    const LEGACY_CHART_RUNTIME_PATTERN =
+        /<script\b[^>]*\bdata-hcsoft-chart-runtime\s*=\s*(["'])local-fallback-v1\1[^>]*>[\s\S]*?<\/script\s*>/i;
     const CHART_LAYOUT_RUNTIME_MARKER =
         'data-hcsoft-chart-runtime="layout-recovery-v1"';
     const CHART_EXTERNAL_SCRIPT_PATTERN =
         /<script\b(?=[^>]*\bsrc\s*=)[^>]*\bsrc\s*=\s*(["'])[^"']*(?:chart\.js@|chart(?:\.umd)?(?:\.min)?\.js)[^"']*\1[^>]*>\s*<\/script\s*>/i;
+    const LEGACY_CHART_CLOSURE_PATTERN =
+        /(\b(?:[A-Za-z_$][\w$]*\s*=\s*)?new\s+Chart\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*\{\s*type\s*:\s*["'](?:doughnut|bar)["'][\s\S]{0,4000}?\boptions\s*:\s*\{[\s\S]{0,3000}?\blayout\s*:\s*\{\s*padding\s*:\s*\{\s*top\s*:\s*[^{};]+\}\s*\}\s*)\}\s*\);/g;
+    const LEGACY_TABLE_FOOTER_CALLBACK_PATTERN =
+        /if\s*\(\s*foot\s*\)\s*\{\s*var\s+([A-Za-z_$][\w$]*)\s*=\s*el\s*\(\s*(["'])tfoot\2\s*\)\s*;\s*\1\.appendChild\s*\(\s*foot\s*\)\s*;\s*([A-Za-z_$][\w$]*)\.appendChild\s*\(\s*\1\s*\)\s*;\s*\}/g;
 
     const paginationRuntimeSource = `
 (function (global, document) {
@@ -172,13 +178,12 @@
     }
 
     /**
-     * 为模型生成的 Chart.js CDN 标签追加同源后备脚本。
+     * 将模型生成的 Chart.js CDN 标签改为按需加载同源副本。
      *
-     * CDN 被 WebView、浏览器扩展或网络策略拦截时，静态 CDN 标签执行完毕
-     * 但 window.Chart 仍为空；旧报告也可能引用未在当前 WebView 验证的版本。
-     * 这里紧跟其后用 document.write 同步加载已验证的 4.4.0 本地副本，保证
-     * 后续内联初始化代码执行前 Chart 已经可用且版本一致。传入绝对 URL后，
-     * 下载到本地的 HTML 也能继续访问 ChatBot.Web 的同源静态资源。
+     * 报告只在实际包含 Chart.js 时进入这里。同源静态资源不依赖 CDN、
+     * document.write 或 WebView 的跨域策略，且会在报告内联初始化代码之前
+     * 同步执行。这里也修复一类已出现过的图表配置少一个右花括号问题；
+     * 修复范围限定为 options.layout 结尾的环形图和分组柱形图。
      */
     function prepareChartJsHtml(html, localScriptUrl) {
         const source = String(html || '');
@@ -191,29 +196,26 @@
             return source;
         }
 
-        let prepared = source;
+        let prepared = source.replace(
+            LEGACY_CHART_CLOSURE_PATTERN,
+            '$1}});');
         const localUrl = String(localScriptUrl || '').trim();
-        if (!prepared.includes(CHART_RUNTIME_MARKER) && localUrl) {
+        if (localUrl) {
             const safeAttributeUrl = localUrl
                 .replace(/&/g, '&amp;')
                 .replace(/"/g, '&quot;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
-            const safeJsUrl = safeAttributeUrl
-                .replace(/\\/g, '\\\\')
-                .replace(/'/g, "\\'");
-            const fallback =
-                `<script ${CHART_RUNTIME_MARKER}>\n` +
-                `if (!window.Chart || window.Chart.version !== '4.4.0') {\n` +
-                `  document.write('<script src="${safeJsUrl}"><\\/script>');\n` +
-                `}\n` +
-                `<\/script>`;
-            const insertAt = chartScript.index + chartScript[0].length;
-            prepared =
-                prepared.slice(0, insertAt) +
-                '\n' +
-                fallback +
-                prepared.slice(insertAt);
+            const localScript =
+                `<script ${CHART_RUNTIME_MARKER} ` +
+                `src="${safeAttributeUrl}"><\/script>`;
+
+            prepared = prepared.replace(
+                CHART_EXTERNAL_SCRIPT_PATTERN,
+                localScript);
+            prepared = prepared.replace(
+                LEGACY_CHART_RUNTIME_PATTERN,
+                '');
         }
 
         if (prepared.includes(CHART_LAYOUT_RUNTIME_MARKER)) {
@@ -436,8 +438,23 @@
             });
     }
 
+    function repairLegacyTableFooterCallbacks(html) {
+        return String(html || '').replace(
+            LEGACY_TABLE_FOOTER_CALLBACK_PATTERN,
+            function (_match, footerVariable, quote, tableVariable) {
+                return (
+                    `if(foot){var ${footerVariable}=el(${quote}tfoot${quote});` +
+                    `var hcsoftFootNode=typeof foot===${quote}function${quote}` +
+                    `?foot():foot;` +
+                    `if(hcsoftFootNode&&` +
+                    `typeof hcsoftFootNode.nodeType===${quote}number${quote}){` +
+                    `${footerVariable}.appendChild(hcsoftFootNode);` +
+                    `${tableVariable}.appendChild(${footerVariable});}}`);
+            });
+    }
+
     /**
-     * 为旧版模型手写的工程造价报告补充分页运行时。
+     * 为旧版模型手写的工程造价报告修复表格页脚并补充分页运行时。
      *
      * 某些旧报告先执行 renderTable()，随后才通过
      * window.paginateTable = function (...) 赋值。属性赋值不会发生函数提升，
@@ -446,15 +463,16 @@
      */
     function prepareLegacyHtml(html) {
         const source = String(html || '');
-        if (!REPORT_DATA_MARKER_PATTERN.test(source)) {
-            return source;
+        let prepared = repairLegacyTableFooterCallbacks(source);
+        if (!REPORT_DATA_MARKER_PATTERN.test(prepared)) {
+            return prepared;
         }
 
         /*
          * JSON 兼容清理不依赖分页功能。即使报告没有 paginateTable，也要先
          * 修复 report-data，否则报告自己的初始化函数仍会进入“数据加载失败”。
          */
-        let prepared = sanitizeReportDataScripts(source);
+        prepared = sanitizeReportDataScripts(prepared);
         if (prepared.includes(RUNTIME_MARKER) ||
             !/\bpaginateTable\s*\(/.test(prepared)) {
             return prepared;

@@ -390,6 +390,14 @@ namespace ChatBot.Web.Services
             (request, effectiveSystemPrompt) = HcsoftContextEnricher.Apply(request, effectiveSystemPrompt);
             (request, effectiveSystemPrompt) = HcsoftAnalysisEnricher.Apply(request, effectiveSystemPrompt);
             var config = CreateRequestScopedConfig(baseConfig, effectiveSystemPrompt, userIsolationId);
+            if (request.KnowledgeSystemPrompt is not null)
+            {
+                config.Systemprompt = request.KnowledgeSystemPrompt;
+                // Keep the provider settings that work for normal chat, including reasoning
+                // and its token budget. Output/evidence limits belong to the knowledge endpoint.
+                config.EnableSearch = false;
+                if (config.ChatModelType is ChatModelType.Dify or ChatModelType.GeminiFileSearch) throw new Hcsoft.Knowledge.KnowledgeException("AI_MODEL_UNSUPPORTED","知识证据解释需要配置普通对话模型。");
+            }
 
            
 
@@ -1010,9 +1018,7 @@ namespace ChatBot.Web.Services
             var messages = usePreviousResponseId
                 ? incrementalInput is { Count: > 0 }
                     ? new List<object>(incrementalInput)
-                    : continuationDepth > 0
-                        ? CreateResponsesContinuationMessages()
-                        : CreateResponsesFollowUpMessages(request, modelconfg)
+                    : CreateResponsesFollowUpMessages(request, modelconfg)
                 : ToMessagesResponsesOpenAi(request, modelconfg);
 
             if (!usePreviousResponseId)
@@ -1021,7 +1027,7 @@ namespace ChatBot.Web.Services
             }
 
             // Responses 搜索工具由模型配置控制，避免依赖客户端请求中的临时开关。
-            List<object>? tools = await PrepareOpenAiResponsesToolsAsync(modelconfg.EnableSearch, cancellationToken);
+            List<object>? tools = request.KnowledgeSystemPrompt is not null ? null : await PrepareOpenAiResponsesToolsAsync(modelconfg.EnableSearch, cancellationToken);
 
             // 构建请求内容
             var requestContent = new
@@ -1058,6 +1064,7 @@ namespace ChatBot.Web.Services
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 {
                     // 尝试读取错误详情
+                    if(request.KnowledgeSystemPrompt is not null) throw new HttpRequestException("知识解释模型请求失败。",null,response.StatusCode);
                     var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
                     if (response.StatusCode == System.Net.HttpStatusCode.BadRequest
                         && !string.IsNullOrWhiteSpace(previousResponseId)
@@ -1120,10 +1127,10 @@ namespace ChatBot.Web.Services
                         {
                             line = await reader.ReadLineAsync(cancellationToken);
                         }
-                        catch (Exception ex) when (ex is OperationCanceledException or IOException or WebSocketException or HttpRequestException)
+                        catch (Exception ex) when (!cancellationToken.IsCancellationRequested
+                            && ex is OperationCanceledException or IOException or WebSocketException or HttpRequestException)
                         {
-                            if (string.IsNullOrWhiteSpace(currentResponseId)
-                                || (contentBuilder.Length == 0 && reasoningTextBuilder.Length == 0)
+                            if ((contentBuilder.Length == 0 && reasoningTextBuilder.Length == 0)
                                 || continuationDepth >= 3)
                             {
                                 _logger.LogWarning(ex, "OpenAI Responses 流读取被中断，无法执行兜底续写。ResponseId: {ResponseId}", currentResponseId);
@@ -1131,7 +1138,7 @@ namespace ChatBot.Web.Services
                             }
 
                             shouldAttemptContinuationAfterStreamInterruption = true;
-                            _logger.LogWarning(ex, "OpenAI Responses 流读取被中断，尝试按 ResponseId 兜底续写。ResponseId: {ResponseId}", currentResponseId);
+                            _logger.LogWarning(ex, "OpenAI Responses 流读取被中断，尝试携带完整上下文续写。ResponseId: {ResponseId}", currentResponseId);
                             break;
                         }
 
@@ -1258,7 +1265,7 @@ namespace ChatBot.Web.Services
                                             client,
                                             toolsmessages,
                                             contentBuilder.ToString(),
-                                            reasoningTextBuilder.ToString(),
+                                            reasoning_items,
                                             currentResponseId,
                                             continuationDepth))
                                         {
@@ -1338,6 +1345,7 @@ namespace ChatBot.Web.Services
                                         yield break;
                                     }
 
+                                    if(request.KnowledgeSystemPrompt is not null) throw new HttpRequestException("知识解释模型流返回错误。",null,System.Net.HttpStatusCode.BadGateway);
                                     var errorMessage = FormatOpenAIResponsesErrorMessage(chunk.error, chunk.response?.error);
                                     _logger.LogWarning("OpenAI Responses SSE 错误事件。ResponseId: {ResponseId}, Error: {Error}", currentResponseId, errorMessage);
                                     yield return errorMessage;
@@ -1586,6 +1594,7 @@ namespace ChatBot.Web.Services
 
                                             foreach (var pair in tool_calls)
                                             {
+                                                if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
                                                 string toolResult = await ExecuteOpenAIToolCallAsync(pair.name, pair.arguments, cancellationToken);
                                                 toolsmessages.Add(pair);
                                                 var toolOutput = new
@@ -1631,14 +1640,13 @@ namespace ChatBot.Web.Services
                     {
                         // 非流式模式：一次性读取完整响应
                         var line = await reader.ReadToEndAsync(cancellationToken);
-                        if (string.IsNullOrEmpty(line)) continue;
+                        if (string.IsNullOrEmpty(line)) break;
 
                         var chunk = JsonSerializer.Deserialize<OpenAIResponsenew>(line);
                         currentResponseId = ResolveResponsesResponseId(chunk?.id, currentResponseId);
                         request.ResponseId = currentResponseId;
 
-                        var output = chunk?.output;
-                        if (output == null || output.Length == 0) continue;
+                        var output = chunk?.output ?? [];
 
                         bool hasFunctionCall = false;
                         foreach (var item in output)
@@ -1663,6 +1671,8 @@ namespace ChatBot.Web.Services
                                     content1 = NormalizeResponsesOutputText(content1);
                                     contentBuilder.Append(content1);
                                 }
+
+                                if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
 
                                 string toolResult = await ExecuteOpenAIToolCallAsync(item.name, item.arguments, cancellationToken);
                                 toolsmessages.Add(new
@@ -1736,7 +1746,7 @@ namespace ChatBot.Web.Services
                                 client,
                                 toolsmessages,
                                 contentBuilder.ToString(),
-                                reasoningTextBuilder.ToString(),
+                                [],
                                 currentResponseId,
                                 continuationDepth))
                             {
@@ -1759,32 +1769,28 @@ namespace ChatBot.Web.Services
                     shouldAttemptContinuationAfterStreamInterruption);
 
                 if (modelconfg.Stream
+                    && !cancellationToken.IsCancellationRequested
                     && !sawTerminalResponseEvent
-                    && !string.IsNullOrWhiteSpace(currentResponseId)
                     && (contentBuilder.Length > 0 || reasoningTextBuilder.Length > 0)
                     && continuationDepth < 3)
                 {
-                    var continuationCancellationToken = cancellationToken.IsCancellationRequested
-                        ? CancellationToken.None
-                        : cancellationToken;
-
                     if (isReasoningStarted && !isReasoningEnded)
                     {
                         yield return "\n\n~~~\n\n</think>\n\n";
                         isReasoningEnded = true;
                     }
 
-                    _logger.LogWarning("OpenAI Responses 流已结束或中断且未收到终止事件，按 ResponseId 兜底续写。ResponseId: {ResponseId}", currentResponseId);
+                    _logger.LogWarning("OpenAI Responses 流已结束或中断且未收到终止事件，携带完整上下文续写。ResponseId: {ResponseId}", currentResponseId);
 
                     response.Content.Dispose();
                     await foreach (var item in ContinueOpenAIResponsesAsync(
                         modelconfg,
                         request,
-                        continuationCancellationToken,
+                        cancellationToken,
                         client,
                         toolsmessages,
                         contentBuilder.ToString(),
-                        reasoningTextBuilder.ToString(),
+                        reasoning_items,
                         currentResponseId,
                         continuationDepth))
                     {
@@ -1796,7 +1802,7 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
-        /// 使用 previous_response_id 从上次截断位置继续生成回复。
+        /// 携带原始请求和已生成内容，从上次截断位置继续生成回复。
         /// </summary>
         private async IAsyncEnumerable<string> ContinueOpenAIResponsesAsync(
             ChatModelConfig modelconfg,
@@ -1805,16 +1811,13 @@ namespace ChatBot.Web.Services
             HttpClient client,
             List<object> toolsmessages,
             string content,
-            string reasoningContent,
+            IEnumerable<object> reasoningItems,
             string? previousResponseId,
             int continuationDepth)
         {
             const int maxContinuationDepth = 3;
 
-            if (string.IsNullOrWhiteSpace(previousResponseId))
-            {
-                yield break;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (continuationDepth >= maxContinuationDepth)
             {
@@ -1829,15 +1832,18 @@ namespace ChatBot.Web.Services
                 cancellationToken.IsCancellationRequested);
 
             var continuationMessages = new List<object>(toolsmessages);
-            continuationMessages.AddRange(CreateResponsesFallbackContinuationMessages(content, reasoningContent));
+            continuationMessages.AddRange(reasoningItems);
+            continuationMessages.AddRange(CreateResponsesContinuationMessages(content));
 
+            // 部分兼容上游接受 previous_response_id，却未恢复对应上下文且不报错。
+            // 自动续写必须重放原始提示、工程资料和所有已生成片段，不能仅发送“继续”。
             await foreach (var item in OpenAIResponsesAsync(
                 modelconfg,
                 request,
                 cancellationToken,
                 client,
                 continuationMessages,
-                previousResponseId,
+                null,
                 continuationDepth + 1))
             {
                 yield return item;
@@ -1878,7 +1884,7 @@ namespace ChatBot.Web.Services
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
             //toolsmessages.Clear();
-            List<object> tools = await PrepareClaudeTools(request.EnableSearch, cancellationToken);
+            List<object> tools = request.KnowledgeSystemPrompt is not null ? new() : await PrepareClaudeTools(request.EnableSearch, cancellationToken);
 
 
             // 创建HTTP客户端
@@ -1906,6 +1912,7 @@ namespace ChatBot.Web.Services
             {
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 {
+                    if(request.KnowledgeSystemPrompt is not null) throw new HttpRequestException("知识解释模型请求失败。",null,response.StatusCode);
                     yield return "失败: StatusCode " + response.StatusCode.ToString();
                     yield break;
                 }
@@ -2089,6 +2096,7 @@ namespace ChatBot.Web.Services
                                             
                                             if (ob != null) content.Add(ob);
                                             string argumentsJsonStr = pair.partial_json ?? "{}";
+                                            if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
                                             string toolResult = await ExecuteClaudeToolCallAsync(pair.name, pair.id, argumentsJsonStr, content, toolsmessages, cancellationToken);
                                             if (toolResult == "未知工具调用_yield_return")
                                             {
@@ -2246,6 +2254,7 @@ namespace ChatBot.Web.Services
                                     ? je.GetRawText()
                                     : (pair.input == null ? "{}" : JsonSerializer.Serialize(pair.input, _jsonOptions));
                                     
+                                if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
                                 string toolResult = await ExecuteClaudeToolCallAsync(pair.name, pair.id, argumentsJsonStr, content1, toolsmessages, cancellationToken);
                                 if (toolResult == "未知工具调用_yield_return")
                                 {
@@ -2393,7 +2402,7 @@ namespace ChatBot.Web.Services
             messages.AddRange(toolsmessages);
 
             // 准备工具定义
-            List<object> geminitools = await PrepareGeminiTools(request.EnableSearch, cancellationToken);
+            List<object> geminitools = request.KnowledgeSystemPrompt is not null ? new() : await PrepareGeminiTools(request.EnableSearch, cancellationToken);
 
             // 获取思考配置
             var thinkingConfig = new
@@ -2441,7 +2450,8 @@ namespace ChatBot.Web.Services
 
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
             {
-                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                if(request.KnowledgeSystemPrompt is not null) throw new HttpRequestException("知识解释模型请求失败。",null,response.StatusCode);
+                    yield return "失败: StatusCode " + response.StatusCode.ToString();
                 yield break;
             }
             response.EnsureSuccessStatusCode();
@@ -2547,6 +2557,7 @@ namespace ChatBot.Web.Services
 
                             foreach (var funcCall in tool_calls)
                             {
+                                if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
                                 string toolResult = await ExecuteFunctionCall(funcCall);
 
                                 functionResults.Add(new
@@ -2649,6 +2660,7 @@ namespace ChatBot.Web.Services
 
                         foreach (var funcCall in tool_calls)
                         {
+                            if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
                             string toolResult = await ExecuteFunctionCall(funcCall);
 
                             functionResults.Add(new
@@ -2830,7 +2842,8 @@ namespace ChatBot.Web.Services
 
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
             {
-                yield return "失败: StatusCode " + response.StatusCode.ToString();
+                if(request.KnowledgeSystemPrompt is not null) throw new HttpRequestException("知识解释模型请求失败。",null,response.StatusCode);
+                    yield return "失败: StatusCode " + response.StatusCode.ToString();
                 yield break;
             }
             response.EnsureSuccessStatusCode();
@@ -2907,6 +2920,7 @@ namespace ChatBot.Web.Services
 
                             foreach (var funcCall in tool_calls)
                             {
+                                if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
                                 string toolResult = await ExecuteFunctionCall(funcCall);
 
                                 functionResults.Add(new
@@ -3003,6 +3017,7 @@ namespace ChatBot.Web.Services
 
                         foreach (var funcCall in tool_calls)
                         {
+                            if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
                             string toolResult = await ExecuteFunctionCall(funcCall);
 
                             functionResults.Add(new
@@ -3293,7 +3308,7 @@ namespace ChatBot.Web.Services
             toolsmessages ??= new List<object>();
             messages.AddRange(toolsmessages);
 
-            List<object> tools = await PrepareOpenAiToolsAsync(request.EnableSearch, cancellationToken);
+            List<object> tools = request.KnowledgeSystemPrompt is not null ? new() : await PrepareOpenAiToolsAsync(request.EnableSearch, cancellationToken);
 
             var requestContent = new
             {
@@ -3315,6 +3330,7 @@ namespace ChatBot.Web.Services
             {
                 if (response.StatusCode != System.Net.HttpStatusCode.OK)
                 {
+                    if(request.KnowledgeSystemPrompt is not null) throw new HttpRequestException("知识解释模型请求失败。",null,response.StatusCode);
                     yield return "失败: StatusCode " + response.StatusCode.ToString();
                     yield break;
                 }
@@ -3493,6 +3509,7 @@ namespace ChatBot.Web.Services
                                     thinkingEnded = true;
                                 }
 
+                                if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
                                 await foreach (var item in ExecuteToolCallsAndContinueAsync(
                                     modelconfg, request, cancellationToken, client, toolsmessages,
                                     tool_calls, contentBuilder, reasoningContentBuilder, response))
@@ -3595,7 +3612,8 @@ namespace ChatBot.Web.Services
                                 yield return formattedReasoning;
                             }
 
-                            await foreach (var item in ExecuteToolCallsAndContinueAsync(
+                            if (request.KnowledgeSystemPrompt is not null) throw new InvalidOperationException("知识解释不允许调用工具。");
+                                await foreach (var item in ExecuteToolCallsAndContinueAsync(
                                 modelconfg, request, cancellationToken, client, toolsmessages,
                                 tool_calls, contentBuilder, reasoningContentBuilder, response))
                             {
@@ -6479,18 +6497,6 @@ namespace ChatBot.Web.Services
             return "\n\n⚠️ **响应失败**";
         }
 
-        private static List<object> CreateResponsesContinuationMessages()
-        {
-            return new List<object>
-            {
-                new
-                {
-                    role = "user",
-                    content = "Continue exactly where you stopped. Do not repeat any text already produced."
-                }
-            };
-        }
-
         private static List<object> CreateResponsesFollowUpMessages(
             ChatRequest request,
             ChatModelConfig modelConfig)
@@ -6574,40 +6580,27 @@ namespace ChatBot.Web.Services
             };
         }
 
-        private static List<object> CreateResponsesFallbackContinuationMessages(string content, string reasoningContent)
+        private static List<object> CreateResponsesContinuationMessages(string content)
         {
             var messages = new List<object>();
-            var assistantContentBuilder = new StringBuilder();
-
-            if (!string.IsNullOrWhiteSpace(reasoningContent))
-            {
-                assistantContentBuilder.Append(reasoningContent.Trim());
-            }
-
-            if (!string.IsNullOrWhiteSpace(content))
-            {
-                if (assistantContentBuilder.Length > 0)
-                {
-                    assistantContentBuilder.AppendLine();
-                    assistantContentBuilder.AppendLine();
-                }
-
-                assistantContentBuilder.Append(content);
-            }
-
-            if (assistantContentBuilder.Length > 0)
+            // 推理项单独传递，不能把推理摘要拼入已生成的报告正文。
+            var assistantContent = DelAllString(content, "<think>", "</think>");
+            if (!string.IsNullOrEmpty(assistantContent))
             {
                 messages.Add(new
                 {
                     role = "assistant",
-                    content = assistantContentBuilder.ToString()
+                    content = assistantContent
                 });
             }
 
             messages.Add(new
             {
                 role = "user",
-                content = "Continue exactly where you stopped. Do not repeat any text already produced."
+                content = "Continue the original task using the instructions, source data and partial assistant output above. "
+                    + "Your response will be appended verbatim to that output. Start at the exact interruption point, "
+                    + "without repeating text or adding an introduction. If an HTML document or code block is unfinished, "
+                    + "finish that document/code and its existing closing fence; do not start a new document or opening fence."
             });
 
             return messages;
