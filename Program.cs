@@ -26,6 +26,17 @@ builder.Services.AddCors(options =>
 // 绑定 ChatModels 配置
 builder.Services.Configure<ChatModelSettings>(builder.Configuration.GetSection("ChatModels"));
 builder.Services.AddControllersWithViews();
+builder.Services.AddDataProtection();
+builder.Services.AddSingleton<AttachmentIdentity>();
+builder.Services.AddOptions<AttachmentOptions>().Bind(builder.Configuration.GetSection("Attachments"))
+    .Validate(o => o.ChunkCharacters >= 200 && o.ContextCharacters >= o.ChunkCharacters * 2 &&
+        o.ProcessTimeoutSeconds > 0 && o.ModelTimeoutSeconds > 0, "附件分块或超时配置无效。")
+    .ValidateOnStart();
+builder.Services.AddScoped<AttachmentStore>();
+builder.Services.AddScoped<AttachmentExtractor>();
+builder.Services.AddScoped<ChatBot.Controllers.AttachmentExceptionFilter>();
+builder.Services.AddHostedService<AttachmentWorker>();
+builder.Services.AddHostedService<AttachmentCleanup>();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient(EmbeddingService.HttpClientName)
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });

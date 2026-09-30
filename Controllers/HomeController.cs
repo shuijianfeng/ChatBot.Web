@@ -18,7 +18,7 @@ namespace ChatBot.Controllers
     /// <summary>
     /// 首页控制器
     /// </summary>
-    public class HomeController : Controller
+    public partial class HomeController : Controller
     {
         private const string UserIsolationCookieName = "ChatBot.UserIsolationId";
         private const string UserIsolationKeyConfigurationName = "ChatBotUserIsolationKey";
@@ -312,6 +312,8 @@ namespace ChatBot.Controllers
                     ErrorCode = "401"
                 });
             }
+
+            HttpContext.RequestServices.GetRequiredService<AttachmentIdentity>().SignIn(HttpContext, uid);
 
             // 如果提供了有效的主题参数
             if (!string.IsNullOrEmpty(theme))
@@ -1237,6 +1239,14 @@ namespace ChatBot.Controllers
                 }
             }
 
+            try { await PrepareAttachmentsAsync(request, HttpContext.RequestAborted); }
+            catch (Exception ex) when (ex is InvalidDataException or UnauthorizedAccessException)
+            {
+                Response.StatusCode = ex is UnauthorizedAccessException ? 403 : 400;
+                await Response.WriteAsJsonAsync(new { error = ex.Message });
+                return;
+            }
+
             // 创建 streamId 用于断线重连
             var streamId = _streamCache.CreateStream();
 
@@ -1601,6 +1611,7 @@ namespace ChatBot.Controllers
                 return BadRequest(new { error = "用户ID不能为空" });
             }
 
+            if (!IsSessionOwner(uid)) return Unauthorized();
             var sessions = await _sessionRepository.GetSessionsByUserAsync(uid);
             return Ok(sessions.Select(s => new
             {
@@ -1631,7 +1642,7 @@ namespace ChatBot.Controllers
             }
 
             // 验证会话归属
-            if (session.Uid != uid)
+            if (session.Uid != uid || !IsSessionOwner(uid))
             {
                 return Forbid();
             }
@@ -1648,6 +1659,7 @@ namespace ChatBot.Controllers
                     role = m.Role,
                     content = m.Content,
                     imageUrls = m.ImageUrls,
+                    attachments = m.Attachments,
                     createdAt = m.CreatedAt
                 })
             });
@@ -1664,6 +1676,18 @@ namespace ChatBot.Controllers
             {
                 return BadRequest(new { error = "会话ID和用户ID不能为空" });
             }
+
+            if (!IsSessionOwner(request.Uid)) return Unauthorized();
+            var existingSession = await _sessionRepository.GetSessionWithMessagesAsync(request.SessionId);
+            if (existingSession is not null && existingSession.Uid != request.Uid) return Unauthorized();
+            var attachmentStore = HttpContext.RequestServices.GetRequiredService<AttachmentStore>();
+            try
+            {
+                foreach (var message in request.Messages)
+                    message.Attachments = await attachmentStore.ValidateAsync(request.Uid, message.Attachments, HttpContext.RequestAborted);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or InvalidDataException)
+            { return BadRequest(new { error = ex.Message }); }
 
             // 自动工程检索标签是网页与桌面桥之间的瞬时控制消息。
             // 即使旧网页或页面关闭竞态把它提交到保存接口，也不能写入会话数据库。
@@ -1699,6 +1723,9 @@ namespace ChatBot.Controllers
                 return BadRequest(new { error = "会话ID不能为空" });
             }
 
+            var session = await _sessionRepository.GetSessionWithMessagesAsync(sessionId);
+            if (session is null) return NotFound();
+            if (!IsSessionOwner(session.Uid)) return Unauthorized();
             var success = await _sessionRepository.DeleteSessionAsync(sessionId);
             if (success)
             {

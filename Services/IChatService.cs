@@ -9910,7 +9910,10 @@ namespace ChatBot.Web.Services
             // 下载并压缩图片
             using (var client = new HttpClient())
             {
-                byte[] imageBytesOriginal = client.GetByteArrayAsync(imageUrl).Result;
+                bool embedded = imageUrl.StartsWith("data:image/", StringComparison.Ordinal);
+                byte[] imageBytesOriginal = embedded
+                    ? Convert.FromBase64String(imageUrl[(imageUrl.IndexOf(',') + 1)..])
+                    : client.GetByteArrayAsync(imageUrl).GetAwaiter().GetResult();
 
                 using (var ms = new MemoryStream(imageBytesOriginal))
                 {
@@ -9918,7 +9921,7 @@ namespace ChatBot.Web.Services
                     using (var image = SixLabors.ImageSharp.Image.Load(ms))
                     {
                         // 可选：调整图片尺寸
-                        int maxWidth = 1024;
+                        int maxWidth = embedded ? 1600 : 1024;
                         if (image.Width > maxWidth)
                         {
                             var ratio = (double)maxWidth / image.Width;

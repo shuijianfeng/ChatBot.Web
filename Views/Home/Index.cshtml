@@ -60,20 +60,20 @@
         <!-- 输入区域 -->
         <div class="chat-input-area">
             <div class="input-container">
-                <!-- 多图片预览容器 -->
-                <div id="preview-container" class="preview-container" style="display: none;">
-                </div>
                 <div class="upload-image-container">
                     <!-- 初始隐藏 -->
-                    <button class="btn icon-button" id="upload-image-button" title="上传图片" style="display: none;">
-                        <i class="bi bi-image"></i>
+                    <button class="btn icon-button" id="upload-image-button" title="上传附件（DOC/DOCX、XLS/XLSX、WPS、TXT、MD、CSV、XML、JSON、HTML、PDF、图片）" style="display: none;">
+                        <i class="bi bi-paperclip"></i>
                     </button>
                     <button class="btn icon-button" id="network-search-button" title="联网搜索" style="display: none;">
                         <i class="bi bi-wifi-off" id="network-icon"></i>
                     </button>
 
                     <!-- 隐藏的文件输入 -->
-                    <input type="file" id="image-input" accept="image/*" style="display: none;" />
+                    <input type="file" id="image-input" accept=".doc,.docx,.xls,.xlsx,.wps,.txt,.md,.csv,.xml,.json,.html,.htm,.pdf,.png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff" multiple style="display: none;" />
+                </div>
+                <!-- 多图片预览容器 -->
+                <div id="preview-container" class="preview-container" style="display: none;">
                 </div>
                 <textarea id="message-input" placeholder="输入您的提问..." rows="1" aria-label="Message input"></textarea>
 

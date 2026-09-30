@@ -1,0 +1,33 @@
+.attachment-card { display: flex; align-items: center; gap: .5rem; padding: .5rem .75rem; border: 1px solid var(--bs-border-color, #aaa); border-radius: .5rem; max-width: 100%; overflow-wrap: anywhere; }
+.attachment-card span { flex: 1; min-width: 0; }
+.attachment-card button, .attachment-progress button { border: 1px solid currentColor; border-radius: .3rem; background: transparent; color: inherit; padding: .2rem .4rem; cursor: pointer; }
+.attachment-card img { max-width: 80px; max-height: 80px; object-fit: contain; }
+.message-attachments { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.attachment-progress { padding: .75rem; margin: .5rem; font-size: .9rem; overflow-wrap: anywhere; }
+.attachment-progress button { margin-left: .5rem; }
+
+/* Compact attachment chips next to the message input. */
+#preview-container { gap: 4px; margin-top: 0; min-width: 0; }
+#preview-container .attachment-card { gap: 4px; padding: 3px 6px; border-radius: 6px; font-size: 12px; line-height: 1.4; max-width: min(220px, 100%); min-width: 0; }
+#preview-container .attachment-card span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#preview-container .attachment-card button { flex: 0 0 auto; font-size: 11px; padding: 2px 4px; }
+#preview-container .attachment-card .attachment-remove { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; }
+#preview-container .attachment-remove:hover:not(:disabled) { background: rgba(127,127,127,.14); }
+#preview-container .attachment-remove:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+#preview-container .attachment-remove:disabled { opacity: .4; cursor: default; }
+#preview-container .attachment-card img { max-width: 28px; max-height: 28px; }
+
+.input-container > .upload-image-container { flex: 0 0 auto; padding-left: 4px; }
+
+/* Lay chips directly in the input row; their wrapper must not reserve intrinsic text width. */
+.input-container #preview-container .attachment-card { flex: 0 1 auto; margin-right: 4px; }
+.input-container > #message-input { min-width: 0; }
+
+.attachment-file-link { min-width: 0; flex: 1; overflow: hidden; color: inherit; text-decoration: none; }
+.attachment-file-link span { display: block; }
+#preview-container .attachment-card .attachment-image-button { padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.attachment-card.attachment-image { padding: 4px; cursor: zoom-in; }
+.attachment-image-dialog { padding: 32px 8px 8px; border: 0; border-radius: 8px; max-width: 94vw; max-height: 94vh; background: var(--color-canvas-default, white); }
+.attachment-image-dialog::backdrop { background: rgba(0,0,0,.7); }
+.attachment-image-dialog > img { display: block; max-width: 90vw; max-height: 84vh; object-fit: contain; }
+.attachment-preview-close { position: absolute; right: 6px; top: 2px; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; color: var(--color-fg-default, #222); font-size: 24px; cursor: pointer; }

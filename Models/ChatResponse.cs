@@ -105,6 +105,10 @@ namespace ChatBot.Models
     /// </summary>
     public class ChatRequest
     {
+        [JsonPropertyName("attachments")]
+        public List<ChatAttachment> Attachments { get; set; } = [];
+        [JsonPropertyName("attachment_job_id")]
+        public string? AttachmentJobId { get; set; }
         [JsonIgnore]
         internal string? KnowledgeSystemPrompt { get; set; }
         /// <summary>
@@ -210,6 +214,8 @@ namespace ChatBot.Models
     /// </summary>
     public class HistoryMessage
     {
+        [JsonPropertyName("attachments")]
+        public List<ChatAttachment> Attachments { get; set; } = [];
         /// <summary>
         /// 消息角色
         /// </summary>

@@ -37,7 +37,9 @@ class ChatUI {
 
         // 定义用于存储模型配置
         this.chatModels = [];
-        this.uploadedImageUrls = []; // 修改为数组以支持多张图片
+        this.uploadedImageUrls = []; // 兼容旧图片消息
+        this.pendingAttachments = [];
+        this.attachmentJobId = null;
 
         // Skills 相关
         this.skills = [];
@@ -520,6 +522,9 @@ class ChatUI {
         }
 
         this.stopRequested = true;
+        if (this.attachmentJobId) {
+            fetch(this.apiUrl('chat/attachment-jobs/' + this.attachmentJobId + '/cancel'), { method: 'POST' }).catch(console.error);
+        }
 
         try {
             if (reader) {
@@ -561,6 +566,8 @@ class ChatUI {
 
     setLoadingState(loading) {
         this.isProcessing = loading;
+        this.modelSelect.disabled = loading;
+        this.uploadImageButton.disabled = loading;
         this.sendButton.classList.toggle('loading', loading);
         this.messageInput.disabled = loading;
         this.updateSendButtonState();
@@ -2424,12 +2431,14 @@ class ChatUI {
             this.messages.push({
                 role: role,
                 content: content,
-                images: this.uploadedImageUrls.slice() // 复制数组
+                images: this.uploadedImageUrls.slice(),
+                attachments: role === "user" ? this.pendingAttachments.map(({ id, name, contentType, size }) => ({ id, name, contentType, size })) : []
             });
 
             // 创建并添加消息元素到UI
             const { messageDiv, contentDiv } = this.createMessageElement(role, content);
             this.messagesContainer.appendChild(messageDiv);
+            if (role === "user") this.renderMessageAttachments(messageDiv, this.pendingAttachments);
 
             if (isStreaming || role === "user") {
                 this.currentMessageElement = messageDiv;
@@ -2778,11 +2787,12 @@ class ChatUI {
         // 添加历史消息
         this.messages.forEach(msg => {
             // 确保消息格式正确
-            if (msg.role && (msg.content || msg.images.length > 0)) {
+            if (msg.role && (msg.content || msg.images?.length > 0 || msg.attachments?.length > 0)) {
                 apiMessages.push({
                     role: msg.role,
                     content: msg.content,
-                    images: msg.images // 包含多张图片
+                    images: msg.images || [],
+                    attachments: msg.attachments || []
                 });
             }
         });
@@ -2897,6 +2907,7 @@ class ChatUI {
                 EnableSearch: this.isNetworkEnabled,
                 skill: this.selectedSkill,
                 previous_response_id: this.previousResponseId || null,
+                attachment_job_id: this.attachmentJobId,
                 hcsoft_context: this.hcsoftContext,
                 hcsoft_analysis: this.hcsoftAnalysis
             }),
@@ -2904,7 +2915,8 @@ class ChatUI {
         });
 
         if (!response.ok) {
-            throw new Error('Network response was not ok');
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.error || 'Network response was not ok');
         }
 
         const reader = response.body.getReader();
@@ -3040,17 +3052,23 @@ class ChatUI {
 
     // 发送消息
     async sendMessage() {
+        if (this.isProcessing || this.pendingAttachments.some(f => f.status && f.status !== 'ready')) return;
+        const hasAttachments = this.pendingAttachments.length || this.messages.some(m => m.attachments?.length);
+        if (hasAttachments && !this.chatModels.find(m => m.name === this.modelSelect.value)?.supportsAttachments) {
+            alert('请选择支持视觉的普通对话模型后发送附件。'); return;
+        }
         this.toggleStopButton(true); // 显示停止按钮
         this.controller = new AbortController();
         const signal = this.controller.signal;
         const message = this.messageInput.value.trim();
         const imageUrls = this.uploadedImageUrls.slice(); // 复制数组
 
-        if (!message && imageUrls.length == 0 || this.isProcessing) return;
+        if (!message && imageUrls.length == 0 && this.pendingAttachments.length == 0 && !this.retryAttachmentMessage || this.isProcessing) { this.toggleStopButton(false); return; }
 
         this.stopRequested = false;
         this.setLoadingState(true);
-        this.appendMessage('user', message);
+        if (!this.retryAttachmentMessage) this.appendMessage('user', message);
+        this.retryAttachmentMessage = false;
         this.sessionDirty = true; // 标记会话有变更
         this.messageInput.value = '';
         this.removeAllImages(); // 清除图片预览
@@ -3065,6 +3083,7 @@ class ChatUI {
         let streamCompleted = false;
 
         try {
+            await this.prepareAttachments(message, signal);
             this.hcsoftContext = null;
             this.hcsoftAnalysis = null;
             // 工程数据默认不附加。只有用户点击“工程数据：未附加”并授权成功后，
@@ -3422,10 +3441,11 @@ class ChatUI {
                     // 锁屏中止，不显示提示
                 } else {
                     // 用户主动取消
-                    this.appendStreamContent('\n\n[已停止生成]');
+                    if (this.currentStreamId) this.appendStreamContent('\n\n[已停止生成]');
                     streamCompleted = true;
                 }
             } else {
+                if (!this.currentStreamId) { this.isStreaming = false; this.currentMessageElement = null; }
                 // 网络错误等，不显示错误信息，等待恢复
                 console.log('流式传输中断，等待恢复。streamId:', this.currentStreamId);
             }
@@ -3911,7 +3931,7 @@ class ChatUI {
             if (session.messages && session.messages.length > 0) {
                 session.messages.forEach(msg => {
                     // 显示消息（appendMessageWithoutSave 会通过 appendMessage 添加到 this.messages）
-                    this.appendMessageWithoutSave(msg.role, msg.content, msg.imageUrls);
+                    this.appendMessageWithoutSave(msg.role, msg.content, msg.imageUrls, msg.attachments);
                 });
             }
 
@@ -3942,7 +3962,9 @@ class ChatUI {
     }
 
     // 不触发保存的消息添加方法（用于加载历史会话）
-    appendMessageWithoutSave(role, content, imageUrls = []) {
+    appendMessageWithoutSave(role, content, imageUrls = [], attachments = []) {
+        const originalAttachments = this.pendingAttachments;
+        this.pendingAttachments = attachments || [];
         // 暂存当前的 uploadedImageUrls
         const originalImageUrls = this.uploadedImageUrls.slice();
 
@@ -3958,6 +3980,7 @@ class ChatUI {
 
         // 恢复原来的 uploadedImageUrls
         this.uploadedImageUrls = originalImageUrls;
+        this.pendingAttachments = originalAttachments;
 
         // 重置当前消息元素
         this.currentMessageElement = null;
@@ -4024,7 +4047,8 @@ class ChatUI {
             messages: persistableMessages.map(msg => ({
                 role: msg.role,
                 content: msg.content,
-                imageUrls: msg.images || []
+                imageUrls: msg.images || [],
+                attachments: msg.attachments || []
             }))
         };
 
@@ -4435,6 +4459,8 @@ class ChatUI {
     }
 
 }
+
+if (typeof window !== 'undefined' && window.ChatAttachments) Object.assign(ChatUI.prototype, window.ChatAttachments);
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {

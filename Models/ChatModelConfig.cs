@@ -53,6 +53,7 @@ namespace ChatBot.Models
         
        
         public bool EnableImageUpload { get; set; }
+        public bool SupportsAttachments => EnableImageUpload && ChatModelType is not (ChatModelType.Dify or ChatModelType.GeminiFileSearch);
         
         public int ThinkingTokens { get; set; }
 

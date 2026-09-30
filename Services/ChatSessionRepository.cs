@@ -27,6 +27,7 @@ namespace ChatBot.Web.Services
         public string Role { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
         public List<string>? ImageUrls { get; set; }
+        public List<ChatBot.Models.ChatAttachment> Attachments { get; set; } = [];
         public DateTime CreatedAt { get; set; }
     }
 
@@ -47,6 +48,7 @@ namespace ChatBot.Web.Services
         public string Role { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
         public List<string>? ImageUrls { get; set; }
+        public List<ChatBot.Models.ChatAttachment> Attachments { get; set; } = [];
     }
 
     /// <summary>
@@ -91,6 +93,7 @@ namespace ChatBot.Web.Services
                         role VARCHAR(20) NOT NULL,
                         content TEXT NOT NULL,
                         image_urls TEXT[],
+                        attachments jsonb NOT NULL DEFAULT '[]'::jsonb,
                         created_at TIMESTAMP DEFAULT NOW(),
                         FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
                     );
@@ -194,7 +197,7 @@ namespace ChatBot.Web.Services
 
                 // 获取消息列表
                 var messagesSql = @"
-                    SELECT id, session_id, role, content, image_urls, created_at 
+                    SELECT id, session_id, role, content, image_urls, created_at, attachments::text
                     FROM chat_messages 
                     WHERE session_id = @sessionId 
                     ORDER BY id ASC";
@@ -211,7 +214,8 @@ namespace ChatBot.Web.Services
                         SessionId = messagesReader.GetString(1),
                         Role = messagesReader.GetString(2),
                         Content = messagesReader.GetString(3),
-                        CreatedAt = messagesReader.GetDateTime(5)
+                        CreatedAt = messagesReader.GetDateTime(5),
+                        Attachments = JsonSerializer.Deserialize<List<ChatBot.Models.ChatAttachment>>(messagesReader.GetString(6), new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? []
                     };
 
                     // 处理图片URL数组
@@ -246,10 +250,12 @@ namespace ChatBot.Web.Services
                 try
                 {
                     // 检查会话是否存在
-                    var checkSql = "SELECT COUNT(*) FROM chat_sessions WHERE id = @id";
+                    var checkSql = "SELECT uid FROM chat_sessions WHERE id = @id FOR UPDATE";
                     await using var checkCommand = new NpgsqlCommand(checkSql, connection, transaction);
                     checkCommand.Parameters.AddWithValue("id", request.SessionId);
-                    var exists = (long)(await checkCommand.ExecuteScalarAsync() ?? 0) > 0;
+                    var existingOwner = await checkCommand.ExecuteScalarAsync() as string;
+                    if (existingOwner is not null && existingOwner != request.Uid) throw new UnauthorizedAccessException("会话不属于当前用户。");
+                    var exists = existingOwner is not null;
 
                     if (exists)
                     {
@@ -287,13 +293,26 @@ namespace ChatBot.Web.Services
                     // 插入消息
                     foreach (var message in request.Messages)
                     {
+                        // Lock and refresh references in the same transaction as saving, so expiration cannot race with it.
+                        var canonicalAttachments = new List<ChatBot.Models.ChatAttachment>();
+                        foreach (var attachment in message.Attachments)
+                        {
+                            await using var attachmentCommand = new NpgsqlCommand("UPDATE chat_attachments SET created_at=now() WHERE id=@id AND owner=@owner RETURNING metadata::text", connection, transaction);
+                            attachmentCommand.Parameters.AddWithValue("id", attachment.Id);
+                            attachmentCommand.Parameters.AddWithValue("owner", request.Uid);
+                            var metadata = await attachmentCommand.ExecuteScalarAsync() as string;
+                            if (metadata is null) throw new UnauthorizedAccessException("附件不存在或不属于当前用户。");
+                            canonicalAttachments.Add(JsonSerializer.Deserialize<ChatBot.Models.ChatAttachment>(metadata, new JsonSerializerOptions(JsonSerializerDefaults.Web))!);
+                        }
+                        message.Attachments = canonicalAttachments;
                         var insertMsgSql = @"
-                            INSERT INTO chat_messages (session_id, role, content, image_urls, created_at) 
-                            VALUES (@sessionId, @role, @content, @imageUrls, NOW())";
+                            INSERT INTO chat_messages (session_id, role, content, image_urls, created_at, attachments)
+                            VALUES (@sessionId, @role, @content, @imageUrls, NOW(), @attachments::jsonb)";
                         await using var msgCommand = new NpgsqlCommand(insertMsgSql, connection, transaction);
                         msgCommand.Parameters.AddWithValue("sessionId", request.SessionId);
                         msgCommand.Parameters.AddWithValue("role", message.Role);
                         msgCommand.Parameters.AddWithValue("content", message.Content);
+                        msgCommand.Parameters.AddWithValue("attachments", AttachmentStore.Serialize(message.Attachments));
 
                         if (message.ImageUrls != null && message.ImageUrls.Count > 0)
                         {
