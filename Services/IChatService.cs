@@ -124,7 +124,7 @@ namespace ChatBot.Web.Services
     /// <summary>
     /// 聚合多种大模型、工具调用与导出能力的聊天服务实现。
     /// </summary>
-    public class ChatService : IChatService
+    public partial class ChatService : IChatService
     {
         private const int maxSearchCount = 5;
         private const int SearchCount = 10;
@@ -7514,7 +7514,7 @@ namespace ChatBot.Web.Services
         }
 
         /// <summary>
-        /// 调用 OpenAI 兼容的 Qwen TTS 接口生成语音文件，并返回可直接展示的播放器片段。
+        /// 通过配置的 TTS 提供商生成语音文件，并返回可直接展示的播放器片段。
         /// </summary>
         /// <param name="inputtexts">要转换的文本列表。</param>
         /// <param name="voice">可选音色。</param>
@@ -7537,13 +7537,14 @@ namespace ChatBot.Web.Services
             {
                 return provider switch
                 {
-                    "QwenTTS" or "ChatTTS" or "ElevenLabs" or "Bytedance" => CreateStreamingSpeechResponse(provider, normalizedTexts, voice),
+                    "QwenTTS" or "ChatTTS" or "ElevenLabs" or "Bytedance" or "GeminiTTS" => CreateStreamingSpeechResponse(provider, normalizedTexts, voice),
                     _ => $"生成失败：不支持的文本转语音提供商 '{provider}'。"
                 };
             }
 
             return provider switch
             {
+                "GeminiTTS" => await TextToSpeechViaGeminiTtsAsync(normalizedTexts, voice, cancellationToken),
                 "QwenTTS" => await TextToSpeechViaQwenTts(normalizedTexts, voice, cancellationToken),
                 "ChatTTS" => await TextToSpeechViaChatTts(normalizedTexts, voice, cancellationToken),
                 "ElevenLabs" => await TextToSpeechViaElevenLabs(normalizedTexts, voice, cancellationToken),
@@ -8172,6 +8173,7 @@ namespace ChatBot.Web.Services
         {
             return provider switch
             {
+                "GeminiTTS" => "wav",
                 "QwenTTS" => NormalizeProgressiveStreamingResponseFormat((_configuration["TextToSpeech:QwenTTS:ResponseFormat"] ?? "mp3").ToLowerInvariant()),
                 "ChatTTS" => NormalizeProgressiveStreamingResponseFormat((_configuration["TextToSpeech:ChatTTS:ResponseFormat"] ?? "mp3").ToLowerInvariant()),
                 "ElevenLabs" => NormalizeProgressiveElevenLabsResponseFormat((_configuration["TextToSpeech:ElevenLabs:ResponseFormat"] ?? "mp3_44100_128").ToLowerInvariant()),
@@ -8940,6 +8942,9 @@ namespace ChatBot.Web.Services
             var streamId = Guid.NewGuid().ToString("N");
             _ttsStreamFactories[streamId] = async cancellationToken =>
             {
+                if (provider == "GeminiTTS")
+                    return await CreateGeminiTtsResponseAsync(inputtexts, voice, cancellationToken, stream: true);
+
                 var responseFormat = GetStreamingTextToSpeechResponseFormat(provider);
                 Task<HttpResponseMessage> CreateSegment(int index)
                 {
@@ -9072,7 +9077,9 @@ namespace ChatBot.Web.Services
             var responseFormat = GetStreamingTextToSpeechResponseFormat(provider);
             var audioContentType = ResolveAudioContentTypeFromFormat(responseFormat);
             //return $"已生成流式语音。\n\n可直接向用户返回以下播放器：\n\n<audio controls preload=\"none\" title=\"{safeLabel}\">\n  <source src=\"{relativeUrl}\" type=\"{audioContentType}\">\n  您的浏览器不支持音频播放。\n</audio>";
-            return $"已生成流式语音。\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" stream src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
+            var statusText = provider == "GeminiTTS" ? "已创建语音生成任务。" : "已生成流式语音。";
+            var pcmAttribute = provider == "GeminiTTS" ? " pcm" : string.Empty;
+            return $"{statusText}\n\n可直接向用户返回以下播放器：\n\n<waveform-player  style=\"--wp-shadow: none;--wp-bg: transparent;\" stream{pcmAttribute} src=\"{relativeUrl}\" label=\"{safeLabel}\"></waveform-player>";
         }
 
         private string CreateStreamingVoiceChangeResponse(

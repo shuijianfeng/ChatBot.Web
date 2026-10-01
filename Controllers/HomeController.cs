@@ -1028,6 +1028,7 @@ namespace ChatBot.Controllers
                     Response.StatusCode = 200;
                     Response.ContentType = contentType;
                     Response.Headers.CacheControl = "no-cache";
+                    Response.Headers["X-Accel-Buffering"] = "no";
 
                     // 禁用输出缓冲，确保每个分块立即发送到客户端
                     var bodyFeature = HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>();
@@ -1065,6 +1066,14 @@ namespace ChatBot.Controllers
 
                         var audioBytes = buffer.ToArray();
 
+                        // Playback receives raw PCM immediately; only completed streams become replayable WAV files.
+                        if (contentType.StartsWith("audio/L16", StringComparison.OrdinalIgnoreCase)
+                            || contentType.StartsWith("audio/pcm", StringComparison.OrdinalIgnoreCase))
+                        {
+                            audioBytes = ChatService.CompleteStreamingPcmWave(audioBytes, contentType);
+                            contentType = "audio/wav";
+                        }
+
                         // 7. 缓存完整音频数据，供后续重复请求使用
                         _consumedTtsStreams.TryAdd(streamId, (audioBytes, contentType));
 
@@ -1076,7 +1085,7 @@ namespace ChatBot.Controllers
                         });
 
                         // 9. 持久化到磁盘，应用重启后仍可通过 streamId 访问
-                        _ = PersistStreamAudioToDiskAsync(streamId, audioBytes, contentType);
+                        await PersistStreamAudioToDiskAsync(streamId, audioBytes, contentType);
                     }
                     finally
                     {

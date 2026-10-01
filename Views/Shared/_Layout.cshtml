@@ -1,4 +1,6 @@
 @* _Layout.cshtml *@
+@* Views/Home/_ViewImports.cshtml does not apply to this shared layout. *@
+@addTagHelper Microsoft.AspNetCore.Mvc.TagHelpers.ScriptTagHelper, Microsoft.AspNetCore.Mvc.TagHelpers
 @inject ChatBot.Web.Services.IChatService ChatService
 @inject Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery
 
@@ -140,7 +142,8 @@
    
     <script src="~/lib/mermaid/dist/mermaid.min.js"></script>
     <script src="~/lib/jsmind/es6/jsmind.js"></script>
-    <script src="~/lib/waveform-player/waveform-player.js"></script>
+    <script src="~/lib/waveform-player/pcm-stream-player.js" asp-append-version="true"></script>
+    <script src="~/lib/waveform-player/waveform-player.js" asp-append-version="true"></script>
    
     <script src="~/lib/highlight.js/highlight.min.js"></script>
 

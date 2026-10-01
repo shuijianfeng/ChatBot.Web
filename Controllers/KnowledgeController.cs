@@ -28,7 +28,7 @@ public sealed class KnowledgeController(IChatService chat,IConfiguration configu
         {
             var model=configuration["Knowledge:Model"];
             if(string.IsNullOrWhiteSpace(model)) return Ok(new KnowledgeAiResponse(false,"AI 解释尚未配置，仍可检索、比较和引用。",[],[]));
-            string instructions=KnowledgeEvidencePolicy.Rules + (request.Mode=="query" ? " 将用户查询拆为用于造价清单检索的核心词项，只返回 JSON 字符串数组，最多八项；不得补造用户没有给出的地区、时期或定额体系。" : " 简明说明匹配理由、适用条件和待核实差异。引用候选时使用 [id]。不判断是否可以直接套用。");
+            string instructions=request.Mode=="query" ? KnowledgeEvidencePolicy.QueryRules : KnowledgeEvidencePolicy.ExplanationRules;
             var message=JsonSerializer.Serialize(request,KnowledgeJson.Options);
             var input=new ChatRequest { Model=model, Message=message, History=[new HistoryMessage {Role="user",Content=message}], KnowledgeSystemPrompt=instructions,EnableSearch=false };
             using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue<int?>("Knowledge:AiTimeoutSeconds") ?? 120,10,600)));
